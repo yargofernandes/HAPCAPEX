@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css?v=18"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css?v=21"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
 <div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
 <div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="installPwaBtn" class="secondary" hidden>📲 Instalar app</button><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="backupBtn" class="admin-only">💾 Backups</button><button id="usersBtn" class="admin-only">👥 Usuários</button><button id="logoutBtn" class="secondary">Sair</button></div>
 <div id="importModal" class="admin-modal admin-only"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha do CAPEX. A aba de manutenção pode ser importada separadamente, sem alterar as Obras.</p><label class="import-scope-label">O que deseja atualizar?<select id="importScope"><option value="all">Obras e Manutenção</option><option value="maintenance">Somente Manutenção</option><option value="works">Somente Obras</option></select></label><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div id="importCheck" class="import-check" hidden></div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
@@ -74,7 +74,7 @@
   <div class="mobile-app-brand">
     <div class="mobile-app-logo">HC</div>
     <div>
-      <strong>HAPCAPEX</strong>
+      <div class="mobile-brand-line"><strong>HAPCAPEX</strong><span class="mobile-app-version">v21</span></div>
       <small id="mobileHeaderContext">Resumo executivo</small>
     </div>
   </div>
@@ -134,13 +134,14 @@
     <div class="tipo-grid" id="tipo-grid"></div>
   </div>
   <div class="table-card" data-mobile-view="works">
-    <div class="section-title"><span>📋</span> Fluxo Financeiro Mensal por Obra (R$)</div>
+    <div class="section-title"><span>📋</span><span class="desktop-section-label">Fluxo Financeiro Mensal por Obra (R$)</span><span class="mobile-section-label">Financeiro Acumulado por Obra</span></div>
     <div class="filter-bar">
       <input type="text" id="filterInput" placeholder="🔍  Buscar obra pelo nome..." oninput="applyFilter()">
       <select id="filterTipo" onchange="applyFilter()"><option value="">Todas as tipologias</option></select>
       <button class="btn-clear" onclick="clearFilter()">✕ Limpar busca</button>
       <span class="filter-count" id="filterCount"></span>
     </div>
+    <div id="mobile-accumulated-works" class="mobile-accumulated-works" aria-live="polite"></div>
     <div class="tab-bar">
       <button class="tab-btn active" onclick="switchTab('tab-prev')">Fluxo Previsto (15/75/10)</button>
       <button class="tab-btn" onclick="switchTab('tab-real')">Previsto vs Realizado</button>
@@ -268,6 +269,7 @@
 <div class="obra-overlay" id="kpi-overlay" onclick="closeKpiPanel()"></div>
 <div class="obra-panel" id="kpi-panel">
   <div class="obra-panel-header" style="position:relative">
+    <button class="mobile-panel-back" type="button" onclick="closeKpiPanel()">← Voltar</button>
     <div class="tipo-tag" id="kpi-panel-tag"></div>
     <div class="obra-title" id="kpi-panel-title"></div>
     <button class="panel-close" onclick="closeKpiPanel()">✕</button>
@@ -278,6 +280,7 @@
 <div class="obra-overlay" id="obra-overlay" onclick="closePanel()"></div>
 <div class="obra-panel" id="obra-panel">
   <div class="obra-panel-header" style="position:relative">
+    <button class="mobile-panel-back" type="button" onclick="closePanel()">← Voltar</button>
     <div class="tipo-tag" id="panel-tipo"></div>
     <div class="obra-title" id="panel-nome"></div>
     <button class="panel-close" onclick="closePanel()">✕</button>
@@ -323,4 +326,4 @@
   </div>
 </div>
 
-</div><script src="config.js"></script><script src="original-baseline.js?v=18"></script><script src="bootstrap.js?v=18"></script></body></html>
+</div><script src="config.js"></script><script src="original-baseline.js?v=21"></script><script src="bootstrap.js?v=21"></script></body></html>

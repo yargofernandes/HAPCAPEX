@@ -668,6 +668,7 @@ function applyFilter() {
   renderKPIs();
   renderTablePrev();   // passa undefined → mantém sort atual
   renderTableReal();   // passa undefined → mantém sort atual
+  renderMobileAccumulatedWorks();
   renderCharts();
   renderRiskPanel();
   renderAnalysis();
@@ -872,6 +873,93 @@ const _firstMes = activeMons[0] || MONTHS_REAL[0];
       ${hint}
     </div>`;
   });
+}
+
+// ============================================================
+// VISÃO ACUMULADA PARA O APLICATIVO MÓVEL
+// Mantém o desktop com o fluxo mensal completo. No PWA móvel, apresenta
+// apenas Previsto YTD x Realizado YTD até o último mês importado.
+// ============================================================
+let mobileAccumSort = 'source';
+
+function setMobileAccumSort(value) {
+  mobileAccumSort = ['source','real_desc','prev_desc','dev_abs','name'].includes(value) ? value : 'source';
+  renderMobileAccumulatedWorks();
+}
+
+function renderMobileAccumulatedWorks() {
+  const container = document.getElementById('mobile-accumulated-works');
+  if (!container) return;
+
+  const periodMonths = MONTHS_REAL;
+  const periodLabel = `Jan–${LAST_REAL_LABEL}`;
+  let rows = filteredObras.map(o => {
+    const previsto = periodMonths.reduce((s, mk) => s + Number(o.flow?.[mk] || 0), 0);
+    const realizado = periodMonths.reduce((s, mk) => s + Number(o[mk + '_real'] || 0), 0);
+    const desvio = realizado - previsto;
+    const desvioPct = previsto > 0 ? (desvio / previsto) * 100 : null;
+    return { o, previsto, realizado, desvio, desvioPct };
+  });
+
+  if (mobileAccumSort === 'real_desc') rows.sort((a,b) => b.realizado - a.realizado);
+  else if (mobileAccumSort === 'prev_desc') rows.sort((a,b) => b.previsto - a.previsto);
+  else if (mobileAccumSort === 'dev_abs') rows.sort((a,b) => Math.abs(b.desvio) - Math.abs(a.desvio));
+  else if (mobileAccumSort === 'name') rows.sort((a,b) => a.o.nome.localeCompare(b.o.nome, 'pt-BR'));
+  else rows.sort((a,b) => (a.o._sourceOrder ?? 999999) - (b.o._sourceOrder ?? 999999));
+
+  const totalPrev = rows.reduce((s, r) => s + r.previsto, 0);
+  const totalReal = rows.reduce((s, r) => s + r.realizado, 0);
+  const totalDev = totalReal - totalPrev;
+  const totalDevPct = totalPrev > 0 ? (totalDev / totalPrev) * 100 : 0;
+
+  const summaryClass = Math.abs(totalDevPct) <= 5 ? 'ok' : (totalDevPct > 0 ? 'over' : 'under');
+  const option = (value, label) => `<option value="${value}"${mobileAccumSort === value ? ' selected' : ''}>${label}</option>`;
+
+  let html = `
+    <div class="mobile-accum-toolbar">
+      <div><small>Acumulado ${periodLabel}</small><strong>Previsto x realizado</strong></div>
+      <select aria-label="Ordenar obras" onchange="setMobileAccumSort(this.value)">
+        ${option('source','Ordem da planilha')}
+        ${option('real_desc','Maior realizado')}
+        ${option('prev_desc','Maior previsto')}
+        ${option('dev_abs','Maior desvio')}
+        ${option('name','Nome da obra')}
+      </select>
+    </div>
+    <div class="mobile-accum-summary">
+      <div><span>Previsto YTD</span><strong>${fmt(totalPrev)}</strong></div>
+      <div><span>Realizado YTD</span><strong>${fmt(totalReal)}</strong></div>
+      <div class="${summaryClass}"><span>Desvio</span><strong>${pct(totalDevPct)}</strong><small>${fmt(totalDev)}</small></div>
+    </div>
+    <div class="mobile-accum-note">Visão por obra até ${LAST_REAL_LABEL}. O consumo não planejado permanece separado nos indicadores executivos.</div>
+    <div class="mobile-work-list">`;
+
+  rows.forEach(({o, previsto, realizado, desvio, desvioPct}) => {
+    const index = obras.indexOf(o);
+    const ratio = previsto > 0 ? (realizado / previsto) * 100 : (realizado > 0 ? 100 : 0);
+    const barWidth = Math.min(Math.max(ratio, 0), 100);
+    const statusClass = desvioPct === null ? (realizado > 0 ? 'over' : 'neutral')
+      : Math.abs(desvioPct) <= 5 ? 'ok' : (desvioPct > 0 ? 'over' : 'under');
+    const statusText = desvioPct === null ? (realizado > 0 ? 'Sem previsto' : 'Sem movimento') : pct(desvioPct);
+    const nome = o.nome.replace(' - CONTING. PARCIAL','').replace(' - CONTINGENCIADA','');
+    const badge = o.contingenciada ? '<em>Contingenciada</em>' : o.nome.includes('CONTING. PARCIAL') ? '<em>Conting. parcial</em>' : '';
+    html += `
+      <button type="button" class="mobile-work-card" onclick="openPanel(${index})">
+        <div class="mobile-work-head">
+          <div><strong>${nome}</strong><small>${o.ordem || 'Sem OI'} · ${o.tipologia || 'Outros'} · CAPEX ${fmt(o.capex, true)}</small>${badge}</div>
+          <span class="mobile-dev-badge ${statusClass}">${statusText}</span>
+        </div>
+        <div class="mobile-work-values">
+          <div><span>Previsto</span><strong>${fmt(previsto, true)}</strong></div>
+          <div><span>Realizado</span><strong>${fmt(realizado, true)}</strong></div>
+          <div><span>Desvio</span><strong>${fmt(desvio, true)}</strong></div>
+        </div>
+        <div class="mobile-work-progress"><i class="${statusClass}" style="width:${barWidth}%"></i></div>
+      </button>`;
+  });
+
+  html += `</div><div class="mobile-list-footer">${rows.length} obra${rows.length === 1 ? '' : 's'} · toque em uma obra para abrir o detalhamento</div>`;
+  container.innerHTML = html;
 }
 
 // ============================================================
@@ -1543,6 +1631,7 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
 function closeKpiPanel() {
   document.getElementById('kpi-overlay').classList.remove('open');
   document.getElementById('kpi-panel').classList.remove('open');
+  document.body.classList.remove('mobile-panel-open');
 }
 
 function openKpiPanel(type) {
@@ -1751,6 +1840,8 @@ function openKpiPanel(type) {
 
   overlay.classList.add('open');
   panel.classList.add('open');
+  panel.querySelector('.obra-panel-body')?.scrollTo(0, 0);
+  if (document.body.classList.contains('pwa-mobile')) document.body.classList.add('mobile-panel-open');
 }
 
 // ============================================================
@@ -1821,11 +1912,14 @@ function openPanel(idx) {
 
   document.getElementById('obra-overlay').classList.add('open');
   document.getElementById('obra-panel').classList.add('open');
+  document.getElementById('obra-panel').querySelector('.obra-panel-body')?.scrollTo(0, 0);
+  if (document.body.classList.contains('pwa-mobile')) document.body.classList.add('mobile-panel-open');
 }
 
 function closePanel() {
   document.getElementById('obra-overlay').classList.remove('open');
   document.getElementById('obra-panel').classList.remove('open');
+  document.body.classList.remove('mobile-panel-open');
 }
 
 // ============================================================
@@ -2040,6 +2134,8 @@ function openManPacotePanel() {
 
   overlay.classList.add('open');
   panel.classList.add('open');
+  panel.querySelector('.obra-panel-body')?.scrollTo(0, 0);
+  if (document.body.classList.contains('pwa-mobile')) document.body.classList.add('mobile-panel-open');
 }
 
 function renderManCharts() {

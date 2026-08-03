@@ -879,7 +879,7 @@ $('#installPwaBtn').onclick = async () => {
 async function registerPwaServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const registration = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
+    const registration = await navigator.serviceWorker.register('./service-worker.js?v=21', { scope: './' });
     registration.update().catch(() => {});
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -1048,7 +1048,7 @@ function setMobileVisibility(selector, activeValue, dataKey) {
 function updateMobileHeader(screen) {
   const titles = {
     summary: 'Resumo executivo',
-    works: 'Obras e fluxo mensal',
+    works: 'Obras · acumulado YTD',
     charts: 'Gráficos financeiros',
     risks: 'Riscos e análise',
     maintenance: 'Manutenção'
@@ -1070,6 +1070,8 @@ function resizeVisibleCharts() {
 function mobileSetScreen(screen, options = {}) {
   if (!document.body.classList.contains('pwa-mobile')) return;
   const normalized = ['summary','works','charts','risks','maintenance'].includes(screen) ? screen : 'summary';
+  try { window.closeKpiPanel?.(); } catch (_) {}
+  try { window.closePanel?.(); } catch (_) {}
   document.body.dataset.mobileScreen = normalized;
   if (normalized === 'maintenance') {
     showCorePage('manutencao');
@@ -1153,6 +1155,29 @@ async function tryLandscapeMode(viewer) {
   } catch (_) {}
 }
 
+function resizeOpenedMobileChart() {
+  if (!mobileChartRestore) return;
+  const host = $('#mobileChartHost');
+  const { container } = mobileChartRestore;
+  const canvas = container?.querySelector('canvas');
+  const chart = canvas ? window.Chart?.getChart(canvas) : null;
+  if (!host || !container || !chart) return;
+
+  const landscape = window.innerWidth > window.innerHeight;
+  const width = landscape ? Math.max(640, host.clientWidth - 24) : 920;
+  const height = landscape ? Math.max(300, host.clientHeight - 12) : 430;
+  container.style.width = `${width}px`;
+  container.style.minWidth = `${width}px`;
+  container.style.height = `${height}px`;
+  container.style.minHeight = `${height}px`;
+  try {
+    chart.options.maintainAspectRatio = false;
+    chart.options.devicePixelRatio = Math.min(3, window.devicePixelRatio || 1);
+    chart.resize(width, height);
+    chart.update('none');
+  } catch (_) {}
+}
+
 async function openMobileChart(container, title) {
   if (!document.body.classList.contains('pwa-mobile') || mobileChartRestore) return;
   const viewer = $('#mobileChartViewer');
@@ -1169,17 +1194,7 @@ async function openMobileChart(container, title) {
   viewer.setAttribute('aria-hidden', 'false');
   document.body.classList.add('mobile-chart-open');
   await tryLandscapeMode(viewer);
-  const canvas = container.querySelector('canvas');
-  const chart = canvas ? window.Chart?.getChart(canvas) : null;
-  if (chart) {
-    try { chart.options.maintainAspectRatio = false; } catch (_) {}
-    try { chart.resize(); chart.update('none'); } catch (_) {}
-  }
-  [120, 320, 700].forEach(delay => setTimeout(() => {
-    const currentCanvas = container.querySelector('canvas');
-    const currentChart = currentCanvas ? window.Chart?.getChart(currentCanvas) : null;
-    try { currentChart?.resize(); currentChart?.update('none'); } catch (_) {}
-  }, delay));
+  [40, 160, 360, 750].forEach(delay => setTimeout(resizeOpenedMobileChart, delay));
 }
 
 async function closeMobileChart() {
@@ -1193,11 +1208,10 @@ async function closeMobileChart() {
   document.body.classList.remove('mobile-chart-open');
   try { screen.orientation?.unlock?.(); } catch (_) {}
   try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (_) {}
-  const canvas = container.querySelector('canvas');
-  const chart = canvas ? window.Chart?.getChart(canvas) : null;
-  if (chart) {
-    try { chart.options.maintainAspectRatio = false; } catch (_) {}
-  }
+  container.style.removeProperty('width');
+  container.style.removeProperty('min-width');
+  container.style.removeProperty('height');
+  container.style.removeProperty('min-height');
   [80, 220].forEach(delay => setTimeout(() => {
     const currentCanvas = container.querySelector('canvas');
     const currentChart = currentCanvas ? window.Chart?.getChart(currentCanvas) : null;
@@ -1254,9 +1268,19 @@ window.addEventListener('resize', () => {
   mobileResizeTimer = setTimeout(() => {
     applyMobileAppMode();
     resizeVisibleCharts();
+    resizeOpenedMobileChart();
   }, 160);
 });
-window.addEventListener('orientationchange', () => setTimeout(resizeVisibleCharts, 250));
+window.addEventListener('orientationchange', () => setTimeout(() => { resizeVisibleCharts(); resizeOpenedMobileChart(); }, 250));
+
+
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (mobileChartRestore) { void closeMobileChart(); return; }
+  try { window.closeKpiPanel?.(); } catch (_) {}
+  try { window.closePanel?.(); } catch (_) {}
+  closeMobileMenu();
+});
 
 applyMobileAppMode();
 
