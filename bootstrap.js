@@ -1169,10 +1169,17 @@ async function openMobileChart(container, title) {
   viewer.setAttribute('aria-hidden', 'false');
   document.body.classList.add('mobile-chart-open');
   await tryLandscapeMode(viewer);
-  setTimeout(() => {
-    const canvas = container.querySelector('canvas');
-    try { window.Chart?.getChart(canvas)?.resize(); } catch (_) {}
-  }, 180);
+  const canvas = container.querySelector('canvas');
+  const chart = canvas ? window.Chart?.getChart(canvas) : null;
+  if (chart) {
+    try { chart.options.maintainAspectRatio = false; } catch (_) {}
+    try { chart.resize(); chart.update('none'); } catch (_) {}
+  }
+  [120, 320, 700].forEach(delay => setTimeout(() => {
+    const currentCanvas = container.querySelector('canvas');
+    const currentChart = currentCanvas ? window.Chart?.getChart(currentCanvas) : null;
+    try { currentChart?.resize(); currentChart?.update('none'); } catch (_) {}
+  }, delay));
 }
 
 async function closeMobileChart() {
@@ -1186,10 +1193,16 @@ async function closeMobileChart() {
   document.body.classList.remove('mobile-chart-open');
   try { screen.orientation?.unlock?.(); } catch (_) {}
   try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (_) {}
-  setTimeout(() => {
-    const canvas = container.querySelector('canvas');
-    try { window.Chart?.getChart(canvas)?.resize(); } catch (_) {}
-  }, 120);
+  const canvas = container.querySelector('canvas');
+  const chart = canvas ? window.Chart?.getChart(canvas) : null;
+  if (chart) {
+    try { chart.options.maintainAspectRatio = false; } catch (_) {}
+  }
+  [80, 220].forEach(delay => setTimeout(() => {
+    const currentCanvas = container.querySelector('canvas');
+    const currentChart = currentCanvas ? window.Chart?.getChart(currentCanvas) : null;
+    try { currentChart?.resize(); currentChart?.update('none'); } catch (_) {}
+  }, delay));
 }
 
 function initMobileAppShell() {

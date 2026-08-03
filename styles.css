@@ -673,29 +673,53 @@ body.pwa-mobile .mobile-section-intro {
 .mobile-section-intro span { display:block; font-size:9px; text-transform:uppercase; letter-spacing:.8px; font-weight:900; color:#1a5ca8; }
 .mobile-section-intro strong { display:block; margin-top:4px; font-size:11px; line-height:1.45; }
 
-/* Indicadores legíveis: um cartão amplo por vez, com encaixe ao deslizar. */
+/* Indicadores compactos no aplicativo: cartões menores e valores financeiros mais portáteis. */
 body.pwa-mobile .kpi-grid,
 body.pwa-mobile #man-kpi-section[style] {
   display:flex !important;
   grid-template-columns:none !important;
-  overflow-x:auto; gap:10px; padding:2px 2px 10px;
-  scroll-snap-type:x mandatory; scroll-padding:2px; scrollbar-width:none;
+  overflow-x:auto; gap:8px; padding:2px 2px 8px;
+  scroll-snap-type:x proximity; scroll-padding:2px; scrollbar-width:none;
 }
 body.pwa-mobile .kpi-grid::-webkit-scrollbar { display:none; }
 body.pwa-mobile .kpi-card {
-  flex:0 0 min(82vw,340px); min-width:0; scroll-snap-align:start;
-  padding:18px 16px; border-radius:16px;
+  flex:0 0 min(61vw,245px); min-width:0; min-height:112px; scroll-snap-align:start;
+  padding:13px 12px; border-radius:14px;
 }
-body.pwa-mobile .kpi-label { font-size:10px; }
-body.pwa-mobile .kpi-value { font-size:23px; line-height:1.18; margin-top:6px; overflow-wrap:normal; }
-body.pwa-mobile .kpi-sub { font-size:10.5px; margin-top:7px; }
+body.pwa-mobile .kpi-label {
+  font-size:8.8px; line-height:1.25; letter-spacing:.45px;
+  white-space:normal; min-height:22px;
+}
+body.pwa-mobile .kpi-value {
+  font-size:17px; line-height:1.12; margin-top:4px; overflow-wrap:anywhere;
+  font-variant-numeric:tabular-nums; letter-spacing:-.25px;
+}
+body.pwa-mobile .kpi-sub {
+  font-size:8.8px; line-height:1.35; margin-top:5px;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+body.pwa-mobile .kpi-card .kpi-detail-link,
+body.pwa-mobile .kpi-card [class*="detail"] { font-size:8.5px; }
 
 body.pwa-mobile .tipo-grid {
-  display:flex; overflow-x:auto; gap:9px; padding:2px 2px 10px;
-  scroll-snap-type:x mandatory; scrollbar-width:none;
+  display:flex; overflow-x:auto; gap:8px; padding:2px 2px 8px;
+  scroll-snap-type:x proximity; scrollbar-width:none;
 }
 body.pwa-mobile .tipo-grid::-webkit-scrollbar { display:none; }
-body.pwa-mobile .tipo-card { flex:0 0 68vw; max-width:280px; scroll-snap-align:start; border-radius:14px; }
+body.pwa-mobile .tipo-card {
+  flex:0 0 min(49vw,195px); max-width:195px; min-height:108px;
+  padding:11px 10px; gap:3px; scroll-snap-align:start; border-radius:13px;
+}
+body.pwa-mobile .tipo-emoji { font-size:16px; }
+body.pwa-mobile .tipo-label {
+  font-size:8.5px; line-height:1.25; letter-spacing:.3px;
+  min-height:21px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+body.pwa-mobile .tipo-capex {
+  font-size:11.5px; line-height:1.15; letter-spacing:-.15px;
+  overflow-wrap:anywhere; font-variant-numeric:tabular-nums;
+}
+body.pwa-mobile .tipo-count { font-size:8.5px; line-height:1.25; }
 body.pwa-mobile .tipo-section .section-title { padding-right:4px; }
 
 body.pwa-mobile .month-filter-bar { border-radius:15px; padding:13px 12px; margin-bottom:12px; }
@@ -762,7 +786,7 @@ body.pwa-mobile .mobile-chart-viewer {
   position:fixed; z-index:2000; inset:0; display:none; background:#081523;
 }
 body.pwa-mobile .mobile-chart-viewer.open { display:block; }
-body.mobile-chart-open { overflow:hidden !important; touch-action:none; }
+body.mobile-chart-open { overflow:hidden !important; touch-action:manipulation; }
 .mobile-chart-stage { position:absolute; inset:0; display:flex; flex-direction:column; background:#f5f7fb; overflow:hidden; }
 .mobile-chart-head {
   flex:0 0 58px; display:flex; align-items:center; justify-content:space-between; gap:14px;
@@ -771,22 +795,28 @@ body.mobile-chart-open { overflow:hidden !important; touch-action:none; }
 .mobile-chart-head small { display:block; color:#bcd2e9; font-size:8px; font-weight:900; text-transform:uppercase; letter-spacing:.9px; }
 .mobile-chart-head strong { display:block; max-width:74vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:3px; font-size:12px; }
 .mobile-chart-head button { width:40px; height:40px; flex:0 0 40px; border:1px solid #ffffff44; border-radius:12px; background:#ffffff18; color:#fff; font-size:23px; }
-.mobile-chart-host { flex:1 1 auto; min-height:0; padding:10px 14px 20px; }
-body.pwa-mobile .mobile-chart-host .chart-container {
-  display:block !important; min-width:0 !important; width:100% !important; height:100% !important; max-height:none !important;
-  overflow:visible !important;
+.mobile-chart-host {
+  flex:1 1 auto; min-height:0; padding:10px 12px calc(18px + env(safe-area-inset-bottom));
+  overflow:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; touch-action:pan-x pan-y;
 }
-body.pwa-mobile .mobile-chart-host canvas { width:100% !important; height:100% !important; max-height:none !important; }
-.mobile-rotate-hint { display:none; }
-
-/* Em retrato, a própria tela do gráfico é girada para oferecer área horizontal,
-   mesmo em aparelhos que não permitem bloquear a orientação via navegador. */
-@media (orientation:portrait) {
-  body.pwa-mobile .mobile-chart-stage {
-    width:100vh; height:100vw; inset:auto;
-    top:0; left:0; transform-origin:top left;
-    transform:rotate(90deg) translateY(-100%);
+body.pwa-mobile .mobile-chart-host .chart-container {
+  display:block !important; margin:0 auto; overflow:visible !important;
+  width:max(920px, calc(100vw - 24px)) !important;
+  min-width:920px !important; height:430px !important; min-height:430px !important; max-height:none !important;
+}
+body.pwa-mobile .mobile-chart-host canvas {
+  width:100% !important; height:100% !important; max-height:none !important; image-rendering:auto;
+}
+.mobile-rotate-hint {
+  display:block; padding:0 14px 12px; text-align:center; color:#4f6178; font-size:10px; font-weight:700;
+}
+@media (orientation:landscape) {
+  body.pwa-mobile .mobile-chart-host .chart-container {
+    width:calc(100vw - 28px) !important; min-width:0 !important;
+    height:calc(100vh - 112px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    min-height:300px !important;
   }
+  .mobile-rotate-hint { display:none; }
 }
 
 /* Manutenção funciona como uma página com quatro subtelas. */
@@ -810,7 +840,9 @@ body.pwa-mobile .admin-box { padding-top:max(18px,env(safe-area-inset-top)); }
 
 @media (max-width:390px) {
   body.pwa-mobile .mobile-app-brand small { max-width:190px; }
-  body.pwa-mobile .kpi-card { flex-basis:88vw; }
-  body.pwa-mobile .tipo-card { flex-basis:75vw; }
+  body.pwa-mobile .kpi-card { flex-basis:64vw; }
+  body.pwa-mobile .tipo-card { flex-basis:52vw; }
+  body.pwa-mobile .kpi-value { font-size:16px; }
+  body.pwa-mobile .tipo-capex { font-size:11px; }
   .mobile-bottom-nav button small { font-size:8.5px; }
 }
