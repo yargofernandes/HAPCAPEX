@@ -50,6 +50,9 @@ function isMaintenancePackageName(name) {
   const normalized = normalizeName(name);
   return normalized.includes('PACOTE DE MANUTENCAO DIA A DIA');
 }
+function isOperName(name) {
+  return /_OPER\s*$/i.test(String(name || '').trim());
+}
 function contingencyState(name, capex) {
   if (!/CONTIN?G/i.test(String(name || ''))) return 'active';
   return num(capex) > 0 ? 'partial' : 'full';
@@ -87,7 +90,8 @@ function itemToRaw(item) {
     // parcial com os realizados atuais da planilha.
     _baselineFlow: isCurrentContingency ? null : (original?.flow || null),
     _baselineCapex: original ? num(original.capex) : null,
-    _isOriginalBaseline: Boolean(original) && !isCurrentContingency
+    _isOriginalBaseline: Boolean(original) && !isCurrentContingency,
+    _isOper: isOperName(item.nome)
   };
   monthKeys.forEach(key => raw[key + '_real'] = num(item.realizado?.[key]));
   return raw;
@@ -459,6 +463,9 @@ $('#excelFile').onchange = async event => {
     const fullCount = pendingImport.filter(item =>
       item.categoria === 'obra' && item.contingenciada
     ).length;
+    const operCount = pendingImport.filter(item =>
+      item.categoria === 'obra' && isOperName(item.nome)
+    ).length;
     const scopeLabel = pendingImport.importScope === 'maintenance'
       ? 'Somente Manutenção'
       : pendingImport.importScope === 'works' ? 'Somente Obras' : 'Obras e Manutenção';
@@ -467,6 +474,7 @@ $('#excelFile').onchange = async event => {
       statusParts.push(`${obrasCount} obras`);
       statusParts.push(`${hasNonPlanned ? '1 linha' : 'nenhuma linha'} de Obras Não Planejadas`);
       statusParts.push(`${partialCount} contingenciamentos parciais e ${fullCount} totais`);
+      statusParts.push(`${operCount} obras _OPER com realizado preservado e saldo distribuído até dez/26`);
       if (pendingImport.ignoredCount) statusParts.push(`${pendingImport.ignoredCount} linha de pacote ignorada`);
     }
     if (pendingImport.importScope !== 'works') {

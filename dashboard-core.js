@@ -48,6 +48,14 @@ const isAporteExtra = (nome) => {
   return RECEB_DETALHE.some(r => n.includes(String(r.nome||'').toLowerCase().substring(0,25)));
 };
 
+// Lançamentos terminados em _OPER seguem regra gerencial própria:
+// realizado preservado até o mês de referência e saldo residual distribuído
+// igualmente entre os meses seguintes até dezembro de 2026.
+function isOperWork(obraOuNome) {
+  const nome = typeof obraOuNome === 'string' ? obraOuNome : obraOuNome?.nome;
+  return /_OPER\s*$/i.test(String(nome || '').trim());
+}
+
 // ============================================================
 // MONTHS
 // ============================================================
@@ -235,6 +243,32 @@ function computeFlowRaw(obra) {
   const flow = {};
   MONTHS.forEach(m => flow[m.key] = 0);
 
+  // Obras _OPER: nos meses já importados, previsto = realizado.
+  // O saldo residual do CAPEX é distribuído igualmente entre o mês seguinte
+  // ao último mês importado e DEZ/26. A última parcela absorve os centavos
+  // residuais para garantir soma exata do fluxo = CAPEX vigente.
+  if (isOperWork(obra)) {
+    MONTHS_REAL.forEach(mk => { flow[mk] = Number(obra[mk + '_real'] || 0); });
+    const capexOper = Math.max(0, Number(obra.capex || 0));
+    const realizadoAcumulado = flowSum(flow);
+    const saldoResidual = Math.max(0, capexOper - realizadoAcumulado);
+    if (saldoResidual > FLOW_TOLERANCE) {
+      const reportingIndex = Math.min(currentReportingIndex(), 11);
+      const futureKeys = MONTHS.slice(reportingIndex + 1, 12).map(month => month.key);
+      const allocationKeys = futureKeys.length ? futureKeys : ['dez'];
+      // Rateio em centavos: evita frações de centavo e garante que a soma
+      // das parcelas seja exatamente igual ao saldo residual.
+      const saldoCentavos = Math.round(saldoResidual * 100);
+      const parcelaCentavos = Math.floor(saldoCentavos / allocationKeys.length);
+      const restoCentavos = saldoCentavos - parcelaCentavos * allocationKeys.length;
+      allocationKeys.forEach((key, index) => {
+        const centavos = parcelaCentavos + (index < restoCentavos ? 1 : 0);
+        flow[key] = Number(flow[key] || 0) + centavos / 100;
+      });
+    }
+    return flow;
+  }
+
   // As obras que já existiam no HTML validado usam exatamente o fluxo
   // calculado naquele arquivo. Isso preserva todas as exceções e os
   // números históricos aprovados, independentemente de mudanças posteriores
@@ -410,6 +444,7 @@ function computeFlowRaw(obra) {
 
 function computeFlow(obra) {
   let flow = computeFlowRaw(obra);
+  if (isOperWork(obra)) return flow;
   if (obra._baselineFlow && typeof obra._baselineFlow === 'object') {
     flow = rebaseBaselineFlowToCurrentCapex(obra, flow);
   }
@@ -422,17 +457,26 @@ const obras = obrasRaw
   .sort((a, b) => (a._sourceOrder ?? 999999) - (b._sourceOrder ?? 999999));
 obras.forEach(o => { o.total_real = MONTHS_REAL.reduce((s, m) => s + (o[m+'_real'] || 0), 0); });
 
-// Portfolio-level integrity control. This must always reconcile to zero.
+// Controle de integridade financeira.
+// Para todas as obras, inclusive _OPER, a soma do fluxo previsto deve ser
+// exatamente igual ao CAPEX vigente registrado na planilha/Supabase.
 const CAPEX_OBRAS_TABELA = obras.reduce((s, obra) => s + Number(obra.capex || 0), 0);
 const PREVISTO_OBRAS_TABELA = obras.reduce((s, obra) => s + flowSum(obra.flow), 0);
+const OBRAS_OPER = obras.filter(isOperWork);
+const CAPEX_OPER = OBRAS_OPER.reduce((s, obra) => s + Number(obra.capex || 0), 0);
+const PREVISTO_OPER = OBRAS_OPER.reduce((s, obra) => s + flowSum(obra.flow), 0);
 const DIFERENCA_INTEGRIDADE_FLUXO = CAPEX_OBRAS_TABELA - PREVISTO_OBRAS_TABELA;
 window.HAP_FINANCIAL_CHECK = {
   capexGerencial: CAPEX_ATUAL,
   capexObras: CAPEX_OBRAS_TABELA,
   diferencaGerencial: CAPEX_OBRAS_TABELA - CAPEX_ATUAL,
   previstoObras: PREVISTO_OBRAS_TABELA,
+  capexOper: CAPEX_OPER,
+  previstoOper: PREVISTO_OPER,
   consumoNaoPlanejado: TOTAL_NAO_PLANEJADO,
   previstoTotalComNaoPlanejado: PREVISTO_OBRAS_TABELA + TOTAL_NAO_PLANEJADO,
+  conciliacaoCapexObras: PREVISTO_OBRAS_TABELA,
+  conciliacaoTotalComNaoPlanejado: PREVISTO_OBRAS_TABELA + TOTAL_NAO_PLANEJADO,
   diferenca: DIFERENCA_INTEGRIDADE_FLUXO
 };
 if (Math.abs(DIFERENCA_INTEGRIDADE_FLUXO) > 0.01) {
@@ -1339,7 +1383,7 @@ const _firstMes = mesesRisco[0] || MONTHS_REAL[0];
   rows.forEach(({ o, totReal, totPrev, desvio, devPct }) => {
     const absdev = Math.abs(devPct);
     let badge, badgeCls;
-    if (absdev <= 10) { badge = '✅ Normal'; badgeCls = 'badge-ok'; }
+    if (absdev <= 10 || isOperWork(o)) { badge = '✅ Normal'; badgeCls = 'badge-ok'; }
     else if (absdev <= 25) { badge = '⚠️ Atenção'; badgeCls = 'badge-atencao'; }
     else { badge = '🔴 Crítico'; badgeCls = 'badge-critico'; }
     const devClass = devPct >= 0 ? 'desvio-pos' : 'desvio-neg';
@@ -1399,7 +1443,7 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
   const topRealizadas = [...filteredObras].sort((a, b) =>
     mesesAnalise.reduce((s,mk) => s+(b[mk+'_real']||0), 0) - mesesAnalise.reduce((s,mk) => s+(a[mk+'_real']||0), 0)
   ).slice(0, 5);
-  const topDesvio = [...fo].map(o => ({
+  const topDesvio = [...fo].filter(o => !isOperWork(o)).map(o => ({
     o,
     totPrev: mesesAnalise.reduce((s, mk) => s + (o.flow[mk]||0), 0),
     totReal: mesesAnalise.reduce((s, mk) => s + (o[mk+'_real']||0), 0)
@@ -1407,16 +1451,46 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
     Math.abs(((b.totReal-b.totPrev)/b.totPrev)) - Math.abs(((a.totReal-a.totPrev)/a.totPrev))
   ).slice(0, 5);
 
+  const somaRealMeses = (obra, meses) => obra
+    ? meses.reduce((s, mk) => s + Number(obra[mk + '_real'] || 0), 0)
+    : 0;
+  const somaPrevMeses = (obra, meses) => obra
+    ? meses.reduce((s, mk) => s + Number(obra.flow?.[mk] || 0), 0)
+    : 0;
+  const hospitalRio = obras.find(o => o.nome.includes('Novo Hospital Rio de Janeiro'));
+  const paBarra = obras.find(o => o.nome.includes('PA Barra da Tijuca'));
+  const parauapebas = obras.find(o => o.nome.includes('Hospital Parauapebas'));
+  const hospitalRioReal = somaRealMeses(hospitalRio, mesesAnalise);
+  const hospitalRioPrev = somaPrevMeses(hospitalRio, mesesAnalise);
+  const hospitalRioDesvio = hospitalRioPrev > 0 ? ((hospitalRioReal - hospitalRioPrev) / hospitalRioPrev) * 100 : 0;
+  const paBarraReal = somaRealMeses(paBarra, mesesAnalise);
+  const parauapebasReal = somaRealMeses(parauapebas, mesesAnalise);
+  const operRealPeriodo = OBRAS_OPER.reduce((s, o) => s + somaRealMeses(o, mesesAnalise), 0);
+  const operCapexPeriodo = OBRAS_OPER.reduce((s, o) => s + Number(o.capex || 0), 0);
+  const naoPlanMesesComValor = MONTHS_REAL.filter(mk => Number(NAO_PLANEJADO[mk] || 0) !== 0);
+  const naoPlanUltimoMes = naoPlanMesesComValor[naoPlanMesesComValor.length - 1] || ultimoMes;
+  const naoPlanPeriodoLabel = `Jan–${_monthPT[naoPlanUltimoMes] || naoPlanUltimoMes.toUpperCase()}/${naoPlanUltimoMes.includes('27') ? '27' : '26'}`;
+  const maiorNaoPlanejadoKey = MONTHS_REAL.reduce((best, mk) =>
+    Number(NAO_PLANEJADO[mk] || 0) > Number(NAO_PLANEJADO[best] || 0) ? mk : best, MONTHS_REAL[0] || 'jan');
+  const maiorNaoPlanejadoLabel = MONTHS.find(m => m.key === maiorNaoPlanejadoKey)?.label || maiorNaoPlanejadoKey.toUpperCase();
+
+  const pontosAtencao = [
+    hospitalRio ? `<strong>Novo Hospital Rio de Janeiro:</strong> realizado acumulado de <strong>${fmt(hospitalRioReal)}</strong> no período, frente a previsto de <strong>${fmt(hospitalRioPrev)}</strong>, desvio de <strong>${pct(hospitalRioDesvio)}</strong> e consumo de <strong>${hospitalRio.capex > 0 ? (hospitalRioReal / hospitalRio.capex * 100).toFixed(1) : '0,0'}%</strong> do CAPEX de ${fmt(hospitalRio.capex)}.` : '',
+    paBarra ? `<strong>PA Barra da Tijuca:</strong> realizado acumulado de <strong>${fmt(paBarraReal)}</strong> no período, equivalente a <strong>${paBarra.capex > 0 ? (paBarraReal / paBarra.capex * 100).toFixed(1) : '0,0'}%</strong> do CAPEX de ${fmt(paBarra.capex)}.` : '',
+    parauapebas ? `<strong>Ampliação Hospital Parauapebas:</strong> realizado acumulado de <strong>${fmt(parauapebasReal)}</strong> no período, equivalente a <strong>${parauapebas.capex > 0 ? (parauapebasReal / parauapebas.capex * 100).toFixed(1) : '0,0'}%</strong> do CAPEX de ${fmt(parauapebas.capex)}.` : ''
+  ].filter(Boolean).join('<br>');
+
   const container = document.getElementById('analysis-text');
   container.innerHTML = `
     <h2>📋 Análise de Desempenho Financeiro — ${periodLabel}</h2>
     <h3>📊 Visão Geral do Portfólio</h3>
     <p>O portfólio contém <strong>${obras.length} obras</strong> com CAPEX inicial de <strong>${fmt(CAPEX_INICIAL)}</strong>. O CAPEX Atual é <strong>${fmt(CAPEX_ATUAL)}</strong> após contingenciamento acumulado de <strong>${fmt(CAPEX_CONTING)}</strong> e recebimentos acumulados de <strong>${fmt(CAPEX_RECEBIMENTO)}</strong> (${APORTE_ACUM_LABEL.replace("Acumulado ","")}).</p>
-    <p>O total realizado no período <strong>${periodLabel}</strong> é de <strong>${fmt(totalReal)}</strong>, frente a um previsto de <strong>${fmt(totalPrev)}</strong> (modelo 15/75/10 para obras ativas; previsto igualado ao realizado para obras contingenciadas), resultando em desvio de <strong class="${devGeral>=0?'desvio-pos':'desvio-neg'}">${pct(devGeral)}</strong>.</p>
+    <p>O total realizado no período <strong>${periodLabel}</strong> é de <strong>${fmt(totalReal)}</strong>, frente a um previsto de <strong>${fmt(totalPrev)}</strong>. O modelo 15/75/10 é aplicado às obras regulares. Nas obras terminadas em <strong>_OPER</strong>, o previsto acompanha o realizado nos meses encerrados e o saldo residual é distribuído igualmente até dez/26. O desvio consolidado é de <strong class="${devGeral>=0?'desvio-pos':'desvio-neg'}">${pct(devGeral)}</strong>.</p>
+    <p>As <strong>${OBRAS_OPER.length} obras _OPER</strong> representam CAPEX de <strong>${fmt(operCapexPeriodo)}</strong>. Nos meses encerrados, o previsto corresponde ao realizado de <strong>${fmt(operRealPeriodo)}</strong>; o saldo remanescente é programado linearmente até dez/26 e não gera criticidade por desvio nos meses já fechados.</p>
 
     <div class="highlight-box ${devUltimoMes>=0?'verde':'vermelho'}">
-      <strong>🗓️ Desempenho de ${ultimoMesLabel}/2026:</strong> Realizado <strong>${fmt(ultimoMesReal)}</strong> vs. Previsto <strong>${fmt(ultimoMesPrev)}</strong> — Desvio: <strong>${pct(devUltimoMes)}</strong>.
-      As obras com maior desembolso em ${ultimoMesLabel}/2026 foram:
+      <strong>🗓️ Desempenho de ${ultimoMesLabel}:</strong> Realizado <strong>${fmt(ultimoMesReal)}</strong> vs. Previsto <strong>${fmt(ultimoMesPrev)}</strong> — Desvio: <strong>${pct(devUltimoMes)}</strong>.
+      As obras com maior desembolso em ${ultimoMesLabel} foram:
       ${topUltimoMes.map((o,i) => `<strong>${i+1}. ${o.nome.substring(0,55)}</strong> — ${fmt(o[ultimoMes+'_real']||0)}`).join('; ')}.
     </div>
 
@@ -1446,19 +1520,19 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
     }).join('')}
 
     <h3>📌 Pontos de Atenção</h3>
-    <p>O Novo Hospital Rio de Janeiro lidera o volume de desembolso acumulado no portfólio em 2026, com total realizado de <strong>${fmt(filteredObras.find(o=>o.nome.includes('Novo Hospital Rio de Janeiro'))?.total_real||0)}</strong> — recomenda-se atenção contínua ao fluxo de caixa desta obra. O PA Barra da Tijuca apresentou volume expressivo em ${ultimoMesLabel}/2026, sinalizando aceleração de execução. O Ampliação Hospital Parauapebas acumula realizações relevantes — a conclusão deve ocorrer conforme programado.</p>
+    <div class="highlight-box">${pontosAtencao || 'Não há obras de referência disponíveis na base atual.'}</div>
 
     <h3>⚠️ Impacto do Consumo Não Planejado no CAPEX 2026</h3>
     <div class="highlight-box vermelho">
-      <strong>Consumo total não planejado (Jan–Jun/26): ${fmt(TOTAL_NAO_PLANEJADO)}</strong>
+      <strong>Consumo total não planejado (${naoPlanPeriodoLabel}): ${fmt(TOTAL_NAO_PLANEJADO)}</strong>
       — equivalente a <strong>${(TOTAL_NAO_PLANEJADO/CAPEX_ATUAL*100).toFixed(1)}%</strong> do CAPEX Atual (${fmt(CAPEX_ATUAL)}).
     </div>
     <p>Este consumo representa aditivos de obras iniciadas em 2025 que não foram concluídas no exercício anterior e cujos contratos foram prorrogados para 2026. O previsto foi <strong>igualado ao realizado mês a mês</strong> — zerando o desvio deste pacote e garantindo que o desvio geral reflita apenas a performance das obras planejadas de 2026.</p>
-    <p>A distribuição mensal revela concentração relevante no início do ano: <strong>JAN/26 foi o mês de maior impacto</strong> com ${fmt(NAO_PLANEJADO.jan)}, seguido por ABR/26 (${fmt(NAO_PLANEJADO.abr)}) e FEV/26 (${fmt(NAO_PLANEJADO.fev)}). A tendência de redução a partir de MAR/26 sugere que parte desses contratos está chegando ao encerramento.</p>
+    <p>A maior concentração mensal do consumo não planejado ocorreu em <strong>${maiorNaoPlanejadoLabel}</strong>, com <strong>${fmt(NAO_PLANEJADO[maiorNaoPlanejadoKey] || 0)}</strong>. Os valores e o período desta análise são recalculados automaticamente a cada nova planilha importada.</p>
     <div class="highlight-box">
       <strong>📊 Efeito sobre o CAPEX Atual:</strong> O consumo não planejado acumulado de ${fmt(TOTAL_NAO_PLANEJADO)} representa uma <strong>pressão efetiva de ${(TOTAL_NAO_PLANEJADO/CAPEX_ATUAL*100).toFixed(1)}% sobre o orçamento disponível</strong> para as obras planejadas de 2026. Sem esse consumo residual, o saldo disponível para as obras planejadas seria ${fmt(CAPEX_ATUAL - totalReal + TOTAL_NAO_PLANEJADO)} — ${fmt(TOTAL_NAO_PLANEJADO)} a mais do que o disponível atualmente.
     </div>
-    <p><strong>Recomendação:</strong> Monitorar mensalmente a tendência de redução desse consumo. Caso novos aditivos sejam identificados, deve-se avaliar o impacto na capacidade de execução das obras planejadas para o segundo semestre de 2026, em especial as de maior CAPEX: Novo Hospital Rio de Janeiro (${fmt(71542200)}) e PA Barra da Tijuca (${fmt(24994191.11)}).</p>
+    <p><strong>Recomendação:</strong> monitorar mensalmente o consumo não planejado e o fluxo das obras de maior CAPEX. Na base atual, destacam-se ${hospitalRio ? `Novo Hospital Rio de Janeiro (${fmt(hospitalRio.capex)})` : 'Novo Hospital Rio de Janeiro'}${paBarra ? ` e PA Barra da Tijuca (${fmt(paBarra.capex)})` : ''}. Os valores são obtidos da planilha/Supabase, sem números fixos no texto.</p>
   `;
 }
 
