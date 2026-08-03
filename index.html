@@ -1,20 +1,200 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>CAPEX HAPVIDA — Sala Técnica</title><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
-<section id="loginScreen" class="login-screen"><form id="loginForm" class="login-card"><h1>🔐 CAPEX HAPVIDA</h1><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" autocomplete="username" required></label><label>Senha<input name="password" type="password" autocomplete="current-password" required minlength="8"></label><button class="primary" type="submit">Entrar</button><div id="loginMessage" class="message"></div></form></section>
-<div id="appShell" hidden><header><div><h1>📊 CAPEX HAPVIDA</h1><p>Controle financeiro centralizado e protegido</p></div><div class="header-user"><span id="userIdentity"></span><span id="roleBadge" class="badge"></span><button id="logoutBtn">Sair</button></div></header><nav><button class="nav active" data-page="dashboard">Dashboard</button><button class="nav admin-only" data-page="cadastro">Obras e manutenção</button><button class="nav admin-only" data-page="importacao">Importar Excel</button><button class="nav admin-only" data-page="usuarios">Usuários</button><button class="nav admin-only" data-page="auditoria">Auditoria</button></nav><main>
-<section id="dashboard" class="page active">
-<div class="module-tabs"><button id="tabObras" class="module-tab active" data-category="obra">📊 Obras</button><button id="tabManutencao" class="module-tab" data-category="manutencao">🛠️ Manutenção</button></div>
-<div class="toolbar"><input id="search" placeholder="Buscar por obra, nome ou ordem interna"><select id="monthFilter"><option value="all">Ano completo</option></select><button id="clearDashboardFilters">✕ Limpar filtros</button></div>
-<div id="kpis" class="kpis kpis-extended"></div>
-<div id="typeCards" class="type-cards"></div>
-<div class="grid2"><article class="card"><h3 id="flowTitle">Previsto x realizado</h3><div class="chart"><canvas id="flowChart"></canvas></div></article><article class="card"><h3 id="typeTitle">CAPEX por tipologia</h3><div class="chart"><canvas id="typeChart"></canvas></div></article></div>
-<article class="card"><div class="section-head"><div><h3 id="tableTitle">📋 Fluxo Financeiro Mensal por Obra (R$)</h3><p id="tableSubtitle">Regra padrão 15/75/10, com as exceções preservadas do HTML original.</p></div></div><div class="table-tabs"><button class="table-tab active" data-view="prev">Fluxo Previsto (15/75/10)</button><button class="table-tab" data-view="compare">Previsto vs Realizado</button></div><div class="table-wrap flow-table-wrap"><table id="dashboardTable"></table></div></article>
-</section>
-<section id="cadastro" class="page admin-only"><div class="section-head"><div><h2>Cadastro e edição</h2><p>Exclusões são lógicas e todas as mudanças ficam registradas.</p></div><button id="newBtn" class="primary">＋ Novo cadastro</button></div><div class="toolbar"><input id="manageSearch" placeholder="Buscar cadastro"><select id="manageCategory"><option value="all">Todos</option><option value="obra">Obras</option><option value="manutencao">Manutenção</option></select></div><article class="card"><div class="table-wrap"><table id="manageTable"></table></div></article></section>
-<section id="importacao" class="page admin-only"><div class="grid2"><article class="card"><h2>Atualização mensal</h2><p>O Excel é lido localmente. O arquivo original não é enviado ao Supabase.</p><label class="drop"><input id="fileInput" type="file" accept=".xlsx,.xls">Escolher planilha Excel</label><div id="importPreview" class="preview">Nenhum arquivo selecionado.</div><div class="actions"><button id="applyImport" class="primary" disabled>Aplicar importação</button></div></article><article class="card"><h2>Proteção</h2><p>Os dados não ficam no GitHub. A leitura e a edição são controladas pelo login e pelas políticas RLS.</p><div id="lastUpdate" class="preview"></div></article></div><article class="card"><h3>Histórico de importações</h3><div id="history"></div></article></section>
-<section id="usuarios" class="page admin-only"><div class="section-head"><div><h2>Usuários</h2><p>Administrador edita; visitante apenas visualiza.</p></div><button id="newUserBtn" class="primary">＋ Novo usuário</button></div><article class="card"><div class="table-wrap"><table id="usersTable"></table></div></article></section>
-<section id="auditoria" class="page admin-only"><article class="card"><h2>Auditoria de alterações</h2><div class="table-wrap"><table id="auditTable"></table></div></article></section>
-</main></div>
-<div id="kpiOverlay" class="side-overlay"></div><aside id="kpiPanel" class="side-panel"><div class="side-head"><div><small id="kpiPanelTag">Detalhamento</small><h2 id="kpiPanelTitle"></h2></div><button id="closeKpiPanel">×</button></div><div id="kpiPanelBody" class="side-body"></div></aside>
-<div id="modal" class="modal"><form id="itemForm" class="modal-box"><div class="modal-head"><h2 id="modalTitle">Novo cadastro</h2><button type="button" id="closeModal">×</button></div><input type="hidden" name="id"><div class="form-grid"><label>Categoria<select name="categoria" required><option value="obra">Obra</option><option value="manutencao">Manutenção</option></select></label><label>Ordem interna<input name="ordem" required maxlength="120"></label><label class="span2">Nome da obra<input name="nome" required maxlength="500"></label><label>Início planejado<input name="inicio" type="date"></label><label>Término planejado<input name="fim" type="date"></label><label>CAPEX aprovado<input name="capex" type="number" min="0" step="0.01"></label><label>Tipologia<input name="tipologia" maxlength="120" placeholder="Automática se vazio"></label><label class="check"><input name="contingenciada" type="checkbox"> Contingenciada</label></div><h3>Realizado mensal</h3><div id="monthInputs" class="month-inputs"></div><div class="actions"><button type="button" id="cancelModal">Cancelar</button><button class="primary">Salvar</button></div></form></div>
-<div id="userModal" class="modal"><form id="userForm" class="modal-box small"><div class="modal-head"><h2>Novo usuário</h2><button type="button" id="closeUserModal">×</button></div><div class="form-grid"><label class="span2">Nome<input name="full_name" required maxlength="120"></label><label class="span2">E-mail<input name="email" type="email" required></label><label>Perfil<select name="role"><option value="viewer">Visitante</option><option value="admin">Administrador</option></select></label><label>Senha temporária<input name="password" type="password" required minlength="12"></label></div><div class="actions"><button type="button" id="cancelUserModal">Cancelar</button><button class="primary">Criar usuário</button></div></form></div>
-<script src="config.js"></script><script src="app.js"></script></body></html>
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
+<div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
+<div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="logoutBtn" class="secondary">Sair</button></div>
+<div id="importModal" class="admin-modal"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha com as abas <b>PLANEJAMENTO</b> e <b>OBRAS MANUTENÇÃO</b>.</p><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
+<div id="settingsModal" class="admin-modal"><form id="settingsForm" class="admin-box"><h2>Editar KPIs e detalhamentos</h2><div class="admin-grid"><label>CAPEX inicial<input name="capex_inicial" type="number" step="0.01" required></label><label>Contingenciamento acumulado<input name="capex_conting" type="number" step="0.01" required></label><label>Aportes acumulados<input name="capex_aportes" type="number" step="0.01" required></label><label>Pacote manutenção inicial<input name="manutencao_inicial" type="number" step="0.01" required></label><label>Pacote manutenção atual<input name="manutencao_atual" type="number" step="0.01" required></label><label class="span2">Contingenciamentos — uma linha por item: Nome | Valor<textarea name="conting_detalhe"></textarea></label><label class="span2">Aportes — uma linha por item: Nome | Valor<textarea name="aportes_detalhe"></textarea></label></div><div class="admin-actions"><button type="button" data-close="settingsModal">Cancelar</button><button class="save">Salvar e recalcular</button></div></form></div>
+<div id="dashboardRoot" hidden>
+
+<header>
+  <div>
+    <h1 id="header-title">📊 Dashboard CAPEX 2026 — Controle Financeiro de Obras</h1>
+    <div class="subtitle" id="header-sub">Fluxo de desembolso mensal · 96 obras · Atualizado com realizados Jan/Fev/Mar/Abr/Mai/Jun 2026</div>
+  </div>
+  <div class="badge">Coordenação Sala Técnica</div>
+</header>
+
+<nav class="page-nav">
+  <button class="page-btn active" onclick="switchPage('obras', this)">📊 Obras</button>
+  <button class="page-btn" onclick="switchPage('manutencao', this)">🛠️ Manutenção</button>
+</nav>
+
+<!-- ============================================================ PAGE OBRAS ============================================================ -->
+<div id="page-obras" class="page-section active">
+<div class="container">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <button class="btn-clear" onclick="clearAllObrasFilters()" style="background:#fff0e8;border-color:var(--laranja);color:var(--laranja);font-weight:700;padding:7px 16px">🔄 Limpar todos os filtros</button>
+  </div>
+  <div class="month-filter-bar">
+    <div class="mf-label">📅 Filtro por Período</div>
+    <div class="mf-chips" id="month-chips"></div>
+    <span class="mf-info" id="mf-info"></span>
+    <button class="btn-mf-clear" onclick="clearMonthFilter()">✕ Todos os meses</button>
+  </div>
+  <div class="kpi-grid" id="kpi-section"></div>
+  <div class="tipo-section">
+    <div class="section-title"><span>🏷️</span> CAPEX por Tipologia — seleção múltipla: clique para filtrar <span style="font-size:11px;font-weight:400;color:var(--texto-suave);margin-left:8px">clique em "Todas" para limpar</span></div>
+    <div class="tipo-grid" id="tipo-grid"></div>
+  </div>
+  <div class="table-card">
+    <div class="section-title"><span>📋</span> Fluxo Financeiro Mensal por Obra (R$)</div>
+    <div class="filter-bar">
+      <input type="text" id="filterInput" placeholder="🔍  Buscar obra pelo nome..." oninput="applyFilter()">
+      <select id="filterTipo" onchange="applyFilter()"><option value="">Todas as tipologias</option></select>
+      <button class="btn-clear" onclick="clearFilter()">✕ Limpar busca</button>
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('tab-prev')">Fluxo Previsto (15/75/10)</button>
+      <button class="tab-btn" onclick="switchTab('tab-real')">Previsto vs Realizado</button>
+    </div>
+    <div id="tab-prev" class="tab-content active">
+      <div class="table-wrapper" id="table-prev-wrapper"></div>
+    </div>
+    <div id="tab-real" class="tab-content">
+      <div class="table-wrapper" id="table-real-wrapper"></div>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card full">
+      <h3>📈 Fluxo Previsto vs Realizado (Jan–Dez 2026)</h3>
+      <div class="chart-container" style="height:420px"><canvas id="chartLine"></canvas></div>
+    </div>
+    <div class="chart-card full">
+      <h3>📈 Consumo Acumulado — Previsto vs Realizado Planejado vs Realizado Total (Jan–Jun 2026)</h3>
+      <div class="chart-container" style="height:340px"><canvas id="chartAcumulado"></canvas></div>
+    </div>
+    <div class="chart-card full">
+      <h3>🎯 Desvio Previsto vs Realizado por Obra</h3>
+      <div class="chart-container" id="chartDesvioContainer" style="height:280px"><canvas id="chartDesvio"></canvas></div>
+    </div>
+    <div class="chart-card full">
+      <h3>🏗️ Desembolso Mensal por Tipologia de Obra (Jan–Dez 2026)</h3>
+      <div class="chart-container" style="height:340px"><canvas id="chartStacked"></canvas></div>
+    </div>
+
+  </div>
+  <div class="risk-card">
+    <div class="section-title"><span>⚠️</span> Painel de Riscos — Desvio Previsto vs Realizado</div>
+    <div id="risk-panel"></div>
+  </div>
+  <div class="analysis-card">
+    <div class="section-title"><span>🔍</span> Análise Interpretativa de Riscos — Coordenação Sala Técnica</div>
+    <div id="analysis-text"></div>
+  </div>
+</div>
+</div>
+
+<!-- ============================================================ PAGE MANUTENÇÃO ============================================================ -->
+<div id="page-manutencao" class="page-section">
+<div class="container">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <button class="btn-clear" onclick="clearAllManFilters()" style="background:#fff0e8;border-color:var(--laranja);color:var(--laranja);font-weight:700;padding:7px 16px">🔄 Limpar todos os filtros</button>
+  </div>
+  <div class="month-filter-bar">
+    <div class="mf-label">📅 Filtro por Período</div>
+    <div class="mf-chips" id="man-month-chips"></div>
+    <span class="mf-info" id="man-mf-info"></span>
+    <button class="btn-mf-clear" onclick="clearManMonthFilter()">✕ Todos os meses</button>
+  </div>
+  <div class="kpi-grid" id="man-kpi-section" style="grid-template-columns: repeat(4, 1fr);"></div>
+  <div class="pool-bar-wrap">
+    <div class="pool-bar-header">
+      <span>💰 Consumo do Pacote Anual Atual — R$ 19.609.389,82</span>
+      <span id="man-pool-pct"></span>
+    </div>
+    <div class="pool-bar-track">
+      <div class="pool-bar-real" id="man-bar-real" style="width:0%"></div>
+      <div class="pool-bar-prev" id="man-bar-prev" style="width:0%"></div>
+    </div>
+    <div class="pool-bar-legend">
+      <span><i class="dot" style="background:var(--laranja)"></i> Realizado</span>
+      <span><i class="dot" style="background:var(--azul-claro);opacity:.7"></i> Previsto restante (período)</span>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card full">
+      <h3>📈 Fluxo Previsto vs Realizado — Manutenção (Jan–Dez 2026)</h3>
+      <div class="chart-container" style="height:360px"><canvas id="manChartLine"></canvas></div>
+    </div>
+    <div class="chart-card full">
+      <h3>🏗️ Desembolso Realizado por Obra (Top 15)</h3>
+      <div class="chart-container" style="height:340px"><canvas id="manChartBar"></canvas></div>
+    </div>
+  </div>
+  <div class="table-card">
+    <div class="section-title"><span>📋</span> Fluxo Realizado por Obra de Manutenção (R$)</div>
+    <div class="filter-bar">
+      <input type="text" id="manFilterInput" placeholder="🔍  Buscar obra pelo nome ou ordem interna..." oninput="applyManFilter()">
+      <button class="btn-clear" onclick="clearManFilter()">✕ Limpar busca</button>
+      <span class="filter-count" id="manFilterCount"></span>
+    </div>
+    <div class="table-wrapper" id="man-table-wrapper"></div>
+  </div>
+  <div class="risk-card">
+    <div class="section-title"><span>⚠️</span> Painel de Riscos — Obras com Maior Consumo do Pacote</div>
+    <div id="man-risk-panel"></div>
+  </div>
+</div>
+</div>
+
+
+<!-- KPI Side Panel -->
+<div class="obra-overlay" id="kpi-overlay" onclick="closeKpiPanel()"></div>
+<div class="obra-panel" id="kpi-panel">
+  <div class="obra-panel-header" style="position:relative">
+    <div class="tipo-tag" id="kpi-panel-tag"></div>
+    <div class="obra-title" id="kpi-panel-title"></div>
+    <button class="panel-close" onclick="closeKpiPanel()">✕</button>
+  </div>
+  <div class="obra-panel-body" id="kpi-panel-body"></div>
+</div>
+<!-- Side Panel -->
+<div class="obra-overlay" id="obra-overlay" onclick="closePanel()"></div>
+<div class="obra-panel" id="obra-panel">
+  <div class="obra-panel-header" style="position:relative">
+    <div class="tipo-tag" id="panel-tipo"></div>
+    <div class="obra-title" id="panel-nome"></div>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="obra-panel-body">
+    <div class="panel-section">
+      <div class="panel-section-title">📅 Datas do Contrato</div>
+      <div class="panel-dates">
+        <div class="panel-date-box">
+          <div class="panel-date-label">Início Planejado</div>
+          <div class="panel-date-value" id="panel-inicio">—</div>
+        </div>
+        <div class="panel-date-box">
+          <div class="panel-date-label">Término Planejado</div>
+          <div class="panel-date-value" id="panel-fim">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">💰 Indicadores Financeiros</div>
+      <div class="panel-kpis">
+        <div class="panel-kpi"><div class="panel-kpi-label">CAPEX</div><div class="panel-kpi-value" id="panel-capex">—</div></div>
+        <div class="panel-kpi laranja"><div class="panel-kpi-label">Realizado Jan–Jun</div><div class="panel-kpi-value" id="panel-real">—</div></div>
+        <div class="panel-kpi verde"><div class="panel-kpi-label">Saldo</div><div class="panel-kpi-value" id="panel-saldo">—</div></div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">📊 Fluxo Previsto vs Realizado</div>
+      <div class="chart-legend">
+        <span><i class="leg-dot" style="background:#1a5ca8"></i> Previsto</span>
+        <span><i class="leg-dot" style="background:#e07020"></i> Realizado</span>
+      </div>
+      <div class="chart-wrap" style="height:220px"><canvas id="panel-chart"></canvas></div>
+      <div class="dev-strip" id="panel-dev-strip"></div>
+      <div class="total-row">
+        <span class="t-label">Total</span>
+        <span class="t-val" id="panel-total-prev">—</span>
+        <span class="t-sep">→</span>
+        <span class="t-val" id="panel-total-real">—</span>
+        <span class="t-dev" id="panel-total-dev">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><script src="config.js"></script><script src="bootstrap.js"></script></body></html>
