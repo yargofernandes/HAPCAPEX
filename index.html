@@ -27,14 +27,23 @@
   <label>Nome completo<input name="full_name" type="text" required maxlength="120" autocomplete="name"></label>
   <label>E-mail<input name="email" type="email" required autocomplete="email"></label>
   <label>Perfil<select name="role" required><option value="viewer">Visualizador</option><option value="admin">Administrador</option></select></label>
-  <label>Senha temporária<input name="password" type="password" required minlength="12" autocomplete="new-password" placeholder="Mínimo de 12 caracteres"></label>
+  <label>Senha temporária<div class="password-field"><input id="newUserPassword" name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="Mínimo de 8 caracteres"><button type="button" class="password-toggle" data-password-target="newUserPassword">Mostrar</button></div></label>
   <button class="save" type="submit">＋ Criar usuário</button>
 </form>
 <div id="userFormStatus" class="user-status" role="status"></div>
-<div class="user-list-head"><div><h3>Usuários cadastrados</h3><small>Alterações de perfil ou bloqueio encerram a sessão do usuário afetado.</small></div><button id="refreshUsersBtn" type="button" class="secondary-action">↻ Atualizar lista</button></div>
+<div class="password-security-note">🔒 Por segurança, a senha atual não pode ser consultada. O administrador pode definir uma nova senha a qualquer momento.</div>
+<div class="user-list-head"><div><h3>Usuários cadastrados</h3><small>Alterações de perfil, bloqueio ou senha encerram a sessão do usuário afetado.</small></div><button id="refreshUsersBtn" type="button" class="secondary-action">↻ Atualizar lista</button></div>
 <div class="user-table-wrap"><table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead><tbody id="usersTableBody"><tr><td colspan="4">Carregando...</td></tr></tbody></table></div>
 <div class="admin-actions"><button type="button" data-close="usersModal">Fechar</button></div>
 </div></div>
+<div id="passwordModal" class="admin-modal admin-only"><form id="passwordForm" class="admin-box password-reset-box">
+  <div class="user-manager-head"><div><h2>Alterar senha</h2><p id="passwordUserLabel">Defina uma nova senha para o usuário.</p></div><button type="button" class="modal-x" data-close="passwordModal" aria-label="Fechar">×</button></div>
+  <input id="passwordUserId" name="user_id" type="hidden">
+  <label class="password-reset-label">Nova senha<div class="password-field"><input id="resetUserPassword" name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="Mínimo de 8 caracteres"><button type="button" class="password-toggle" data-password-target="resetUserPassword">Mostrar</button></div></label>
+  <div class="password-help">A senha anterior não pode ser exibida. Ao salvar, ela será substituída por esta nova senha.</div>
+  <div id="passwordFormStatus" class="user-status" role="status"></div>
+  <div class="admin-actions"><button type="button" data-close="passwordModal">Cancelar</button><button class="save" type="submit">Salvar nova senha</button></div>
+</form></div>
 <div id="dashboardRoot" hidden>
 
 <header>

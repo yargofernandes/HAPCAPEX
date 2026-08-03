@@ -86,7 +86,7 @@ function renderUsers(){
    <td><div class="user-actions">
     <button type="button" data-user-action="role" data-user-id="${esc(u.id)}" data-role="${roleAction}" ${isSelf?'disabled':''}>${roleButton}</button>
     <button type="button" data-user-action="active" data-user-id="${esc(u.id)}" data-active="${u.is_active?'false':'true'}" ${isSelf?'disabled':''}>${u.is_active?'Bloquear':'Ativar'}</button>
-    <button type="button" data-user-action="password" data-user-id="${esc(u.id)}" ${isSelf?'disabled':''}>Redefinir senha</button>
+    <button type="button" data-user-action="password" data-user-id="${esc(u.id)}" ${isSelf?'disabled':''}>Alterar senha</button>
    </div></td>
   </tr>`;
  }).join('');
@@ -107,22 +107,45 @@ async function handleUserAction(btn){
    if(!confirm(isActive?'Reativar este usuário?':'Bloquear este usuário e encerrar a sessão dele?'))return;
    await invokeUserAdmin({action:'set_active',user_id:userId,is_active:isActive});
   }else if(action==='password'){
-   const password=prompt('Digite uma senha temporária com pelo menos 12 caracteres:');
-   if(!password)return;
-   if(password.length<12)throw new Error('A senha deve ter pelo menos 12 caracteres.');
-   await invokeUserAdmin({action:'reset_password',user_id:userId,password});
-   alert('Senha temporária definida. Envie-a ao usuário por um canal seguro.');
+   const target=usersCache.find(u=>u.id===userId);
+   $('#passwordUserId').value=userId;
+   $('#passwordUserLabel').textContent=`Defina uma nova senha para ${target?.full_name||target?.email||'o usuário'}.`;
+   $('#resetUserPassword').value='';
+   $('#resetUserPassword').type='password';
+   const toggle=document.querySelector('[data-password-target="resetUserPassword"]');if(toggle)toggle.textContent='Mostrar';
+   $('#passwordFormStatus').className='user-status';$('#passwordFormStatus').textContent='';
+   openModal('passwordModal');
+   return;
   }
   await loadUsers();
  }catch(err){alert(err.message||String(err))}finally{btn.disabled=false}
 }
 $('#refreshUsersBtn').onclick=()=>loadUsers();
+
+document.querySelectorAll('[data-password-target]').forEach(btn=>{
+ btn.onclick=()=>{const input=document.getElementById(btn.dataset.passwordTarget);if(!input)return;const show=input.type==='password';input.type=show?'text':'password';btn.textContent=show?'Ocultar':'Mostrar'};
+});
+$('#passwordForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(currentProfile?.role!=='admin')return;
+ const form=e.currentTarget,userId=form.user_id.value,password=form.password.value,status=$('#passwordFormStatus'),submit=form.querySelector('button[type="submit"]');
+ status.className='user-status';status.textContent='Alterando senha...';submit.disabled=true;
+ try{
+  if(!userId)throw new Error('Usuário não informado.');
+  if(password.length<8)throw new Error('A senha deve ter pelo menos 8 caracteres.');
+  await invokeUserAdmin({action:'reset_password',user_id:userId,password});
+  status.className='user-status success';status.textContent='Senha alterada com sucesso.';
+  setTimeout(()=>{closeModal('passwordModal');form.reset();loadUsers()},700);
+ }catch(err){status.className='user-status error';status.textContent=err.message||String(err)}finally{submit.disabled=false}
+};
+
 $('#userForm').onsubmit=async e=>{
  e.preventDefault();
  if(currentProfile?.role!=='admin')return;
  const form=e.currentTarget,status=$('#userFormStatus'),submit=form.querySelector('button[type="submit"]');
  status.className='user-status';status.textContent='Criando usuário...';submit.disabled=true;
  try{
+  if(form.password.value.length<8)throw new Error('A senha deve ter pelo menos 8 caracteres.');
   await invokeUserAdmin({action:'create',full_name:form.full_name.value.trim(),email:form.email.value.trim(),password:form.password.value,role:form.role.value});
   status.className='user-status success';status.textContent='Usuário criado com sucesso.';
   form.reset();form.role.value='viewer';await loadUsers();
