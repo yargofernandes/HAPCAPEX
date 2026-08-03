@@ -50,20 +50,41 @@ function isMaintenancePackageName(name) {
   const normalized = normalizeName(name);
   return normalized.includes('PACOTE DE MANUTENCAO DIA A DIA');
 }
+function contingencyState(name, capex) {
+  if (!/CONTIN?G/i.test(String(name || ''))) return 'active';
+  return num(capex) > 0 ? 'partial' : 'full';
+}
+function normalizedContingencyName(name, state) {
+  const base = String(name || '').replace(/\s*-\s*CONTIN?G[^-]*$/i, '').trim();
+  if (state === 'partial') return `${base} - CONTING. PARCIAL`;
+  if (state === 'full') return `${base} - CONTINGENCIADA`;
+  return String(name || '').trim();
+}
 function itemToRaw(item) {
   const original = item.categoria === 'obra' ? findBaselineWork(item) : null;
+  const state = item.categoria === 'obra'
+    ? contingencyState(item.nome, item.capex)
+    : 'active';
+  const isCurrentContingency = state !== 'active';
   const raw = {
-    nome: item.nome,
+    nome: normalizedContingencyName(item.nome, state),
     ordem: item.ordem,
-    inicio: original?.inicio || fmtDate(item.inicio),
-    fim: original?.fim || fmtDate(item.fim),
-    capex: original ? num(original.capex) : num(item.capex),
-    contingenciada: Boolean(item.contingenciada),
+    inicio: isCurrentContingency ? fmtDate(item.inicio) : (original?.inicio || fmtDate(item.inicio)),
+    fim: isCurrentContingency ? fmtDate(item.fim) : (original?.fim || fmtDate(item.fim)),
+    // Em contingenciamentos parciais, o CAPEX da planilha é o saldo residual
+    // que continua pertencendo ao CAPEX Atual. Não deve ser substituído pelo
+    // CAPEX anterior armazenado no HTML-base.
+    capex: isCurrentContingency ? num(item.capex) : (original ? num(original.capex) : num(item.capex)),
+    contingenciada: state === 'full',
+    _contingencyState: state,
     _sourceOrder: Number.isFinite(Number(item.source_order))
       ? Number(item.source_order)
       : (original?.sourceOrder ?? 999999),
-    _baselineFlow: original?.flow || null,
-    _isOriginalBaseline: Boolean(original)
+    // Quando o estado atual é contingenciado, o fluxo aprovado anteriormente
+    // deixa de valer. O cálculo passa a usar a regra de contingência total ou
+    // parcial com os realizados atuais da planilha.
+    _baselineFlow: isCurrentContingency ? null : (original?.flow || null),
+    _isOriginalBaseline: Boolean(original) && !isCurrentContingency
   };
   monthKeys.forEach(key => raw[key + '_real'] = num(item.realizado?.[key]));
   return raw;
@@ -241,7 +262,7 @@ function findSheet(workbook, expectedName) {
   );
 }
 function isContingenciada(name) {
-  return /CONTIG/i.test(String(name || ''));
+  return /CONTIN?G/i.test(String(name || ''));
 }
 function parseExcel(workbook) {
   const result = [];
@@ -281,15 +302,19 @@ function parseExcel(workbook) {
       realizado[key] = num(row[5 + monthIndex]);
     });
 
+    const capex = num(row[4]);
+    const state = isNonPlanned ? 'active' : contingencyState(nome, capex);
     result.push({
       categoria: 'obra',
       ordem,
-      nome,
+      nome: normalizedContingencyName(nome, state),
       inicio: xdate(row[2]),
       fim: xdate(row[3]),
-      capex: num(row[4]),
+      capex,
       tipologia: 'Outros',
-      contingenciada: !isNonPlanned && isContingenciada(nome),
+      // CAPEX residual maior que zero caracteriza contingenciamento parcial.
+      // Somente as linhas contingenciadas com CAPEX zerado são totais.
+      contingenciada: state === 'full',
       realizado,
       source_order: index - header
     });
@@ -361,9 +386,16 @@ $('#excelFile').onchange = async event => {
       item => item.categoria === 'manutencao'
     ).length;
     const hasNonPlanned = pendingImport.some(item => item.ordem === 'NAO_PLANEJADAS');
+    const partialCount = pendingImport.filter(item =>
+      item.categoria === 'obra' && item.nome.includes('CONTING. PARCIAL')
+    ).length;
+    const fullCount = pendingImport.filter(item =>
+      item.categoria === 'obra' && item.contingenciada
+    ).length;
     $('#importStatus').textContent =
       `${obrasCount} obras, ${maintenanceCount} manutenções e ` +
-      `${hasNonPlanned ? '1 linha' : 'nenhuma linha'} de Obras Não Planejadas reconhecidas.` +
+      `${hasNonPlanned ? '1 linha' : 'nenhuma linha'} de Obras Não Planejadas reconhecidas. ` +
+      `${partialCount} contingenciamentos parciais e ${fullCount} totais identificados.` +
       (pendingImport.ignoredCount ? ` ${pendingImport.ignoredCount} linha de pacote foi ignorada.` : '');
     $('#applyImport').disabled = false;
   } catch (error) {

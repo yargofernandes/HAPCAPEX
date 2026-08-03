@@ -281,8 +281,10 @@ const panelRealLabel = document.getElementById('panel-real-label');
 if (panelRealLabel) panelRealLabel.textContent = `Realizado Jan–${LAST_REAL_LABEL}`;
 
 // Contadores globais de contingenciadas (disponíveis para renderTipoCards e renderKPIs)
-const nContingParcial = obras.filter(o => o.nome.includes('CONTING. PARCIAL')).length;
+const contingenciasParciais = obras.filter(o => o.nome.includes('CONTING. PARCIAL'));
+const nContingParcial = contingenciasParciais.length;
 const nConting        = obras.filter(o => o.contingenciada).length + nContingParcial;
+const CAPEX_RESIDUAL_PARCIAL = contingenciasParciais.reduce((s, o) => s + Number(o.capex || 0), 0);
 
 // ============================================================
 // FORMAT HELPERS
@@ -1236,11 +1238,11 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
     </div>
 
     <h3>🔴 Contingenciamentos — ${CONTING_ACUM_LABEL}</h3>
-    <p>O contingenciamento acumulado até ${CONTING_ACUM_LABEL.replace("Acumulado Jan–","")} é de <strong>${fmt(CAPEX_CONTING)}</strong>, distribuído em 6 obras:</p>
+    <p>O contingenciamento acumulado até ${CONTING_ACUM_LABEL.replace("Acumulado Jan–","")} é de <strong>${fmt(CAPEX_CONTING)}</strong>, distribuído em <strong>${CONTING_DETALHE.length} lançamentos</strong>:</p>
     <div class="highlight-box vermelho">
       ${CONTING_DETALHE.map(c=>`<strong>${c.nome}:</strong> ${fmt(c.valor)}`).join('<br>')}
     </div>
-    <p>Para as obras com consumo parcial antes do contingenciamento (Nova Medprev Natal 1: ${fmt(36388)} e Nova Torre HAPFOR: ${fmt(621854)}), os valores já desembolsados foram preservados no histórico de realizados. Essas obras não geram fluxo previsto futuro.</p>
+    ${contingenciasParciais.length ? `<p>Há <strong>${contingenciasParciais.length} contingenciamento(s) parcial(is)</strong>. O CAPEX residual preservado nessas obras totaliza <strong>${fmt(CAPEX_RESIDUAL_PARCIAL)}</strong> e permanece dentro do CAPEX Atual: ${contingenciasParciais.map(o => `<strong>${o.nome.replace(' - CONTING. PARCIAL','')}:</strong> ${fmt(o.capex)}`).join('; ')}.</p>` : ''}
 
     <h3>💚 Aportes Extras — ${APORTE_ACUM_LABEL}</h3>
     <p>O total de aportes extras acumulados até ${APORTE_ACUM_LABEL.replace("Acumulado Jan–","")} é de <strong>${fmt(CAPEX_RECEBIMENTO)}</strong>:</p>
@@ -1297,9 +1299,9 @@ function openKpiPanel(type) {
     tag.innerHTML   = '💼 CAPEX Atual';
     title.textContent = 'CAPEX Atual — Composição e Detalhamento';
 
-    const contObras      = obras.filter(o => o.contingenciada);
-    const contParciais   = obras.filter(o => o.nome.includes('CONTING. PARCIAL'));
-    const contTotais     = obras.filter(o => o.contingenciada && !o.nome.includes('CONTING. PARCIAL'));
+    const contParciais   = contingenciasParciais;
+    const contTotais     = obras.filter(o => o.contingenciada);
+    const contObras      = [...contTotais, ...contParciais];
 
     let html = `
     <!-- Fórmula do CAPEX Atual -->
@@ -1323,6 +1325,9 @@ function openKpiPanel(type) {
           <span style="font-weight:800;color:var(--azul);font-size:15px">${fmt(CAPEX_ATUAL)}</span>
         </div>
       </div>
+      ${contParciais.length ? `<div style="margin-top:10px;padding:10px 12px;background:#fff8e6;border-left:3px solid var(--amarelo);border-radius:7px;font-size:11px;line-height:1.5;color:var(--texto-suave)">
+        <strong style="color:#8a6000">⚠️ CAPEX residual preservado:</strong> ${fmt(CAPEX_RESIDUAL_PARCIAL)} em ${contParciais.length} obra(s) parcialmente contingenciada(s). Esse saldo já permanece no CAPEX Atual porque o lançamento de contingenciamento considera somente a parcela retirada.
+      </div>` : ''}
     </div>
 
     <!-- Contingenciamentos -->
@@ -1388,7 +1393,8 @@ function openKpiPanel(type) {
   } else if (type === 'contingenciamento') {
     tag.innerHTML   = '🔴 Contingenciamento';
     title.textContent = 'Obras Contingenciadas — Detalhamento';
-    const contObras = obras.filter(o => o.contingenciada);
+    const contObras = obras.filter(o => o.contingenciada || o.nome.includes('CONTING. PARCIAL'));
+    const contParciais = obras.filter(o => o.nome.includes('CONTING. PARCIAL'));
     const totalConting = CAPEX_CONTING;
     let html = `<div class="panel-section">
       <div class="panel-section-title">💰 Total Contingenciado — ${CONTING_ACUM_LABEL}</div>
@@ -1413,7 +1419,28 @@ function openKpiPanel(type) {
     });
     html += '</div>';
 
-    // Realizados das contingenciadas (parciais)
+    if (contParciais.length > 0) {
+      html += `<div class="panel-section">
+        <div class="panel-section-title">🟡 CAPEX Residual das Contingências Parciais</div>
+        <div class="panel-kpis">
+          <div class="panel-kpi" style="grid-column:1/-1;border-left-color:var(--amarelo)">
+            <div class="panel-kpi-label">Residual preservado no CAPEX Atual</div>
+            <div class="panel-kpi-value">${fmt(CAPEX_RESIDUAL_PARCIAL)}</div>
+          </div>
+        </div>`;
+      contParciais.forEach(o => {
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--cinza-borda)">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--azul)">${o.nome.replace(' - CONTING. PARCIAL','')}</div>
+            <div style="font-size:11px;color:var(--texto-suave)">Contingenciamento parcial</div>
+          </div>
+          <div style="font-size:13px;font-weight:800;color:#8a6000">${fmt(o.capex)}</div>
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    // Realizados das obras contingenciadas, totais ou parciais
     const comReal = contObras.filter(o => o.total_real > 0);
     if (comReal.length > 0) {
       html += `<div class="panel-section">
@@ -1421,7 +1448,7 @@ function openKpiPanel(type) {
       comReal.forEach(o => {
         html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--cinza-borda)">
           <div>
-            <div style="font-size:12px;font-weight:600;color:var(--azul)">${o.nome.replace(' - CONTINGENCIADA','')}</div>
+            <div style="font-size:12px;font-weight:600;color:var(--azul)">${o.nome.replace(' - CONTINGENCIADA','').replace(' - CONTING. PARCIAL','')}</div>
             <div style="font-size:11px;color:var(--texto-suave)">Valor já desembolsado</div>
           </div>
           <div style="font-size:13px;font-weight:700;color:var(--laranja)">${fmt(o.total_real)}</div>
@@ -1476,7 +1503,10 @@ let panelChart = null;
 
 function openPanel(idx) {
   const o = obras[idx];
-  document.getElementById('panel-tipo').innerHTML = `${tipoEmojis[o.tipologia] || '📌'} ${o.tipologia}${o.contingenciada ? ' · <span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:10px;font-size:11px">CONTINGENCIADA</span>' : ''}`;
+  const panelStatus = o.nome.includes('CONTING. PARCIAL')
+    ? ' · <span style="background:rgba(240,180,41,0.35);padding:2px 8px;border-radius:10px;font-size:11px">CONTING. PARCIAL</span>'
+    : (o.contingenciada ? ' · <span style="background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:10px;font-size:11px">CONTINGENCIADA</span>' : '');
+  document.getElementById('panel-tipo').innerHTML = `${tipoEmojis[o.tipologia] || '📌'} ${o.tipologia}${panelStatus}`;
   document.getElementById('panel-nome').textContent = o.nome;
   document.getElementById('panel-inicio').textContent = o.inicio || '—';
   document.getElementById('panel-fim').textContent = o.fim || '—';
