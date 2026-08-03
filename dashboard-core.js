@@ -9,14 +9,16 @@ const manObrasRaw = window.HAP_DATA.manObrasRaw;
 // KPI CONSTANTS — carregadas do Supabase
 // ============================================================
 const CAPEX_INICIAL     = Number(window.HAP_DATA.settings.capex_inicial || 0);
-const CAPEX_CONTING     = Number(window.HAP_DATA.settings.capex_conting || 0);
 const CAPEX_DOACAO      = 0;
-const CAPEX_RECEBIMENTO = Number(window.HAP_DATA.settings.capex_aportes || 0);
-const CAPEX_ATUAL       = CAPEX_INICIAL - CAPEX_CONTING + CAPEX_RECEBIMENTO;
+const CONTING_DETALHE   = Array.isArray(window.HAP_DATA.settings.conting_detalhe) ? window.HAP_DATA.settings.conting_detalhe : [];
+const RECEB_DETALHE     = Array.isArray(window.HAP_DATA.settings.aportes_detalhe) ? window.HAP_DATA.settings.aportes_detalhe : [];
+// Os totais sempre são derivados das linhas detalhadas. Assim, incluir/excluir uma linha
+// atualiza automaticamente todos os KPIs e elimina divergências com campos totais antigos.
+const CAPEX_CONTING     = CONTING_DETALHE.reduce((s, r) => s + Number(r?.valor || 0), 0);
+const CAPEX_RECEBIMENTO = RECEB_DETALHE.reduce((s, r) => s + Number(r?.valor || 0), 0);
+const CAPEX_ATUAL       = CAPEX_INICIAL + CAPEX_RECEBIMENTO - CAPEX_CONTING;
 const NAO_PLANEJADO     = window.HAP_DATA.naoPlanejado;
 const TOTAL_NAO_PLANEJADO = Object.values(NAO_PLANEJADO).reduce((s,v) => s + Number(v||0), 0);
-const CONTING_DETALHE   = window.HAP_DATA.settings.conting_detalhe || [];
-const RECEB_DETALHE     = window.HAP_DATA.settings.aportes_detalhe || [];
 const isAporteExtra = (nome) => {
   const n = nome.toLowerCase().trim();
   return RECEB_DETALHE.some(r => n.includes(String(r.nome||'').toLowerCase().substring(0,25)));
@@ -1338,13 +1340,6 @@ function openKpiPanel(type) {
         <div style="font-size:13px;font-weight:800;color:var(--vermelho)">${fmt(c.valor)}</div>
       </div>`;
     });
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--cinza-borda)">
-      <div>
-        <div style="font-size:12px;font-weight:600;color:var(--azul)">0000.Nova Hemodinâmica Brasília</div>
-        <div style="font-size:11px;color:var(--texto-suave)">Contingenciada em Jan/2026</div>
-      </div>
-      <div style="font-size:13px;font-weight:800;color:var(--vermelho)">${fmt(1200000)}</div>
-    </div>`;
     html += '</div>';
 
     // Realizados das contingenciadas (parciais)
