@@ -1,11 +1,11 @@
-const CACHE_NAME = 'hapcapex-v16-20260803';
+const CACHE_NAME = 'hapcapex-v17-20260803';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=16',
+  './styles.css?v=17',
   './config.js',
-  './original-baseline.js?v=16',
-  './bootstrap.js?v=16',
+  './original-baseline.js?v=17',
+  './bootstrap.js?v=17',
   './dashboard-core.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

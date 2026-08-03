@@ -839,7 +839,10 @@ function isIosDevice() {
 function updateInstallButton() {
   const button = $('#installPwaBtn');
   if (!button) return;
-  button.hidden = isPwaStandalone() || (!deferredInstallPrompt && !isIosDevice());
+  // O botão permanece visível em qualquer navegador enquanto o PWA não estiver
+  // aberto no modo instalado. Quando o prompt nativo não estiver disponível,
+  // o clique apresenta as instruções manuais de instalação.
+  button.hidden = isPwaStandalone();
 }
 window.addEventListener('beforeinstallprompt', event => {
   event.preventDefault();
