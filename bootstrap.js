@@ -35,7 +35,8 @@ $('#applyImport').onclick=async()=>{if(!pendingImport||currentProfile?.role!=='a
 const brlValue=v=>num(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 let settingsDraft={conting:[],aportes:[]};
 function cleanDetail(list){return (Array.isArray(list)?list:[]).map(x=>({nome:String(x?.nome||'').trim(),valor:num(x?.valor),mes:String(x?.mes||'').trim()})).filter(x=>x.nome||x.valor)}
-function makeDetailRow(type,item={nome:'',valor:0,mes:''}){
+function currentMonthKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
+function makeDetailRow(type,item={nome:'',valor:0,mes:currentMonthKey()}){
  const row=document.createElement('div');row.className='detail-row';row.dataset.type=type;
  row.innerHTML=`<input class="detail-name" type="text" maxlength="300" placeholder="Descrição" value="${String(item.nome||'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}"><input class="detail-month" type="month" min="2026-01" value="${String(item.mes||'')}" title="Mês do lançamento"><div class="money-input"><span>R$</span><input class="detail-value" type="number" min="0" step="0.01" value="${num(item.valor).toFixed(2)}"></div><button type="button" class="remove-row" title="Excluir linha">🗑️</button>`;
  row.querySelector('.remove-row').onclick=()=>{row.remove();syncDraftAndTotals()};

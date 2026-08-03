@@ -20,7 +20,23 @@ const CAPEX_ATUAL       = CAPEX_INICIAL + CAPEX_RECEBIMENTO - CAPEX_CONTING;
 const MES_LABELS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 function detalheMesKey(item){return /^\d{4}-\d{2}$/.test(String(item?.mes||'')) ? String(item.mes) : '';}
 function detalheMesLabel(item){const k=detalheMesKey(item);if(!k)return 'Mês não informado';const [y,m]=k.split('-').map(Number);return `${MES_LABELS[m-1]}/${y}`;}
-function acumuladoLabel(lista){const keys=(Array.isArray(lista)?lista:[]).map(detalheMesKey).filter(Boolean).sort();if(!keys.length)return 'Acumulado';const [y,m]=keys[keys.length-1].split('-').map(Number);return `Acumulado Jan–${MES_LABELS[m-1]}/${String(y).slice(-2)}`;}
+function acumuladoLabel(lista){
+  // Regra gerencial:
+  // 1. Por padrão, mostra o acumulado até o mês anterior ao mês atual.
+  // 2. Se existir ao menos um lançamento no mês atual, inclui o mês atual.
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const mesAtual = hoje.getMonth() + 1;
+  const chaveAtual = `${anoAtual}-${String(mesAtual).padStart(2,'0')}`;
+  const temLancamentoNoMesAtual = (Array.isArray(lista)?lista:[])
+    .some(item => detalheMesKey(item) === chaveAtual);
+
+  let anoFim = anoAtual;
+  let mesFim = temLancamentoNoMesAtual ? mesAtual : mesAtual - 1;
+  if (mesFim === 0) { mesFim = 12; anoFim -= 1; }
+
+  return `Acumulado Jan–${MES_LABELS[mesFim-1]}/${String(anoFim).slice(-2)}`;
+}
 const CONTING_ACUM_LABEL = acumuladoLabel(CONTING_DETALHE);
 const APORTE_ACUM_LABEL = acumuladoLabel(RECEB_DETALHE);
 
