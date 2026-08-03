@@ -2,7 +2,25 @@
 <div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
 <div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="logoutBtn" class="secondary">Sair</button></div>
 <div id="importModal" class="admin-modal"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha com as abas <b>PLANEJAMENTO</b> e <b>OBRAS MANUTENÇÃO</b>.</p><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
-<div id="settingsModal" class="admin-modal"><form id="settingsForm" class="admin-box"><h2>Editar KPIs e detalhamentos</h2><div class="admin-grid"><label>CAPEX inicial<input name="capex_inicial" type="number" step="0.01" required></label><label>Contingenciamento acumulado<input name="capex_conting" type="number" step="0.01" required></label><label>Aportes acumulados<input name="capex_aportes" type="number" step="0.01" required></label><label>Pacote manutenção inicial<input name="manutencao_inicial" type="number" step="0.01" required></label><label>Pacote manutenção atual<input name="manutencao_atual" type="number" step="0.01" required></label><label class="span2">Contingenciamentos — uma linha por item: Nome | Valor<textarea name="conting_detalhe"></textarea></label><label class="span2">Aportes — uma linha por item: Nome | Valor<textarea name="aportes_detalhe"></textarea></label></div><div class="admin-actions"><button type="button" data-close="settingsModal">Cancelar</button><button class="save">Salvar e recalcular</button></div></form></div>
+<div id="settingsModal" class="admin-modal"><form id="settingsForm" class="admin-box kpi-editor-box">
+<h2>Gerenciar contingenciamentos e aportes</h2>
+<p class="kpi-help">Os totais são calculados automaticamente pelas linhas abaixo. Para alterar os KPIs, inclua ou exclua itens.</p>
+<div class="kpi-summary">
+  <div><span>CAPEX inicial</span><strong id="sumCapexInicial">—</strong></div>
+  <div><span>Total de aportes</span><strong id="sumAportes">—</strong></div>
+  <div><span>Total contingenciado</span><strong id="sumConting">—</strong></div>
+  <div class="current"><span>CAPEX atual</span><strong id="sumCapexAtual">—</strong></div>
+</div>
+<div class="detail-section">
+  <div class="detail-head"><div><h3>Contingenciamentos</h3><small>Reduzem o CAPEX atual.</small></div><button type="button" id="addContingRow" class="add-row">＋ Incluir contingenciamento</button></div>
+  <div id="contingRows" class="detail-rows"></div>
+</div>
+<div class="detail-section">
+  <div class="detail-head"><div><h3>Aportes extras</h3><small>Aumentam o CAPEX atual.</small></div><button type="button" id="addAporteRow" class="add-row">＋ Incluir aporte</button></div>
+  <div id="aporteRows" class="detail-rows"></div>
+</div>
+<div class="admin-actions"><button type="button" data-close="settingsModal">Cancelar</button><button class="save">Salvar e recalcular</button></div>
+</form></div>
 <div id="dashboardRoot" hidden>
 
 <header>
