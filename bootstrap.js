@@ -71,10 +71,12 @@ function itemToRaw(item) {
     ordem: item.ordem,
     inicio: isCurrentContingency ? fmtDate(item.inicio) : (original?.inicio || fmtDate(item.inicio)),
     fim: isCurrentContingency ? fmtDate(item.fim) : (original?.fim || fmtDate(item.fim)),
-    // Em contingenciamentos parciais, o CAPEX da planilha é o saldo residual
-    // que continua pertencendo ao CAPEX Atual. Não deve ser substituído pelo
-    // CAPEX anterior armazenado no HTML-base.
-    capex: isCurrentContingency ? num(item.capex) : (original ? num(original.capex) : num(item.capex)),
+    // O CAPEX exibido nas tabelas, tipologias e totais deve ser sempre o valor
+    // vigente da planilha/Supabase. O HTML-base continua sendo usado somente
+    // para preservar o fluxo financeiro histórico já validado (_baselineFlow).
+    // Usar o CAPEX antigo do HTML-base fazia o rodapé da tabela divergir do
+    // KPI CAPEX Atual sempre que uma obra tinha seu orçamento revisado.
+    capex: num(item.capex),
     contingenciada: state === 'full',
     _contingencyState: state,
     _sourceOrder: Number.isFinite(Number(item.source_order))
