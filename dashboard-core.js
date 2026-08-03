@@ -17,6 +17,13 @@ const RECEB_DETALHE     = Array.isArray(window.HAP_DATA.settings.aportes_detalhe
 const CAPEX_CONTING     = CONTING_DETALHE.reduce((s, r) => s + Number(r?.valor || 0), 0);
 const CAPEX_RECEBIMENTO = RECEB_DETALHE.reduce((s, r) => s + Number(r?.valor || 0), 0);
 const CAPEX_ATUAL       = CAPEX_INICIAL + CAPEX_RECEBIMENTO - CAPEX_CONTING;
+const MES_LABELS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function detalheMesKey(item){return /^\d{4}-\d{2}$/.test(String(item?.mes||'')) ? String(item.mes) : '';}
+function detalheMesLabel(item){const k=detalheMesKey(item);if(!k)return 'Mês não informado';const [y,m]=k.split('-').map(Number);return `${MES_LABELS[m-1]}/${y}`;}
+function acumuladoLabel(lista){const keys=(Array.isArray(lista)?lista:[]).map(detalheMesKey).filter(Boolean).sort();if(!keys.length)return 'Acumulado';const [y,m]=keys[keys.length-1].split('-').map(Number);return `Acumulado Jan–${MES_LABELS[m-1]}/${String(y).slice(-2)}`;}
+const CONTING_ACUM_LABEL = acumuladoLabel(CONTING_DETALHE);
+const APORTE_ACUM_LABEL = acumuladoLabel(RECEB_DETALHE);
+
 const NAO_PLANEJADO     = window.HAP_DATA.naoPlanejado;
 const TOTAL_NAO_PLANEJADO = Object.values(NAO_PLANEJADO).reduce((s,v) => s + Number(v||0), 0);
 const isAporteExtra = (nome) => {
@@ -542,8 +549,8 @@ const _firstMes = activeMons[0] || MONTHS_REAL[0];
 
   const kpis = [
     { label: 'CAPEX Inicial',                          value: fmt(CAPEX_INICIAL),    sub: `${obras.length} obras no portfólio`, cls: '', onclick: '' },
-    { label: 'Contingenciamento',  value: fmt(CAPEX_CONTING),    sub: `${nConting} obras (${nConting - nContingParcial} totais · ${nContingParcial} parciais) · clique para detalhar`, cls: 'vermelho', onclick: "openKpiPanel('contingenciamento')" },
-    { label: 'Aportes Extras',     value: fmt(CAPEX_RECEBIMENTO),sub: 'Acumulado Jan–Jun/26 · clique para detalhar', cls: 'verde', onclick: "openKpiPanel('aportes_extras')" },
+    { label: 'Contingenciamento',  value: fmt(CAPEX_CONTING),    sub: `${CONTING_ACUM_LABEL} · clique para detalhar`, cls: 'vermelho', onclick: "openKpiPanel('contingenciamento')" },
+    { label: 'Aportes Extras',     value: fmt(CAPEX_RECEBIMENTO),sub: `${APORTE_ACUM_LABEL} · clique para detalhar`, cls: 'verde', onclick: "openKpiPanel('aportes_extras')" },
     { label: 'CAPEX Atual',        value: fmt(CAPEX_ATUAL),      sub: `${obras.length - nConting} obras ativas · Inicial − Conting. + Aportes · clique para detalhar`, cls: '', onclick: "openKpiPanel('capex_atual')" },
     { label: 'CAPEX PREVISTO YTD',                    value: fmt(fPrevisto),      sub: 'Modelo 15/75/10 · obras planejadas', cls: 'verde', onclick: '' },
     { label: 'REALIZADO OBRAS PLANEJADAS YTD',      value: fmt(fRealizado),     sub: `${planPct.toFixed(1)}% do CAPEX Atual · ${foReal.length} obras`, cls: 'laranja', onclick: '' },
@@ -1155,7 +1162,7 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
   container.innerHTML = `
     <h2>📋 Análise de Desempenho Financeiro — ${periodLabel}</h2>
     <h3>📊 Visão Geral do Portfólio</h3>
-    <p>O portfólio contém <strong>${obras.length} obras</strong> com CAPEX inicial de <strong>${fmt(CAPEX_INICIAL)}</strong>. O CAPEX Atual é <strong>${fmt(CAPEX_ATUAL)}</strong> após contingenciamento acumulado de <strong>${fmt(CAPEX_CONTING)}</strong> e recebimentos acumulados de <strong>${fmt(CAPEX_RECEBIMENTO)}</strong> (Jan–Jun/2026).</p>
+    <p>O portfólio contém <strong>${obras.length} obras</strong> com CAPEX inicial de <strong>${fmt(CAPEX_INICIAL)}</strong>. O CAPEX Atual é <strong>${fmt(CAPEX_ATUAL)}</strong> após contingenciamento acumulado de <strong>${fmt(CAPEX_CONTING)}</strong> e recebimentos acumulados de <strong>${fmt(CAPEX_RECEBIMENTO)}</strong> (${APORTE_ACUM_LABEL.replace("Acumulado ","")}).</p>
     <p>O total realizado no período <strong>${periodLabel}</strong> é de <strong>${fmt(totalReal)}</strong>, frente a um previsto de <strong>${fmt(totalPrev)}</strong> (modelo 15/75/10 para obras ativas; previsto igualado ao realizado para obras contingenciadas), resultando em desvio de <strong class="${devGeral>=0?'desvio-pos':'desvio-neg'}">${pct(devGeral)}</strong>.</p>
 
     <div class="highlight-box ${devUltimoMes>=0?'verde':'vermelho'}">
@@ -1164,15 +1171,15 @@ const _firstMes = mesesAnalise[0] || MONTHS_REAL[0];
       ${topUltimoMes.map((o,i) => `<strong>${i+1}. ${o.nome.substring(0,55)}</strong> — ${fmt(o[ultimoMes+'_real']||0)}`).join('; ')}.
     </div>
 
-    <h3>🔴 Contingenciamentos Acumulados (Jan–Jun/2026)</h3>
-    <p>O contingenciamento acumulado até Jun/2026 é de <strong>${fmt(CAPEX_CONTING)}</strong>, distribuído em 6 obras:</p>
+    <h3>🔴 Contingenciamentos — ${CONTING_ACUM_LABEL}</h3>
+    <p>O contingenciamento acumulado até ${CONTING_ACUM_LABEL.replace("Acumulado Jan–","")} é de <strong>${fmt(CAPEX_CONTING)}</strong>, distribuído em 6 obras:</p>
     <div class="highlight-box vermelho">
       ${CONTING_DETALHE.map(c=>`<strong>${c.nome}:</strong> ${fmt(c.valor)}`).join('<br>')}
     </div>
     <p>Para as obras com consumo parcial antes do contingenciamento (Nova Medprev Natal 1: ${fmt(36388)} e Nova Torre HAPFOR: ${fmt(621854)}), os valores já desembolsados foram preservados no histórico de realizados. Essas obras não geram fluxo previsto futuro.</p>
 
-    <h3>💚 Aportes Extras Acumulados (Jan–Jun/2026)</h3>
-    <p>O total de aportes extras acumulados até Jun/2026 é de <strong>${fmt(CAPEX_RECEBIMENTO)}</strong>:</p>
+    <h3>💚 Aportes Extras — ${APORTE_ACUM_LABEL}</h3>
+    <p>O total de aportes extras acumulados até ${APORTE_ACUM_LABEL.replace("Acumulado Jan–","")} é de <strong>${fmt(CAPEX_RECEBIMENTO)}</strong>:</p>
     <div class="highlight-box verde">
       ${RECEB_DETALHE.map(r=>`<strong>${r.nome}:</strong> ${fmt(r.valor)}`).join('<br>')}
     </div>
@@ -1256,7 +1263,7 @@ function openKpiPanel(type) {
 
     <!-- Contingenciamentos -->
     <div class="panel-section">
-      <div class="panel-section-title">🔴 Contingenciamentos — Jan–Jun/26 · ${fmt(CAPEX_CONTING)}</div>`;
+      <div class="panel-section-title">🔴 Contingenciamentos — ${CONTING_ACUM_LABEL.replace('Acumulado ','')} · ${fmt(CAPEX_CONTING)}</div>`;
 
     CONTING_DETALHE.forEach(c => {
       const pct_c = ((c.valor / CAPEX_CONTING) * 100).toFixed(1);
@@ -1295,7 +1302,7 @@ function openKpiPanel(type) {
 
     <!-- Aportes Extras -->
     <div class="panel-section">
-      <div class="panel-section-title">💚 Aportes Extras — Jan–Jun/26 · ${fmt(CAPEX_RECEBIMENTO)}</div>`;
+      <div class="panel-section-title">💚 Aportes Extras — ${APORTE_ACUM_LABEL.replace('Acumulado ','')} · ${fmt(CAPEX_RECEBIMENTO)}</div>`;
 
     RECEB_DETALHE.forEach(r => {
       const pct_r = ((r.valor / CAPEX_RECEBIMENTO) * 100).toFixed(1);
@@ -1320,7 +1327,7 @@ function openKpiPanel(type) {
     const contObras = obras.filter(o => o.contingenciada);
     const totalConting = CAPEX_CONTING;
     let html = `<div class="panel-section">
-      <div class="panel-section-title">💰 Total Contingenciado Acumulado (Jan–Jun/26)</div>
+      <div class="panel-section-title">💰 Total Contingenciado — ${CONTING_ACUM_LABEL}</div>
       <div class="panel-kpis">
         <div class="panel-kpi vermelho" style="grid-column:1/-1">
           <div class="panel-kpi-label">Total Contingenciado</div>
@@ -1335,7 +1342,7 @@ function openKpiPanel(type) {
       html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--cinza-borda)">
         <div>
           <div style="font-size:12px;font-weight:600;color:var(--azul)">${c.nome}</div>
-          <div style="font-size:11px;color:var(--texto-suave)">Contingenciado em Mai/2026</div>
+          <div style="font-size:11px;color:var(--texto-suave)">Contingenciado em ${detalheMesLabel(c)}</div>
         </div>
         <div style="font-size:13px;font-weight:800;color:var(--vermelho)">${fmt(c.valor)}</div>
       </div>`;
@@ -1367,7 +1374,7 @@ function openKpiPanel(type) {
     title.textContent = 'Aportes Extras — Detalhamento Acumulado';
     const totalAportes = RECEB_DETALHE.reduce((s, r) => s + r.valor, 0);
     let html = `<div class="panel-section">
-      <div class="panel-section-title">💰 Total Acumulado (Jan–Jun/26)</div>
+      <div class="panel-section-title">💰 Total de Aportes — ${APORTE_ACUM_LABEL}</div>
       <div class="panel-kpis">
         <div class="panel-kpi verde" style="grid-column:1/-1">
           <div class="panel-kpi-label">Total Aportes Extras</div>
@@ -1381,7 +1388,7 @@ function openKpiPanel(type) {
       const pct_aporte = ((r.valor / CAPEX_RECEBIMENTO) * 100).toFixed(1);
       html += `<div style="padding:11px 0;border-bottom:1px solid var(--cinza-borda)">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
-          <div style="font-size:12px;font-weight:600;color:var(--azul);padding-right:8px;flex:1">${r.nome}</div>
+          <div style="padding-right:8px;flex:1"><div style="font-size:12px;font-weight:600;color:var(--azul)">${r.nome}</div><div style="font-size:10px;color:var(--texto-suave);margin-top:2px">Aporte em ${detalheMesLabel(r)}</div></div>
           <div style="font-size:13px;font-weight:800;color:var(--verde);white-space:nowrap">${fmt(r.valor)}</div>
         </div>
         <div style="background:var(--cinza-borda);border-radius:4px;height:5px;margin-top:4px">
