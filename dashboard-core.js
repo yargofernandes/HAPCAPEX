@@ -8,7 +8,8 @@ const manObrasRaw = window.HAP_DATA.manObrasRaw;
 // ============================================================
 // KPI CONSTANTS — carregadas do Supabase
 // ============================================================
-const CAPEX_INICIAL     = Number(window.HAP_DATA.settings.capex_inicial || 0);
+const CAPEX_INICIAL     = Number(window.HAP_DATA.settings.capex_inicial || window.HAP_ORIGINAL_BASELINE?.constants?.CAPEX_INICIAL || 0);
+const PREVISTO_HISTORICO = window.HAP_DATA.settings.previsto_historico || window.HAP_ORIGINAL_BASELINE?.plannedTotals || {};
 const CAPEX_DOACAO      = 0;
 const CONTING_DETALHE   = Array.isArray(window.HAP_DATA.settings.conting_detalhe) ? window.HAP_DATA.settings.conting_detalhe : [];
 const RECEB_DETALHE     = Array.isArray(window.HAP_DATA.settings.aportes_detalhe) ? window.HAP_DATA.settings.aportes_detalhe : [];
@@ -107,6 +108,15 @@ function computeFlow(obra) {
   const flow = {};
   MONTHS.forEach(m => flow[m.key] = 0);
 
+  // As obras que já existiam no HTML validado usam exatamente o fluxo
+  // calculado naquele arquivo. Isso preserva todas as exceções e os
+  // números históricos aprovados, independentemente de mudanças posteriores
+  // de datas, CAPEX ou descrição na planilha mensal.
+  if (obra._baselineFlow && typeof obra._baselineFlow === 'object') {
+    MONTHS.forEach(m => { flow[m.key] = Number(obra._baselineFlow[m.key] || 0); });
+    return flow;
+  }
+
   // Contingenciadas totais: previsto = realizado
   if (obra.contingenciada) {
     MONTHS_REAL.forEach(mk => { flow[mk] = obra[mk+'_real'] || 0; });
@@ -192,9 +202,27 @@ function computeFlow(obra) {
     return flow;
   }
 
-  const ymInicio = dateToYM(obra.inicio);
-  const ymFim    = dateToYM(obra.fim);
+  let ymInicio = dateToYM(obra.inicio);
+  let ymFim    = dateToYM(obra.fim);
   if (!ymInicio || !ymFim) return flow;
+
+  // Obras que não existiam no HTML-base só passam a alterar o planejamento
+  // a partir do mês da planilha em que foram introduzidas. Assim, uma obra
+  // incluída em julho não reescreve retroativamente o previsto de janeiro a junho.
+  if (!obra._isOriginalBaseline && window.HAP_DATA.reportingMonthKey) {
+    const reportIndex = MONTHS.findIndex(m => m.key === window.HAP_DATA.reportingMonthKey);
+    const reportYM = reportIndex >= 0 && reportIndex < 12
+      ? `2026-${String(reportIndex + 1).padStart(2, '0')}`
+      : null;
+    if (reportYM) {
+      if (ymFim < reportYM) {
+        const reportKey = window.HAP_DATA.reportingMonthKey;
+        if (flow[reportKey] !== undefined) flow[reportKey] = obra.capex;
+        return flow;
+      }
+      if (ymInicio < reportYM) ymInicio = reportYM;
+    }
+  }
 
   const sinal    = capex * 0.15;
   const exec     = capex * 0.75;
@@ -230,10 +258,27 @@ function computeFlow(obra) {
 }
 
 // Build full obras array
-const obras = obrasRaw.map(o => ({ ...o, flow: computeFlow(o) }));
+const obras = obrasRaw
+  .map(o => ({ ...o, flow: computeFlow(o) }))
+  .sort((a, b) => (a._sourceOrder ?? 999999) - (b._sourceOrder ?? 999999));
 obras.forEach(o => { o.total_real = MONTHS_REAL.reduce((s, m) => s + (o[m+'_real'] || 0), 0); });
 
-const manObras = manObrasRaw.map(o => ({ ...o, total_real: MONTHS_REAL.reduce((s, m) => s + (o[m+'_real'] || 0), 0) }));
+const manObras = manObrasRaw
+  .map(o => ({ ...o, total_real: MONTHS_REAL.reduce((s, m) => s + (o[m+'_real'] || 0), 0) }))
+  .sort((a, b) => (a._sourceOrder ?? 999999) - (b._sourceOrder ?? 999999));
+
+const LAST_REAL_MONTH = MONTHS_REAL.length ? MONTHS_REAL[MONTHS_REAL.length - 1] : 'jan';
+const LAST_REAL_LABEL = MONTHS.find(m => m.key === LAST_REAL_MONTH)?.label || 'JAN/26';
+const headerSub = document.getElementById('header-sub');
+if (headerSub) {
+  headerSub.textContent = `Fluxo de desembolso mensal · ${obras.length} obras · Atualizado até ${LAST_REAL_LABEL}`;
+}
+const accumulatedTitle = document.getElementById('accumulatedChartTitle');
+if (accumulatedTitle) {
+  accumulatedTitle.textContent = `📈 Consumo Acumulado — Previsto vs Realizado Planejado vs Realizado Total (Jan–${LAST_REAL_LABEL})`;
+}
+const panelRealLabel = document.getElementById('panel-real-label');
+if (panelRealLabel) panelRealLabel.textContent = `Realizado Jan–${LAST_REAL_LABEL}`;
 
 // Contadores globais de contingenciadas (disponíveis para renderTipoCards e renderKPIs)
 const nContingParcial = obras.filter(o => o.nome.includes('CONTING. PARCIAL')).length;
@@ -866,7 +911,10 @@ function renderCharts() {
     if (activeMons && activeMons.length > 0 && !activeMons.includes(m.key)) return null;
     const planSum = fo.reduce((s, o) => s + (o.flow[m.key]||0), 0);
     const naoSum  = hasFilter ? 0 : (NAO_PLANEJADO[m.key] || 0);
-    const total   = planSum + naoSum;
+    const historicalTotal = !hasFilter && PREVISTO_HISTORICO[m.key] !== undefined
+      ? Number(PREVISTO_HISTORICO[m.key])
+      : null;
+    const total   = historicalTotal !== null ? historicalTotal : planSum + naoSum;
     // Retornar 0 (não null) quando filtro está ativo — para mostrar linha desde JAN
     // Só retorna null se for mês futuro além do calendário necessário
     if (hasFilter && total === 0 && idx > 18) return null;

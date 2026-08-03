@@ -1,38 +1,445 @@
-const cfg=window.CAPEX_CONFIG||{};
-const sb=window.supabase.createClient(cfg.supabaseUrl,cfg.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true}});
-let currentProfile=null,pendingImport=null,coreLoaded=false,usersCache=[];
-const monthKeys=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez','jan27','fev27','mar27','abr27','mai27','jun27','jul27'];
-const $=s=>document.querySelector(s);
-const num=v=>Number.isFinite(Number(v))?Number(v):0;
-const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-const fmtDate=v=>{if(!v)return'-';const d=new Date(v+'T12:00:00');return isNaN(d)?'-':d.toLocaleDateString('pt-BR')};
-function itemToRaw(x){const r={nome:x.nome,ordem:x.ordem,inicio:fmtDate(x.inicio),fim:fmtDate(x.fim),capex:num(x.capex),contingenciada:!!x.contingenciada};monthKeys.forEach(k=>r[k+'_real']=num(x.realizado?.[k]));return r}
-async function loadApp(){
- const {data:{session}}=await sb.auth.getSession(); if(!session)return;
- const {data:p,error}=await sb.from('profiles').select('*').eq('id',session.user.id).single();if(error||!p?.is_active){await sb.auth.signOut();return}
- currentProfile=p;$('#authGate').hidden=true;$('#adminToolbar').hidden=false;$('#userLabel').textContent=(p.full_name||p.email)+' · '+(p.role==='admin'?'Administrador':'Visualizador');document.querySelectorAll('.admin-only').forEach(x=>x.hidden=p.role!=='admin');
- const [{data:items,error:ie},{data:settings,error:se}]=await Promise.all([sb.from('capex_items').select('*').is('deleted_at',null),sb.from('capex_settings').select('*').eq('id','main').single()]);
- if(ie)throw ie;if(se)throw se;
- const np=items.find(x=>x.categoria==='obra'&&(x.ordem==='NAO_PLANEJADAS'||/OBRAS NÃO PLANEJADAS/i.test(x.nome)));
- const obras=items.filter(x=>x.categoria==='obra'&&x!==np).map(itemToRaw);
- const mans=items.filter(x=>x.categoria==='manutencao').map(itemToRaw);
- const nao={};monthKeys.forEach(k=>nao[k]=num(np?.realizado?.[k]));
- const monthsReal=monthKeys.filter(k=>items.some(x=>num(x.realizado?.[k])!==0));
- window.HAP_DATA={obrasRaw:obras,manObrasRaw:mans,naoPlanejado:nao,monthsReal,settings};
- $('#dashboardRoot').hidden=false;
- if(!coreLoaded){coreLoaded=true;const s=document.createElement('script');s.src='dashboard-core.js?v='+Date.now();document.body.appendChild(s)}
+const cfg = window.CAPEX_CONFIG || {};
+const sb = window.supabase.createClient(
+  cfg.supabaseUrl,
+  cfg.supabasePublishableKey,
+  { auth: { persistSession: true, autoRefreshToken: true } }
+);
+
+let currentProfile = null;
+let pendingImport = null;
+let coreLoaded = false;
+let usersCache = [];
+
+const monthKeys = [
+  'jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez',
+  'jan27','fev27','mar27','abr27','mai27','jun27','jul27'
+];
+const month2026Keys = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const $ = selector => document.querySelector(selector);
+const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+}[char]));
+const normalizeName = value => String(value || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .trim().toUpperCase().replace(/\s+/g, ' ');
+const orderTokens = value => (String(value || '').match(/\d{8}/g) || []);
+const fmtDate = value => {
+  if (!value) return '-';
+  const date = new Date(value + 'T12:00:00');
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR');
+};
+
+const baseline = window.HAP_ORIGINAL_BASELINE || { works: [], naoPlanejado: {}, constants: {} };
+const baselineByName = new Map();
+const baselineByOrder = new Map();
+for (const work of baseline.works || []) {
+  baselineByName.set(normalizeName(work.nome), work);
+  for (const token of orderTokens(work.ordem)) {
+    if (!baselineByOrder.has(token)) baselineByOrder.set(token, work);
+  }
 }
-$('#loginForm').onsubmit=async e=>{e.preventDefault();$('#loginMsg').textContent='Entrando...';const f=e.currentTarget;const {error}=await sb.auth.signInWithPassword({email:f.email.value.trim(),password:f.password.value});if(error){$('#loginMsg').textContent='E-mail ou senha inválidos.';return}location.reload()};
-$('#logoutBtn').onclick=async()=>{await sb.auth.signOut();location.reload()};
-function openModal(id){$('#'+id).classList.add('open')}function closeModal(id){$('#'+id).classList.remove('open')}document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>closeModal(b.dataset.close));
-$('#importBtn').onclick=()=>{if(currentProfile?.role==='admin')openModal('importModal')};$('#settingsBtn').onclick=()=>{if(currentProfile?.role!=='admin')return;fillSettings();openModal('settingsModal')};$('#usersBtn').onclick=async()=>{if(currentProfile?.role!=='admin')return;openModal('usersModal');await loadUsers()};
-function normalizeName(s){return String(s||'').trim().toUpperCase().replace(/\s+/g,' ')}
-function xdate(v){if(!v)return null;if(typeof v==='number'){const d=XLSX.SSF.parse_date_code(v);return d?`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`:null}if(v instanceof Date)return v.toISOString().slice(0,10);const s=String(v).trim();const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:null}
-function parseExcel(wb){const result=[];const findSheet=t=>wb.SheetNames.find(n=>normalizeName(n)===normalizeName(t));const ps=findSheet('PLANEJAMENTO');const ms=findSheet('OBRAS MANUTENÇÃO');if(!ps||!ms)throw new Error('As duas abas obrigatórias não foram encontradas.');
- let rows=XLSX.utils.sheet_to_json(wb.Sheets[ps],{header:1,defval:'',raw:true});let h=rows.findIndex(r=>normalizeName(r[0]).includes('ORDEM INTERNA')&&normalizeName(r[1]).includes('NOME OBRA'));if(h<0)throw new Error('Cabeçalho de PLANEJAMENTO não encontrado.');for(let i=h+1;i<rows.length;i++){const r=rows[i],nome=String(r[1]||'').trim();if(!nome)continue;let ordem=String(r[0]||'').trim();if(/OBRAS NÃO PLANEJADAS/i.test(nome))ordem='NAO_PLANEJADAS';if(!ordem)continue;const realizado={};monthKeys.forEach((k,j)=>realizado[k]=num(r[5+j]));result.push({categoria:'obra',ordem,nome,inicio:xdate(r[2]),fim:xdate(r[3]),capex:num(r[4]),tipologia:'Outros',contingenciada:/CONTINGENCIADA/i.test(nome),realizado})}
- rows=XLSX.utils.sheet_to_json(wb.Sheets[ms],{header:1,defval:'',raw:true});h=rows.findIndex(r=>normalizeName(r[2]).includes('ORDEM INTERNA')&&normalizeName(r[3]).includes('NOME DA OBRA'));if(h<0)throw new Error('Cabeçalho de OBRAS MANUTENÇÃO não encontrado.');for(let i=h+1;i<rows.length;i++){const r=rows[i],nome=String(r[3]||'').trim();if(!nome)continue;let ordem=String(r[2]||'').trim()||('SEM_OI_'+btoa(unescape(encodeURIComponent(nome))).replace(/[^A-Z0-9]/gi,'').slice(0,40));const realizado={};['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].forEach((k,j)=>realizado[k]=num(r[4+j]));result.push({categoria:'manutencao',ordem,nome,inicio:null,fim:null,capex:0,tipologia:'Manutenção',contingenciada:false,realizado})}return result}
-$('#excelFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});pendingImport=parseExcel(wb);const o=pendingImport.filter(x=>x.categoria==='obra').length,m=pendingImport.filter(x=>x.categoria==='manutencao').length;$('#importStatus').textContent=`${o} registros de Obras e ${m} registros de Manutenção reconhecidos.`;$('#applyImport').disabled=false}catch(err){pendingImport=null;$('#importStatus').textContent='Erro: '+err.message;$('#applyImport').disabled=true}};
-$('#applyImport').onclick=async()=>{if(!pendingImport||currentProfile?.role!=='admin')return;$('#applyImport').disabled=true;$('#importStatus').textContent='Atualizando banco...';try{let created=0,updated=0;const {data:old}=await sb.from('capex_items').select('id,categoria,ordem').is('deleted_at',null);const map=new Map((old||[]).map(x=>[x.categoria+'|'+x.ordem,x]));for(const x of pendingImport){const key=x.categoria+'|'+x.ordem,found=map.get(key);if(found){const {error}=await sb.from('capex_items').update({...x,updated_by:currentProfile.id}).eq('id',found.id);if(error)throw error;updated++}else{const {error}=await sb.from('capex_items').insert({...x,created_by:currentProfile.id,updated_by:currentProfile.id});if(error)throw error;created++}}await sb.from('import_history').insert({file_name:$('#excelFile').files[0]?.name||'planilha.xlsx',total_records:pendingImport.length,created_records:created,updated_records:updated,ignored_records:0,imported_by:currentProfile.id,status:'completed'});$('#importStatus').textContent=`Concluído: ${created} criados e ${updated} atualizados. A página será recarregada.`;setTimeout(()=>location.reload(),1200)}catch(err){$('#importStatus').textContent='Falha: '+err.message;$('#applyImport').disabled=false}};
+function findBaselineWork(item) {
+  for (const token of orderTokens(item?.ordem)) {
+    const match = baselineByOrder.get(token);
+    if (match) return match;
+  }
+  return baselineByName.get(normalizeName(item?.nome)) || null;
+}
+function isMaintenancePackageName(name) {
+  const normalized = normalizeName(name);
+  return normalized.includes('PACOTE DE MANUTENCAO DIA A DIA');
+}
+function itemToRaw(item) {
+  const original = item.categoria === 'obra' ? findBaselineWork(item) : null;
+  const raw = {
+    nome: item.nome,
+    ordem: item.ordem,
+    inicio: original?.inicio || fmtDate(item.inicio),
+    fim: original?.fim || fmtDate(item.fim),
+    capex: original ? num(original.capex) : num(item.capex),
+    contingenciada: Boolean(item.contingenciada),
+    _sourceOrder: Number.isFinite(Number(item.source_order))
+      ? Number(item.source_order)
+      : (original?.sourceOrder ?? 999999),
+    _baselineFlow: original?.flow || null,
+    _isOriginalBaseline: Boolean(original)
+  };
+  monthKeys.forEach(key => raw[key + '_real'] = num(item.realizado?.[key]));
+  return raw;
+}
+function latestReportingMonth(items, naoPlanejado) {
+  let latest = 'jan';
+  month2026Keys.forEach(key => {
+    const hasValue = items.some(item => num(item.realizado?.[key]) !== 0)
+      || num(naoPlanejado?.[key]) !== 0;
+    if (hasValue) latest = key;
+  });
+  return latest;
+}
+function mergeNaoPlanejado(item) {
+  const result = {};
+  monthKeys.forEach(key => {
+    const stored = num(item?.realizado?.[key]);
+    const fallback = num(baseline.naoPlanejado?.[key]);
+    result[key] = stored !== 0 ? stored : fallback;
+  });
+  return result;
+}
+
+async function loadApp() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return;
+
+  const { data: profile, error: profileError } = await sb
+    .from('profiles').select('*').eq('id', session.user.id).single();
+  if (profileError || !profile?.is_active) {
+    await sb.auth.signOut();
+    return;
+  }
+
+  currentProfile = profile;
+  $('#authGate').hidden = true;
+  $('#adminToolbar').hidden = false;
+  $('#userLabel').textContent =
+    (profile.full_name || profile.email) + ' · ' +
+    (profile.role === 'admin' ? 'Administrador' : 'Visualizador');
+  document.querySelectorAll('.admin-only').forEach(
+    element => element.hidden = profile.role !== 'admin'
+  );
+
+  const [{ data: items, error: itemsError }, { data: settings, error: settingsError }] =
+    await Promise.all([
+      sb.from('capex_items').select('*').is('deleted_at', null),
+      sb.from('capex_settings').select('*').eq('id', 'main').single()
+    ]);
+  if (itemsError) throw itemsError;
+  if (settingsError) throw settingsError;
+
+  const allItems = items || [];
+  const nonPlannedItem = allItems.find(item =>
+    item.categoria === 'obra' &&
+    (item.ordem === 'NAO_PLANEJADAS' || /OBRAS NÃO PLANEJADAS/i.test(item.nome))
+  );
+  const naoPlanejado = mergeNaoPlanejado(nonPlannedItem);
+
+  const obras = allItems
+    .filter(item =>
+      item.categoria === 'obra' &&
+      item !== nonPlannedItem &&
+      !isMaintenancePackageName(item.nome)
+    )
+    .map(itemToRaw)
+    .sort((a, b) => a._sourceOrder - b._sourceOrder || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const manutencoes = allItems
+    .filter(item => item.categoria === 'manutencao')
+    .map(itemToRaw)
+    .sort((a, b) => a._sourceOrder - b._sourceOrder || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const monthsReal = monthKeys.filter(key =>
+    allItems.some(item => num(item.realizado?.[key]) !== 0) ||
+    num(naoPlanejado[key]) !== 0
+  );
+
+  window.HAP_DATA = {
+    obrasRaw: obras,
+    manObrasRaw: manutencoes,
+    naoPlanejado,
+    monthsReal,
+    reportingMonthKey: latestReportingMonth(allItems, naoPlanejado),
+    settings: {
+      ...settings,
+      capex_inicial: num(settings?.capex_inicial) || num(baseline.constants?.CAPEX_INICIAL)
+    }
+  };
+
+  $('#dashboardRoot').hidden = false;
+  if (!coreLoaded) {
+    coreLoaded = true;
+    const script = document.createElement('script');
+    script.src = 'dashboard-core.js?v=' + Date.now();
+    document.body.appendChild(script);
+  }
+}
+
+$('#loginForm').onsubmit = async event => {
+  event.preventDefault();
+  $('#loginMsg').textContent = 'Entrando...';
+  const form = event.currentTarget;
+  const { error } = await sb.auth.signInWithPassword({
+    email: form.email.value.trim(),
+    password: form.password.value
+  });
+  if (error) {
+    $('#loginMsg').textContent = 'E-mail ou senha inválidos.';
+    return;
+  }
+  location.reload();
+};
+$('#logoutBtn').onclick = async () => {
+  await sb.auth.signOut();
+  location.reload();
+};
+
+function openModal(id) { $('#' + id).classList.add('open'); }
+function closeModal(id) { $('#' + id).classList.remove('open'); }
+document.querySelectorAll('[data-close]').forEach(
+  button => button.onclick = () => closeModal(button.dataset.close)
+);
+$('#importBtn').onclick = () => {
+  if (currentProfile?.role === 'admin') openModal('importModal');
+};
+$('#settingsBtn').onclick = () => {
+  if (currentProfile?.role !== 'admin') return;
+  fillSettings();
+  openModal('settingsModal');
+};
+$('#usersBtn').onclick = async () => {
+  if (currentProfile?.role !== 'admin') return;
+  openModal('usersModal');
+  await loadUsers();
+};
+
+function xdate(value) {
+  if (!value || value === '-') return null;
+  if (typeof value === 'number') {
+    const date = XLSX.SSF.parse_date_code(value);
+    return date
+      ? `${date.y}-${String(date.m).padStart(2,'0')}-${String(date.d).padStart(2,'0')}`
+      : null;
+  }
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const text = String(value).trim();
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return match
+    ? `${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}`
+    : null;
+}
+function normalizeOrder(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Number.isInteger(value) ? String(value) : String(value).trim();
+  }
+  return String(value || '').trim();
+}
+function simpleHash(text) {
+  let hash = 2166136261;
+  for (const char of String(text)) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36).toUpperCase();
+}
+function findSheet(workbook, expectedName) {
+  return workbook.SheetNames.find(
+    name => normalizeName(name) === normalizeName(expectedName)
+  );
+}
+function isContingenciada(name) {
+  return /CONTIG/i.test(String(name || ''));
+}
+function parseExcel(workbook) {
+  const result = [];
+  let ignored = 0;
+  const planningSheet = findSheet(workbook, 'PLANEJAMENTO');
+  const maintenanceSheet = findSheet(workbook, 'OBRAS MANUTENÇÃO');
+  if (!planningSheet || !maintenanceSheet) {
+    throw new Error('As abas PLANEJAMENTO e OBRAS MANUTENÇÃO são obrigatórias.');
+  }
+
+  let rows = XLSX.utils.sheet_to_json(
+    workbook.Sheets[planningSheet],
+    { header: 1, defval: '', raw: true }
+  );
+  let header = rows.findIndex(row =>
+    normalizeName(row[0]).includes('ORDEM INTERNA') &&
+    normalizeName(row[1]).includes('NOME OBRA')
+  );
+  if (header < 0) throw new Error('Cabeçalho da aba PLANEJAMENTO não encontrado.');
+
+  for (let index = header + 1; index < rows.length; index++) {
+    const row = rows[index];
+    const nome = String(row[1] || '').trim();
+    if (!nome) continue;
+
+    if (isMaintenancePackageName(nome)) {
+      ignored++;
+      continue;
+    }
+
+    const isNonPlanned = /OBRAS NÃO PLANEJADAS/i.test(nome);
+    let ordem = isNonPlanned ? 'NAO_PLANEJADAS' : normalizeOrder(row[0]);
+    if (!ordem) continue;
+
+    const realizado = {};
+    monthKeys.forEach((key, monthIndex) => {
+      realizado[key] = num(row[5 + monthIndex]);
+    });
+
+    result.push({
+      categoria: 'obra',
+      ordem,
+      nome,
+      inicio: xdate(row[2]),
+      fim: xdate(row[3]),
+      capex: num(row[4]),
+      tipologia: 'Outros',
+      contingenciada: !isNonPlanned && isContingenciada(nome),
+      realizado,
+      source_order: index - header
+    });
+  }
+
+  rows = XLSX.utils.sheet_to_json(
+    workbook.Sheets[maintenanceSheet],
+    { header: 1, defval: '', raw: true }
+  );
+  header = rows.findIndex(row =>
+    normalizeName(row[2]).includes('ORDEM INTERNA') &&
+    normalizeName(row[3]).includes('NOME DA OBRA')
+  );
+  if (header < 0) throw new Error('Cabeçalho da aba OBRAS MANUTENÇÃO não encontrado.');
+
+  for (let index = header + 1; index < rows.length; index++) {
+    const row = rows[index];
+    const nome = String(row[3] || '').trim();
+    if (!nome) continue;
+    const ordemOriginal = normalizeOrder(row[2]);
+    const ordem = ordemOriginal || `SEM_OI_${simpleHash(normalizeName(nome))}`;
+    const realizado = {};
+    month2026Keys.forEach((key, monthIndex) => {
+      realizado[key] = num(row[4 + monthIndex]);
+    });
+
+    result.push({
+      categoria: 'manutencao',
+      ordem,
+      nome,
+      inicio: null,
+      fim: null,
+      capex: 0,
+      tipologia: 'Manutenção',
+      contingenciada: false,
+      realizado,
+      source_order: index - header
+    });
+  }
+  result.ignoredCount = ignored;
+  return result;
+}
+function sameRecord(existing, incoming) {
+  if (existing.categoria !== incoming.categoria) return false;
+  if (existing.ordem === incoming.ordem) return true;
+  if (existing.categoria === 'obra') {
+    const existingTokens = new Set(orderTokens(existing.ordem));
+    if (orderTokens(incoming.ordem).some(token => existingTokens.has(token))) return true;
+  }
+  return normalizeName(existing.nome) === normalizeName(incoming.nome);
+}
+function findExistingRecord(existingItems, incoming) {
+  return existingItems.find(existing => sameRecord(existing, incoming));
+}
+
+$('#excelFile').onchange = async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const workbook = XLSX.read(await file.arrayBuffer(), {
+      type: 'array',
+      cellDates: true
+    });
+    pendingImport = parseExcel(workbook);
+    const obrasCount = pendingImport.filter(
+      item => item.categoria === 'obra' && item.ordem !== 'NAO_PLANEJADAS'
+    ).length;
+    const maintenanceCount = pendingImport.filter(
+      item => item.categoria === 'manutencao'
+    ).length;
+    const hasNonPlanned = pendingImport.some(item => item.ordem === 'NAO_PLANEJADAS');
+    $('#importStatus').textContent =
+      `${obrasCount} obras, ${maintenanceCount} manutenções e ` +
+      `${hasNonPlanned ? '1 linha' : 'nenhuma linha'} de Obras Não Planejadas reconhecidas.` +
+      (pendingImport.ignoredCount ? ` ${pendingImport.ignoredCount} linha de pacote foi ignorada.` : '');
+    $('#applyImport').disabled = false;
+  } catch (error) {
+    pendingImport = null;
+    $('#importStatus').textContent = 'Erro: ' + error.message;
+    $('#applyImport').disabled = true;
+  }
+};
+
+$('#applyImport').onclick = async () => {
+  if (!pendingImport || currentProfile?.role !== 'admin') return;
+  $('#applyImport').disabled = true;
+  $('#importStatus').textContent = 'Atualizando banco...';
+
+  try {
+    let created = 0;
+    let updated = 0;
+    const { data: existingItems, error: existingError } = await sb
+      .from('capex_items')
+      .select('id,categoria,ordem,nome')
+      .is('deleted_at', null);
+    if (existingError) throw existingError;
+
+    const existing = existingItems || [];
+    for (const item of pendingImport) {
+      const found = findExistingRecord(existing, item);
+      const payload = {
+        ...item,
+        updated_by: currentProfile.id,
+        updated_at: new Date().toISOString()
+      };
+      if (found) {
+        const { error } = await sb.from('capex_items').update(payload).eq('id', found.id);
+        if (error) throw error;
+        updated++;
+      } else {
+        const { data: inserted, error } = await sb.from('capex_items')
+          .insert({ ...payload, created_by: currentProfile.id })
+          .select('id,categoria,ordem,nome').single();
+        if (error) throw error;
+        existing.push(inserted);
+        created++;
+      }
+    }
+
+    await sb.from('capex_items')
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: currentProfile.id,
+        updated_by: currentProfile.id
+      })
+      .eq('categoria', 'obra')
+      .ilike('nome', '%Pacote de Manutenção dia a dia%')
+      .is('deleted_at', null);
+
+    await sb.from('import_history').insert({
+      file_name: $('#excelFile').files[0]?.name || 'planilha.xlsx',
+      total_records: pendingImport.length,
+      created_records: created,
+      updated_records: updated,
+      ignored_records: pendingImport.ignoredCount || 0,
+      imported_by: currentProfile.id,
+      status: 'completed'
+    });
+
+    $('#importStatus').textContent =
+      `Concluído: ${created} criados, ${updated} atualizados e ` +
+      `${pendingImport.ignoredCount || 0} ignorados. A página será recarregada.`;
+    setTimeout(() => location.reload(), 1200);
+  } catch (error) {
+    $('#importStatus').textContent = 'Falha: ' + error.message;
+    $('#applyImport').disabled = false;
+  }
+};
+
+
 const brlValue=v=>num(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 let settingsDraft={conting:[],aportes:[]};
 function cleanDetail(list){return (Array.isArray(list)?list:[]).map(x=>({nome:String(x?.nome||'').trim(),valor:num(x?.valor),mes:String(x?.mes||'').trim()})).filter(x=>x.nome||x.valor)}
