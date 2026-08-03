@@ -543,3 +543,274 @@ button { touch-action: manipulation; }
   body { padding-top:env(safe-area-inset-top); }
   .admin-toolbar { top:env(safe-area-inset-top); }
 }
+
+/* ============================================================
+   V18 — aplicativo móvel em páginas, sem alterar o desktop
+   ============================================================ */
+.mobile-app-header,
+.mobile-bottom-nav,
+.mobile-action-sheet,
+.mobile-menu-overlay,
+.mobile-chart-viewer,
+.mobile-home-card,
+.mobile-section-intro,
+.mobile-maintenance-tabs,
+.mobile-chart-launch,
+.mobile-table-controls { display:none; }
+.mobile-view-hidden { display:none !important; }
+
+body.pwa-mobile {
+  --mobile-header-height: 62px;
+  --mobile-nav-height: 68px;
+  background:#eef2f7;
+  overflow-x:hidden;
+  overscroll-behavior-y:none;
+  padding:0 !important;
+}
+body.pwa-mobile #dashboardRoot {
+  min-height:100dvh;
+  padding-top:calc(var(--mobile-header-height) + env(safe-area-inset-top));
+  padding-bottom:calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+}
+body.pwa-mobile #adminToolbar,
+body.pwa-mobile #dashboardRoot > header,
+body.pwa-mobile #dashboardRoot > .page-nav { display:none !important; }
+
+body.pwa-mobile .mobile-app-header {
+  position:fixed;
+  z-index:900;
+  top:0; left:0; right:0;
+  height:calc(var(--mobile-header-height) + env(safe-area-inset-top));
+  padding:max(8px, env(safe-area-inset-top)) 14px 8px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  background:linear-gradient(135deg,#0d2b4e,#173f6d);
+  color:#fff;
+  box-shadow:0 3px 14px rgba(13,43,78,.24);
+}
+.mobile-app-brand { display:flex; align-items:center; gap:10px; min-width:0; }
+.mobile-app-logo {
+  width:38px; height:38px; border-radius:12px; flex:0 0 38px;
+  display:grid; place-items:center;
+  background:#fff; color:#0d2b4e; font-size:12px; font-weight:900;
+  box-shadow:0 3px 8px #0002;
+}
+.mobile-app-brand strong { display:block; font-size:15px; letter-spacing:.7px; }
+.mobile-app-brand small {
+  display:block; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:#d8e6f5; font-size:10px; margin-top:2px;
+}
+.mobile-menu-btn {
+  width:42px; height:42px; border:1px solid #ffffff38; border-radius:13px;
+  background:#ffffff14; color:#fff; font-size:21px; font-weight:700;
+}
+
+body.pwa-mobile .mobile-bottom-nav {
+  position:fixed; z-index:900; left:0; right:0; bottom:0;
+  min-height:calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+  padding:6px 5px max(6px,env(safe-area-inset-bottom));
+  display:grid; grid-template-columns:repeat(5,1fr); gap:2px;
+  background:#fff; border-top:1px solid #d9e1ec;
+  box-shadow:0 -5px 18px rgba(13,43,78,.10);
+}
+.mobile-bottom-nav button {
+  border:0; border-radius:12px; background:transparent; color:#758197;
+  min-width:0; min-height:52px; padding:5px 2px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+}
+.mobile-bottom-nav button span { font-size:20px; line-height:1; }
+.mobile-bottom-nav button small { font-size:9px; font-weight:800; white-space:nowrap; }
+.mobile-bottom-nav button.active { background:#eaf2fc; color:#134d8d; }
+.mobile-bottom-nav button.active span { transform:translateY(-1px); }
+
+body.pwa-mobile .mobile-menu-overlay {
+  display:block; position:fixed; z-index:1090; inset:0;
+  background:rgba(5,20,38,.45); opacity:0; pointer-events:none; transition:opacity .2s ease;
+}
+body.pwa-mobile .mobile-menu-overlay.open { opacity:1; pointer-events:auto; }
+body.pwa-mobile .mobile-action-sheet {
+  display:block; position:fixed; z-index:1100; left:0; right:0; bottom:0;
+  max-height:82dvh; padding:8px 14px max(16px,env(safe-area-inset-bottom));
+  background:#fff; border-radius:22px 22px 0 0;
+  transform:translateY(105%); transition:transform .24s ease;
+  box-shadow:0 -12px 40px #0003;
+}
+body.pwa-mobile .mobile-action-sheet.open { transform:translateY(0); }
+.mobile-sheet-handle { width:46px; height:5px; margin:0 auto 12px; border-radius:5px; background:#ccd5e2; }
+.mobile-sheet-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.mobile-sheet-head strong { display:block; color:#0d2b4e; font-size:17px; }
+.mobile-sheet-head small { display:block; color:#667085; font-size:10px; margin-top:4px; }
+.mobile-sheet-head button { border:0; background:#edf1f7; color:#0d2b4e; width:38px; height:38px; border-radius:12px; font-size:22px; }
+.mobile-sheet-actions { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.mobile-sheet-actions button {
+  min-height:62px; border:1px solid #dce4ef; border-radius:14px; padding:10px 12px;
+  background:#f8faff; color:#17375e; text-align:left; font-weight:800; font-size:19px;
+}
+.mobile-sheet-actions button span { display:block; margin-top:5px; font-size:11px; }
+.mobile-sheet-actions button:last-child { color:#a9271d; background:#fff7f6; border-color:#efccc8; }
+
+body.pwa-mobile .page-section.active { display:block; }
+body.pwa-mobile .container { width:100%; max-width:none; padding:12px 10px 18px; }
+body.pwa-mobile .desktop-filter-reset { display:none !important; }
+body.pwa-mobile .mobile-home-card {
+  display:flex; flex-direction:column; gap:14px;
+  margin-bottom:12px; padding:17px 16px; border-radius:17px;
+  background:linear-gradient(135deg,#134d8d,#1a6bbb); color:#fff;
+  box-shadow:0 8px 22px rgba(19,77,141,.20);
+}
+.mobile-home-card span { display:block; color:#cae2fb; font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:.9px; }
+.mobile-home-card strong { display:block; margin-top:5px; font-size:18px; line-height:1.25; }
+.mobile-home-card small { display:block; margin-top:5px; color:#e3effc; font-size:11px; line-height:1.45; }
+.mobile-home-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.mobile-home-actions button { min-height:42px; border:1px solid #ffffff55; border-radius:12px; background:#ffffff18; color:#fff; font-size:11px; font-weight:800; }
+
+body.pwa-mobile .mobile-section-intro {
+  display:block; padding:13px 14px; margin-bottom:10px; border-radius:14px;
+  background:#eaf2fc; border:1px solid #c7d9ef; color:#17375e;
+}
+.mobile-section-intro span { display:block; font-size:9px; text-transform:uppercase; letter-spacing:.8px; font-weight:900; color:#1a5ca8; }
+.mobile-section-intro strong { display:block; margin-top:4px; font-size:11px; line-height:1.45; }
+
+/* Indicadores legíveis: um cartão amplo por vez, com encaixe ao deslizar. */
+body.pwa-mobile .kpi-grid,
+body.pwa-mobile #man-kpi-section[style] {
+  display:flex !important;
+  grid-template-columns:none !important;
+  overflow-x:auto; gap:10px; padding:2px 2px 10px;
+  scroll-snap-type:x mandatory; scroll-padding:2px; scrollbar-width:none;
+}
+body.pwa-mobile .kpi-grid::-webkit-scrollbar { display:none; }
+body.pwa-mobile .kpi-card {
+  flex:0 0 min(82vw,340px); min-width:0; scroll-snap-align:start;
+  padding:18px 16px; border-radius:16px;
+}
+body.pwa-mobile .kpi-label { font-size:10px; }
+body.pwa-mobile .kpi-value { font-size:23px; line-height:1.18; margin-top:6px; overflow-wrap:normal; }
+body.pwa-mobile .kpi-sub { font-size:10.5px; margin-top:7px; }
+
+body.pwa-mobile .tipo-grid {
+  display:flex; overflow-x:auto; gap:9px; padding:2px 2px 10px;
+  scroll-snap-type:x mandatory; scrollbar-width:none;
+}
+body.pwa-mobile .tipo-grid::-webkit-scrollbar { display:none; }
+body.pwa-mobile .tipo-card { flex:0 0 68vw; max-width:280px; scroll-snap-align:start; border-radius:14px; }
+body.pwa-mobile .tipo-section .section-title { padding-right:4px; }
+
+body.pwa-mobile .month-filter-bar { border-radius:15px; padding:13px 12px; margin-bottom:12px; }
+body.pwa-mobile .mf-chips { margin-left:-2px; margin-right:-2px; }
+body.pwa-mobile .month-chip { min-height:36px; border-radius:10px; }
+body.pwa-mobile .btn-mf-clear { min-height:39px; border-radius:10px; }
+
+/* Páginas de conteúdo sem cartões espremidos. */
+body.pwa-mobile .table-card,
+body.pwa-mobile .chart-card,
+body.pwa-mobile .risk-card,
+body.pwa-mobile .analysis-card { border-radius:15px; box-shadow:0 4px 15px rgba(13,43,78,.07); }
+body.pwa-mobile .table-card { padding:14px 0 0; overflow:hidden; }
+body.pwa-mobile .table-card > .section-title,
+body.pwa-mobile .table-card > .filter-bar,
+body.pwa-mobile .table-card > .tab-bar { margin-left:12px; margin-right:12px; }
+body.pwa-mobile .filter-bar { gap:8px; }
+body.pwa-mobile .filter-bar input,
+body.pwa-mobile .filter-bar select,
+body.pwa-mobile .filter-bar .btn-clear { min-height:44px; border-radius:11px; }
+body.pwa-mobile .tab-bar { padding:3px; border-radius:12px; background:#edf2f8; overflow:visible; }
+body.pwa-mobile .tab-btn { flex:1 1 0; min-width:0; white-space:normal; line-height:1.25; border-radius:9px; padding:9px 7px; font-size:10px; }
+
+body.pwa-mobile .mobile-table-controls {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:8px 10px; background:#edf3fa; border-top:1px solid #d8e3f0; border-bottom:1px solid #d8e3f0;
+}
+.mobile-table-controls span { color:#4f6178; font-size:9.5px; font-weight:700; }
+.mobile-table-controls div { display:flex; gap:5px; flex:0 0 auto; }
+.mobile-table-controls button { min-width:34px; height:32px; border:1px solid #b8c8da; border-radius:9px; background:#fff; color:#134d8d; font-size:11px; font-weight:900; }
+body.pwa-mobile .table-wrapper { max-height:calc(100dvh - 285px); min-height:300px; border-radius:0; }
+body.pwa-mobile table { min-width:1180px; }
+body.pwa-mobile thead th { top:0; z-index:6; }
+body.pwa-mobile thead th:first-child,
+body.pwa-mobile tbody td:first-child,
+body.pwa-mobile tfoot td:first-child {
+  position:sticky; left:0; z-index:5;
+  box-shadow:5px 0 8px -7px #0d2b4e88;
+}
+body.pwa-mobile thead th:first-child { z-index:8; background:#0d2b4e; }
+body.pwa-mobile tbody td:first-child { background:#fff; }
+body.pwa-mobile tbody tr:nth-child(even) td:first-child { background:#f8faff; }
+body.pwa-mobile tfoot td:first-child { background:#17375e; }
+body.pwa-mobile tbody td,
+body.pwa-mobile thead th,
+body.pwa-mobile tfoot td { padding:9px 7px; font-size:10px; }
+
+/* A página de gráficos vira uma lista de botões; o gráfico abre em tela horizontal. */
+body.pwa-mobile .charts-row { display:block; }
+body.pwa-mobile .charts-row .chart-card { padding:12px; margin-bottom:10px; }
+body.pwa-mobile .charts-row .chart-card h3 { display:none; }
+body.pwa-mobile .charts-row .chart-card > .chart-container { display:none; }
+body.pwa-mobile .mobile-chart-launch {
+  width:100%; min-height:76px; padding:13px 14px;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  border:1px solid #d6e0ec; border-radius:13px; background:#f8faff; color:#17375e; text-align:left;
+}
+.mobile-chart-launch span { min-width:0; }
+.mobile-chart-launch b { display:block; color:#1a5ca8; font-size:12px; }
+.mobile-chart-launch small { display:block; margin-top:5px; color:#5e6d82; font-size:10px; line-height:1.35; }
+.mobile-chart-launch > strong { flex:0 0 38px; width:38px; height:38px; border-radius:12px; display:grid; place-items:center; background:#e2edf9; color:#134d8d; font-size:19px; }
+
+body.pwa-mobile .mobile-chart-viewer {
+  position:fixed; z-index:2000; inset:0; display:none; background:#081523;
+}
+body.pwa-mobile .mobile-chart-viewer.open { display:block; }
+body.mobile-chart-open { overflow:hidden !important; touch-action:none; }
+.mobile-chart-stage { position:absolute; inset:0; display:flex; flex-direction:column; background:#f5f7fb; overflow:hidden; }
+.mobile-chart-head {
+  flex:0 0 58px; display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:8px max(12px,env(safe-area-inset-left)); background:#0d2b4e; color:#fff;
+}
+.mobile-chart-head small { display:block; color:#bcd2e9; font-size:8px; font-weight:900; text-transform:uppercase; letter-spacing:.9px; }
+.mobile-chart-head strong { display:block; max-width:74vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:3px; font-size:12px; }
+.mobile-chart-head button { width:40px; height:40px; flex:0 0 40px; border:1px solid #ffffff44; border-radius:12px; background:#ffffff18; color:#fff; font-size:23px; }
+.mobile-chart-host { flex:1 1 auto; min-height:0; padding:10px 14px 20px; }
+body.pwa-mobile .mobile-chart-host .chart-container {
+  display:block !important; min-width:0 !important; width:100% !important; height:100% !important; max-height:none !important;
+  overflow:visible !important;
+}
+body.pwa-mobile .mobile-chart-host canvas { width:100% !important; height:100% !important; max-height:none !important; }
+.mobile-rotate-hint { display:none; }
+
+/* Em retrato, a própria tela do gráfico é girada para oferecer área horizontal,
+   mesmo em aparelhos que não permitem bloquear a orientação via navegador. */
+@media (orientation:portrait) {
+  body.pwa-mobile .mobile-chart-stage {
+    width:100vh; height:100vw; inset:auto;
+    top:0; left:0; transform-origin:top left;
+    transform:rotate(90deg) translateY(-100%);
+  }
+}
+
+/* Manutenção funciona como uma página com quatro subtelas. */
+body.pwa-mobile .mobile-maintenance-tabs {
+  position:sticky; z-index:30; top:calc(var(--mobile-header-height) + env(safe-area-inset-top));
+  display:grid; grid-template-columns:repeat(4,1fr); gap:4px;
+  margin:-2px -2px 12px; padding:5px; border-radius:13px;
+  background:#fff; border:1px solid #dce4ef; box-shadow:0 3px 10px #0d2b4e12;
+}
+.mobile-maintenance-tabs button { min-width:0; min-height:38px; border:0; border-radius:9px; background:transparent; color:#64748a; font-size:9.5px; font-weight:800; }
+.mobile-maintenance-tabs button.active { background:#e8f1fb; color:#134d8d; }
+body.pwa-mobile .pool-bar-wrap { border-radius:15px; margin-top:2px; }
+body.pwa-mobile .risk-card { overflow:auto; }
+body.pwa-mobile .risk-table { min-width:720px; }
+body.pwa-mobile .analysis-card p { font-size:12px; line-height:1.65; }
+
+/* Painéis e modais continuam ocupando a tela, mas respeitam as barras do PWA. */
+body.pwa-mobile .obra-panel { z-index:1300; padding-bottom:env(safe-area-inset-bottom); }
+body.pwa-mobile .admin-modal { z-index:1400; }
+body.pwa-mobile .admin-box { padding-top:max(18px,env(safe-area-inset-top)); }
+
+@media (max-width:390px) {
+  body.pwa-mobile .mobile-app-brand small { max-width:190px; }
+  body.pwa-mobile .kpi-card { flex-basis:88vw; }
+  body.pwa-mobile .tipo-card { flex-basis:75vw; }
+  .mobile-bottom-nav button small { font-size:8.5px; }
+}

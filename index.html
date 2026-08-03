@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css?v=17"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css?v=18"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
 <div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
 <div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="installPwaBtn" class="secondary" hidden>📲 Instalar app</button><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="backupBtn" class="admin-only">💾 Backups</button><button id="usersBtn" class="admin-only">👥 Usuários</button><button id="logoutBtn" class="secondary">Sair</button></div>
 <div id="importModal" class="admin-modal admin-only"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha do CAPEX. A aba de manutenção pode ser importada separadamente, sem alterar as Obras.</p><label class="import-scope-label">O que deseja atualizar?<select id="importScope"><option value="all">Obras e Manutenção</option><option value="maintenance">Somente Manutenção</option><option value="works">Somente Obras</option></select></label><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div id="importCheck" class="import-check" hidden></div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
@@ -69,6 +69,33 @@
 </div></div>
 <div id="dashboardRoot" hidden>
 
+<!-- V18 — navegação exclusiva do aplicativo instalado no celular -->
+<div id="mobileAppHeader" class="mobile-app-header" aria-hidden="true">
+  <div class="mobile-app-brand">
+    <div class="mobile-app-logo">HC</div>
+    <div>
+      <strong>HAPCAPEX</strong>
+      <small id="mobileHeaderContext">Resumo executivo</small>
+    </div>
+  </div>
+  <button id="mobileMenuBtn" class="mobile-menu-btn" type="button" aria-label="Abrir menu" aria-expanded="false">☰</button>
+</div>
+<div id="mobileMenuOverlay" class="mobile-menu-overlay"></div>
+<aside id="mobileActionSheet" class="mobile-action-sheet" aria-hidden="true">
+  <div class="mobile-sheet-handle"></div>
+  <div class="mobile-sheet-head">
+    <div><strong>Menu do aplicativo</strong><small id="mobileUserLabel"></small></div>
+    <button id="mobileMenuClose" type="button" aria-label="Fechar menu">×</button>
+  </div>
+  <div class="mobile-sheet-actions">
+    <button type="button" class="admin-only" data-mobile-proxy="importBtn">📥 <span>Importar Excel</span></button>
+    <button type="button" class="admin-only" data-mobile-proxy="settingsBtn">⚙️ <span>Editar KPIs</span></button>
+    <button type="button" class="admin-only" data-mobile-proxy="backupBtn">💾 <span>Backups</span></button>
+    <button type="button" class="admin-only" data-mobile-proxy="usersBtn">👥 <span>Usuários</span></button>
+    <button type="button" data-mobile-action="logout">🚪 <span>Sair</span></button>
+  </div>
+</aside>
+
 <header>
   <div>
     <h1 id="header-title">📊 Dashboard CAPEX 2026 — Controle Financeiro de Obras</h1>
@@ -85,21 +112,28 @@
 <!-- ============================================================ PAGE OBRAS ============================================================ -->
 <div id="page-obras" class="page-section active">
 <div class="container">
-  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+  <section class="mobile-home-card" data-mobile-view="summary">
+    <div><span>Visão executiva</span><strong>Controle financeiro em formato móvel</strong><small>Deslize os indicadores e abra cada área pela barra inferior.</small></div>
+    <div class="mobile-home-actions">
+      <button type="button" data-mobile-go="works">Ver obras</button>
+      <button type="button" data-mobile-go="charts">Ver gráficos</button>
+    </div>
+  </section>
+  <div class="desktop-filter-reset" style="display:flex;justify-content:flex-end;margin-bottom:8px">
     <button class="btn-clear" onclick="clearAllObrasFilters()" style="background:#fff0e8;border-color:var(--laranja);color:var(--laranja);font-weight:700;padding:7px 16px">🔄 Limpar todos os filtros</button>
   </div>
-  <div class="month-filter-bar">
+  <div class="month-filter-bar" data-mobile-view="summary">
     <div class="mf-label">📅 Filtro por Período</div>
     <div class="mf-chips" id="month-chips"></div>
     <span class="mf-info" id="mf-info"></span>
     <button class="btn-mf-clear" onclick="clearMonthFilter()">✕ Todos os meses</button>
   </div>
-  <div class="kpi-grid" id="kpi-section"></div>
-  <div class="tipo-section">
+  <div class="kpi-grid" id="kpi-section" data-mobile-view="summary"></div>
+  <div class="tipo-section" data-mobile-view="summary">
     <div class="section-title"><span>🏷️</span> CAPEX por Tipologia — seleção múltipla: clique para filtrar <span style="font-size:11px;font-weight:400;color:var(--texto-suave);margin-left:8px">clique em "Todas" para limpar</span></div>
     <div class="tipo-grid" id="tipo-grid"></div>
   </div>
-  <div class="table-card">
+  <div class="table-card" data-mobile-view="works">
     <div class="section-title"><span>📋</span> Fluxo Financeiro Mensal por Obra (R$)</div>
     <div class="filter-bar">
       <input type="text" id="filterInput" placeholder="🔍  Buscar obra pelo nome..." oninput="applyFilter()">
@@ -118,7 +152,8 @@
       <div class="table-wrapper" id="table-real-wrapper"></div>
     </div>
   </div>
-  <div class="charts-row">
+  <div class="charts-row" data-mobile-view="charts">
+    <div class="mobile-section-intro"><span>Gráficos</span><strong>Toque em “Abrir gráfico” para visualizar em tela horizontal.</strong></div>
     <div class="chart-card full">
       <h3>📈 Fluxo Previsto vs Realizado (Jan–Dez 2026)</h3>
       <div class="chart-container" style="height:420px"><canvas id="chartLine"></canvas></div>
@@ -137,11 +172,11 @@
     </div>
 
   </div>
-  <div class="risk-card">
+  <div class="risk-card" data-mobile-view="risks">
     <div class="section-title"><span>⚠️</span> Painel de Riscos — Desvio Previsto vs Realizado</div>
     <div id="risk-panel"></div>
   </div>
-  <div class="analysis-card">
+  <div class="analysis-card" data-mobile-view="risks">
     <div class="section-title"><span>🔍</span> Análise Interpretativa de Riscos — Coordenação Sala Técnica</div>
     <div id="analysis-text"></div>
   </div>
@@ -151,17 +186,23 @@
 <!-- ============================================================ PAGE MANUTENÇÃO ============================================================ -->
 <div id="page-manutencao" class="page-section">
 <div class="container">
-  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+  <div class="mobile-maintenance-tabs">
+    <button type="button" class="active" data-mobile-man="summary">Resumo</button>
+    <button type="button" data-mobile-man="table">Obras</button>
+    <button type="button" data-mobile-man="charts">Gráficos</button>
+    <button type="button" data-mobile-man="risks">Riscos</button>
+  </div>
+  <div class="desktop-filter-reset" style="display:flex;justify-content:flex-end;margin-bottom:8px">
     <button class="btn-clear" onclick="clearAllManFilters()" style="background:#fff0e8;border-color:var(--laranja);color:var(--laranja);font-weight:700;padding:7px 16px">🔄 Limpar todos os filtros</button>
   </div>
-  <div class="month-filter-bar">
+  <div class="month-filter-bar" data-man-mobile-view="summary">
     <div class="mf-label">📅 Filtro por Período</div>
     <div class="mf-chips" id="man-month-chips"></div>
     <span class="mf-info" id="man-mf-info"></span>
     <button class="btn-mf-clear" onclick="clearManMonthFilter()">✕ Todos os meses</button>
   </div>
-  <div class="kpi-grid" id="man-kpi-section" style="grid-template-columns: repeat(4, 1fr);"></div>
-  <div class="pool-bar-wrap">
+  <div class="kpi-grid" data-man-mobile-view="summary" id="man-kpi-section" style="grid-template-columns: repeat(4, 1fr);"></div>
+  <div class="pool-bar-wrap" data-man-mobile-view="summary">
     <div class="pool-bar-header">
       <span>💰 Consumo do Pacote Anual Atual — R$ 19.609.389,82</span>
       <span id="man-pool-pct"></span>
@@ -175,7 +216,8 @@
       <span><i class="dot" style="background:var(--azul-claro);opacity:.7"></i> Previsto restante (período)</span>
     </div>
   </div>
-  <div class="charts-row">
+  <div class="charts-row" data-man-mobile-view="charts">
+    <div class="mobile-section-intro"><span>Gráficos de manutenção</span><strong>Abra cada gráfico em modo horizontal.</strong></div>
     <div class="chart-card full">
       <h3>📈 Fluxo Previsto vs Realizado — Manutenção (Jan–Dez 2026)</h3>
       <div class="chart-container" style="height:360px"><canvas id="manChartLine"></canvas></div>
@@ -185,7 +227,7 @@
       <div class="chart-container" style="height:340px"><canvas id="manChartBar"></canvas></div>
     </div>
   </div>
-  <div class="table-card">
+  <div class="table-card" data-man-mobile-view="table">
     <div class="section-title"><span>📋</span> Fluxo Realizado por Obra de Manutenção (R$)</div>
     <div class="filter-bar">
       <input type="text" id="manFilterInput" placeholder="🔍  Buscar obra pelo nome ou ordem interna..." oninput="applyManFilter()">
@@ -194,11 +236,31 @@
     </div>
     <div class="table-wrapper" id="man-table-wrapper"></div>
   </div>
-  <div class="risk-card">
+  <div class="risk-card" data-man-mobile-view="risks">
     <div class="section-title"><span>⚠️</span> Painel de Riscos — Obras com Maior Consumo do Pacote</div>
     <div id="man-risk-panel"></div>
   </div>
 </div>
+</div>
+
+
+<nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Navegação do aplicativo">
+  <button type="button" class="active" data-mobile-screen="summary"><span>⌂</span><small>Resumo</small></button>
+  <button type="button" data-mobile-screen="works"><span>▤</span><small>Obras</small></button>
+  <button type="button" data-mobile-screen="charts"><span>▥</span><small>Gráficos</small></button>
+  <button type="button" data-mobile-screen="risks"><span>⚠</span><small>Riscos</small></button>
+  <button type="button" data-mobile-screen="maintenance"><span>⚒</span><small>Manut.</small></button>
+</nav>
+
+<div id="mobileChartViewer" class="mobile-chart-viewer" aria-hidden="true">
+  <div class="mobile-chart-stage">
+    <div class="mobile-chart-head">
+      <div><small>Visualização horizontal</small><strong id="mobileChartTitle">Gráfico</strong></div>
+      <button id="mobileChartClose" type="button" aria-label="Fechar gráfico">×</button>
+    </div>
+    <div id="mobileChartHost" class="mobile-chart-host"></div>
+    <div class="mobile-rotate-hint">O gráfico foi ampliado para leitura horizontal.</div>
+  </div>
 </div>
 
 
@@ -261,4 +323,4 @@
   </div>
 </div>
 
-</div><script src="config.js"></script><script src="original-baseline.js?v=17"></script><script src="bootstrap.js?v=17"></script></body></html>
+</div><script src="config.js"></script><script src="original-baseline.js?v=18"></script><script src="bootstrap.js?v=18"></script></body></html>

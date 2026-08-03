@@ -1,4 +1,4 @@
-const APP_VERSION = '16.0.0';
+const APP_VERSION = '18.0.0';
 const cfg = window.CAPEX_CONFIG || {};
 const sb = window.supabase.createClient(
   cfg.supabaseUrl,
@@ -138,6 +138,7 @@ async function loadApp() {
   document.querySelectorAll('.admin-only').forEach(
     element => element.hidden = profile.role !== 'admin'
   );
+  syncMobileActionPermissions();
 
   const [{ data: items, error: itemsError }, { data: settings, error: settingsError }] =
     await Promise.all([
@@ -190,6 +191,10 @@ async function loadApp() {
     coreLoaded = true;
     const script = document.createElement('script');
     script.src = 'dashboard-core.js?v=' + Date.now();
+    script.onload = () => {
+      applyMobileAppMode();
+      initMobileAppShell();
+    };
     document.body.appendChild(script);
   }
 
@@ -988,5 +993,258 @@ $('#userForm').onsubmit=async e=>{
   form.reset();form.role.value='viewer';await loadUsers();
  }catch(err){status.className='user-status error';status.textContent=err.message||String(err)}finally{submit.disabled=false}
 };
+
+
+// ============================================================
+// V18 — EXPERIÊNCIA MÓVEL EXCLUSIVA DO PWA INSTALADO
+// ============================================================
+let mobileShellInitialized = false;
+let mobileChartRestore = null;
+let mobileResizeTimer = null;
+
+function isMobileAppMode() {
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
+  const mobileAgent = /android|iphone|ipod|mobile/i.test(navigator.userAgent || '');
+  const phoneDimension = Math.min(window.innerWidth, window.innerHeight) <= 720;
+  return isPwaStandalone() && phoneDimension && (coarsePointer || mobileAgent);
+}
+
+function applyMobileAppMode() {
+  const enabled = isMobileAppMode();
+  document.body.classList.toggle('pwa-mobile', enabled);
+  const header = $('#mobileAppHeader');
+  if (header) header.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+  if (enabled && coreLoaded) initMobileAppShell();
+  if (!enabled) closeMobileMenu();
+  return enabled;
+}
+
+function syncMobileActionPermissions() {
+  const label = $('#mobileUserLabel');
+  if (label && currentProfile) {
+    label.textContent = `${currentProfile.full_name || currentProfile.email} · ${currentProfile.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
+  }
+  document.querySelectorAll('#mobileActionSheet .admin-only').forEach(element => {
+    element.hidden = currentProfile?.role !== 'admin';
+  });
+}
+
+function showCorePage(pageName) {
+  document.querySelectorAll('.page-section').forEach(section => section.classList.remove('active'));
+  const target = document.getElementById(`page-${pageName}`);
+  if (target) target.classList.add('active');
+  document.querySelectorAll('.page-btn').forEach(button => button.classList.remove('active'));
+  const desktopButton = [...document.querySelectorAll('.page-btn')]
+    .find(button => button.getAttribute('onclick')?.includes(`'${pageName}'`));
+  if (desktopButton) desktopButton.classList.add('active');
+}
+
+function setMobileVisibility(selector, activeValue, dataKey) {
+  document.querySelectorAll(selector).forEach(element => {
+    element.classList.toggle('mobile-view-hidden', element.dataset[dataKey] !== activeValue);
+  });
+}
+
+function updateMobileHeader(screen) {
+  const titles = {
+    summary: 'Resumo executivo',
+    works: 'Obras e fluxo mensal',
+    charts: 'Gráficos financeiros',
+    risks: 'Riscos e análise',
+    maintenance: 'Manutenção'
+  };
+  const context = $('#mobileHeaderContext');
+  if (context) context.textContent = titles[screen] || 'HAPCAPEX';
+}
+
+function resizeVisibleCharts() {
+  clearTimeout(mobileResizeTimer);
+  mobileResizeTimer = setTimeout(() => {
+    document.querySelectorAll('canvas').forEach(canvas => {
+      if (!canvas.offsetParent) return;
+      try { window.Chart?.getChart(canvas)?.resize(); } catch (_) {}
+    });
+  }, 100);
+}
+
+function mobileSetScreen(screen, options = {}) {
+  if (!document.body.classList.contains('pwa-mobile')) return;
+  const normalized = ['summary','works','charts','risks','maintenance'].includes(screen) ? screen : 'summary';
+  document.body.dataset.mobileScreen = normalized;
+  if (normalized === 'maintenance') {
+    showCorePage('manutencao');
+    if (!options.keepMaintenanceView) mobileSetMaintenanceView(document.body.dataset.manScreen || 'summary', true);
+  } else {
+    showCorePage('obras');
+    setMobileVisibility('#page-obras [data-mobile-view]', normalized, 'mobileView');
+  }
+  document.querySelectorAll('#mobileBottomNav [data-mobile-screen]').forEach(button => {
+    button.classList.toggle('active', button.dataset.mobileScreen === normalized);
+  });
+  updateMobileHeader(normalized);
+  closeMobileMenu();
+  window.scrollTo({ top: 0, behavior: options.instant ? 'auto' : 'smooth' });
+  resizeVisibleCharts();
+}
+
+function mobileSetMaintenanceView(view, noScroll = false) {
+  const normalized = ['summary','table','charts','risks'].includes(view) ? view : 'summary';
+  document.body.dataset.manScreen = normalized;
+  setMobileVisibility('#page-manutencao [data-man-mobile-view]', normalized, 'manMobileView');
+  document.querySelectorAll('[data-mobile-man]').forEach(button => {
+    button.classList.toggle('active', button.dataset.mobileMan === normalized);
+  });
+  const labels = { summary:'Manutenção · resumo', table:'Manutenção · obras', charts:'Manutenção · gráficos', risks:'Manutenção · riscos' };
+  const context = $('#mobileHeaderContext');
+  if (context && document.body.dataset.mobileScreen === 'maintenance') context.textContent = labels[normalized];
+  if (!noScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
+  resizeVisibleCharts();
+}
+
+function openMobileMenu() {
+  if (!document.body.classList.contains('pwa-mobile')) return;
+  $('#mobileActionSheet')?.classList.add('open');
+  $('#mobileMenuOverlay')?.classList.add('open');
+  $('#mobileActionSheet')?.setAttribute('aria-hidden', 'false');
+  $('#mobileMenuBtn')?.setAttribute('aria-expanded', 'true');
+}
+function closeMobileMenu() {
+  $('#mobileActionSheet')?.classList.remove('open');
+  $('#mobileMenuOverlay')?.classList.remove('open');
+  $('#mobileActionSheet')?.setAttribute('aria-hidden', 'true');
+  $('#mobileMenuBtn')?.setAttribute('aria-expanded', 'false');
+}
+
+function addMobileChartLaunchers() {
+  document.querySelectorAll('.chart-card').forEach(card => {
+    if (card.querySelector('.mobile-chart-launch')) return;
+    const canvas = card.querySelector('canvas');
+    const container = canvas?.closest('.chart-container');
+    if (!canvas || !container) return;
+    const title = card.querySelector('h3')?.textContent?.trim() || 'Gráfico financeiro';
+    const launcher = document.createElement('button');
+    launcher.type = 'button';
+    launcher.className = 'mobile-chart-launch';
+    launcher.innerHTML = `<span><b>Ver gráfico</b><small>${esc(title.replace(/^[^\wÀ-ÿ]+/, ''))}</small></span><strong>↗</strong>`;
+    launcher.addEventListener('click', () => openMobileChart(container, title));
+    card.insertBefore(launcher, container);
+  });
+}
+
+function addMobileTableControls() {
+  document.querySelectorAll('.table-wrapper').forEach(wrapper => {
+    if (wrapper.previousElementSibling?.classList.contains('mobile-table-controls')) return;
+    const controls = document.createElement('div');
+    controls.className = 'mobile-table-controls';
+    controls.innerHTML = '<span>Deslize para consultar os meses</span><div><button type="button" data-scroll="left" aria-label="Rolar para esquerda">←</button><button type="button" data-scroll="right" aria-label="Rolar para direita">→</button><button type="button" data-scroll="end">Fim</button></div>';
+    controls.querySelector('[data-scroll="left"]').onclick = () => wrapper.scrollBy({ left: -Math.max(260, wrapper.clientWidth * .75), behavior: 'smooth' });
+    controls.querySelector('[data-scroll="right"]').onclick = () => wrapper.scrollBy({ left: Math.max(260, wrapper.clientWidth * .75), behavior: 'smooth' });
+    controls.querySelector('[data-scroll="end"]').onclick = () => wrapper.scrollTo({ left: wrapper.scrollWidth, behavior: 'smooth' });
+    wrapper.parentNode.insertBefore(controls, wrapper);
+  });
+}
+
+async function tryLandscapeMode(viewer) {
+  try {
+    if (!document.fullscreenElement && viewer.requestFullscreen) await viewer.requestFullscreen();
+  } catch (_) {}
+  try {
+    if (screen.orientation?.lock) await screen.orientation.lock('landscape');
+  } catch (_) {}
+}
+
+async function openMobileChart(container, title) {
+  if (!document.body.classList.contains('pwa-mobile') || mobileChartRestore) return;
+  const viewer = $('#mobileChartViewer');
+  const host = $('#mobileChartHost');
+  const titleElement = $('#mobileChartTitle');
+  if (!viewer || !host) return;
+
+  const placeholder = document.createComment('mobile-chart-placeholder');
+  container.parentNode.insertBefore(placeholder, container);
+  mobileChartRestore = { container, placeholder };
+  host.appendChild(container);
+  if (titleElement) titleElement.textContent = title.replace(/^[^\wÀ-ÿ]+/, '').trim();
+  viewer.classList.add('open');
+  viewer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('mobile-chart-open');
+  await tryLandscapeMode(viewer);
+  setTimeout(() => {
+    const canvas = container.querySelector('canvas');
+    try { window.Chart?.getChart(canvas)?.resize(); } catch (_) {}
+  }, 180);
+}
+
+async function closeMobileChart() {
+  if (!mobileChartRestore) return;
+  const { container, placeholder } = mobileChartRestore;
+  placeholder.parentNode?.insertBefore(container, placeholder);
+  placeholder.remove();
+  mobileChartRestore = null;
+  $('#mobileChartViewer')?.classList.remove('open');
+  $('#mobileChartViewer')?.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('mobile-chart-open');
+  try { screen.orientation?.unlock?.(); } catch (_) {}
+  try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (_) {}
+  setTimeout(() => {
+    const canvas = container.querySelector('canvas');
+    try { window.Chart?.getChart(canvas)?.resize(); } catch (_) {}
+  }, 120);
+}
+
+function initMobileAppShell() {
+  if (!isMobileAppMode()) return;
+  document.body.classList.add('pwa-mobile');
+  syncMobileActionPermissions();
+  addMobileChartLaunchers();
+  addMobileTableControls();
+
+  if (!mobileShellInitialized) {
+    mobileShellInitialized = true;
+    $('#mobileMenuBtn')?.addEventListener('click', openMobileMenu);
+    $('#mobileMenuClose')?.addEventListener('click', closeMobileMenu);
+    $('#mobileMenuOverlay')?.addEventListener('click', closeMobileMenu);
+    $('#mobileChartClose')?.addEventListener('click', closeMobileChart);
+
+    document.querySelectorAll('#mobileBottomNav [data-mobile-screen]').forEach(button => {
+      button.addEventListener('click', () => mobileSetScreen(button.dataset.mobileScreen));
+    });
+    document.querySelectorAll('[data-mobile-go]').forEach(button => {
+      button.addEventListener('click', () => mobileSetScreen(button.dataset.mobileGo));
+    });
+    document.querySelectorAll('[data-mobile-man]').forEach(button => {
+      button.addEventListener('click', () => mobileSetMaintenanceView(button.dataset.mobileMan));
+    });
+    document.querySelectorAll('[data-mobile-proxy]').forEach(button => {
+      button.addEventListener('click', () => {
+        closeMobileMenu();
+        document.getElementById(button.dataset.mobileProxy)?.click();
+      });
+    });
+    document.querySelector('[data-mobile-action="logout"]')?.addEventListener('click', () => {
+      closeMobileMenu();
+      $('#logoutBtn')?.click();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && mobileChartRestore && $('#mobileChartViewer')?.classList.contains('open')) {
+        void closeMobileChart();
+      }
+    });
+  }
+
+  mobileSetMaintenanceView(document.body.dataset.manScreen || 'summary', true);
+  mobileSetScreen(document.body.dataset.mobileScreen || 'summary', { instant:true, keepMaintenanceView:true });
+}
+
+window.addEventListener('resize', () => {
+  clearTimeout(mobileResizeTimer);
+  mobileResizeTimer = setTimeout(() => {
+    applyMobileAppMode();
+    resizeVisibleCharts();
+  }, 160);
+});
+window.addEventListener('orientationchange', () => setTimeout(resizeVisibleCharts, 250));
+
+applyMobileAppMode();
 
 loadApp().catch(e=>{$('#loginMsg').textContent='Erro ao carregar: '+e.message;console.error(e)});
