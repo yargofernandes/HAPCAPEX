@@ -394,3 +394,152 @@
 .import-check span { font-size:12px; }
 
 
+
+
+/* ============================================================
+   V16 — PWA, layout móvel e backups
+   ============================================================ */
+html { max-width: 100%; overflow-x: hidden; }
+body { max-width: 100%; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+button, input, select, textarea { font: inherit; }
+button { touch-action: manipulation; }
+.table-wrapper, .user-table-wrap, .backup-table-wrap, .chart-card, .risk-card {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}
+
+.backup-manager-box { width: min(1180px, 100%); }
+.backup-summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:18px 0; }
+.backup-summary-grid > div { background:#f4f6fa; border:1px solid #dde3ee; border-radius:11px; padding:14px; }
+.backup-summary-grid span { display:block; color:#667085; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
+.backup-summary-grid strong { display:block; color:#0d2b4e; font-size:16px; margin:5px 0 3px; }
+.backup-summary-grid small { color:#667085; font-size:11px; }
+.backup-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.backup-primary { border:0; border-radius:8px; padding:10px 14px; background:#1a4b8c; color:#fff; font-weight:800; cursor:pointer; }
+.backup-primary.outline { background:#fff; color:#0d2b4e; border:1px solid #9fb2cb; }
+.backup-primary:disabled { opacity:.55; cursor:not-allowed; }
+.backup-status { min-height:24px; padding:5px 0; color:#5a6882; font-size:12px; }
+.backup-status.success { color:#16794a; font-weight:700; }
+.backup-status.error { color:#b42318; font-weight:700; }
+.backup-warning { margin:6px 0 14px; padding:10px 12px; border-radius:9px; background:#fff8e8; border:1px solid #f1d18a; color:#76520b; font-size:11px; line-height:1.45; }
+.backup-table-wrap { overflow:auto; max-height:480px; border:1px solid #dde3ee; border-radius:10px; }
+.backup-table { width:100%; min-width:940px; border-collapse:collapse; }
+.backup-table th { position:sticky; top:0; z-index:2; padding:10px; background:#0d2b4e; color:#fff; text-align:left; font-size:11px; }
+.backup-table td { padding:10px; border-bottom:1px solid #e5e9f0; font-size:12px; vertical-align:middle; text-align:left; }
+.backup-table tr:nth-child(even) td { background:#f8faff; }
+.backup-table td:first-child strong, .backup-table td:first-child small { display:block; }
+.backup-table td:first-child small { color:#667085; margin-top:3px; }
+.backup-type { display:inline-block; padding:4px 9px; border-radius:14px; font-size:10px; font-weight:800; }
+.backup-type.automatic { background:#e8f0fb; color:#1a4b8c; }
+.backup-type.manual { background:#e3f6eb; color:#16794a; }
+.backup-type.pre_restore { background:#fff0e5; color:#a34b0b; }
+.backup-row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.backup-row-actions button { border:1px solid #b9c6d8; border-radius:7px; background:#fff; color:#0d2b4e; padding:6px 9px; font-size:10px; font-weight:800; cursor:pointer; }
+.backup-row-actions button.danger { border-color:#e9aaa5; color:#a9271d; background:#fff8f7; }
+.pwa-install-box { width:min(560px,100%); }
+.pwa-install-steps { margin-top:18px; padding:15px 18px; border-radius:10px; background:#eef5ff; color:#17375e; line-height:1.7; }
+.pwa-install-steps ol { padding-left:20px; }
+
+@media (max-width: 760px) {
+  body { font-size:12px; padding-bottom:env(safe-area-inset-bottom); }
+  #authGate { padding:14px; }
+  .auth-card { padding:22px 18px; border-radius:13px; }
+
+  .admin-toolbar {
+    padding:8px max(10px, env(safe-area-inset-left));
+    gap:6px; flex-wrap:nowrap; overflow-x:auto; overscroll-behavior-x:contain;
+  }
+  .admin-toolbar > strong, .admin-toolbar > small, .admin-toolbar .spacer { display:none; }
+  .admin-toolbar button { flex:0 0 auto; min-height:40px; font-size:11px; padding:8px 11px; }
+
+  header { padding:14px 14px; align-items:flex-start; gap:10px; flex-direction:column; }
+  header h1 { font-size:16px; line-height:1.3; }
+  header .subtitle { font-size:11px; line-height:1.4; }
+  header .badge { font-size:10px; padding:4px 10px; }
+
+  .page-nav { padding:0 8px; overflow-x:auto; flex-wrap:nowrap; overscroll-behavior-x:contain; }
+  .page-btn { flex:0 0 auto; min-height:44px; padding:11px 16px; }
+  .container { width:100%; padding:14px 10px 36px; }
+
+  .kpi-grid { grid-template-columns:1fr 1fr; gap:9px; margin-bottom:18px; }
+  .kpi-card { padding:14px 13px; min-width:0; }
+  .kpi-label { font-size:9px; line-height:1.25; }
+  .kpi-value { font-size:17px; overflow-wrap:anywhere; }
+  .kpi-sub { font-size:9.5px; line-height:1.35; }
+
+  .tipo-section { margin-bottom:18px; }
+  .tipo-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .tipo-card { padding:11px 10px; min-width:0; }
+  .tipo-capex { font-size:12px; overflow-wrap:anywhere; }
+
+  .month-filter-bar { padding:12px; gap:9px; align-items:stretch; }
+  .month-filter-bar .mf-label, .month-filter-bar select, .mf-info, .btn-mf-clear { width:100%; }
+  .month-filter-bar .mf-chips { flex-wrap:nowrap; overflow-x:auto; padding-bottom:5px; overscroll-behavior-x:contain; }
+  .month-chip { flex:0 0 auto; min-height:32px; display:flex; align-items:center; }
+
+  .charts-row { gap:12px; margin-bottom:18px; }
+  .chart-card, .table-card, .risk-card, .analysis-card { border-radius:10px; padding:14px 12px; margin-bottom:16px; }
+  .chart-card { overflow-x:auto; }
+  .chart-card .chart-container { min-width:620px; }
+  .chart-card h3 { position:sticky; left:0; width:max-content; max-width:calc(100vw - 44px); }
+  canvas { max-height:360px; }
+
+  .section-title { font-size:13px; line-height:1.35; margin-bottom:12px; }
+  .filter-bar { align-items:stretch; }
+  .filter-bar input, .filter-bar select, .filter-bar .btn-clear { width:100%; min-width:0; min-height:42px; }
+  .filter-count { width:100%; }
+
+  .table-card { overflow:hidden; }
+  .table-wrapper { width:100%; max-height:68vh; overflow:auto; touch-action:pan-x pan-y; }
+  table { min-width:1250px; }
+  thead th:first-child { min-width:220px; max-width:220px; }
+  tbody td:first-child { min-width:220px; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  tbody td, thead th, tfoot td { padding:8px 7px; font-size:10px; }
+
+  .risk-card { overflow-x:auto; }
+  .risk-table { min-width:760px; }
+  .analysis-card { padding:17px 14px; }
+  .analysis-card p { font-size:12px; line-height:1.6; }
+
+  .tab-bar { overflow-x:auto; flex-wrap:nowrap; overscroll-behavior-x:contain; }
+  .tab-btn { flex:0 0 auto; min-height:40px; }
+  .pool-bar-wrap { padding:13px 12px; }
+  .pool-bar-header { gap:8px; flex-wrap:wrap; }
+
+  .obra-panel { width:100vw; max-width:100vw; right:-100vw; height:100dvh; }
+  .obra-panel-header { padding:17px 16px 15px; padding-top:max(17px, env(safe-area-inset-top)); }
+  .panel-section { padding:15px 14px; }
+  .panel-kpis { grid-template-columns:1fr; }
+  .panel-dates { grid-template-columns:1fr; }
+  .chart-wrap { overflow-x:auto; }
+  .chart-wrap canvas { min-width:540px; }
+  .dev-strip { overflow-x:auto; flex-wrap:nowrap; }
+  .dev-chip { min-width:78px; flex:0 0 auto; }
+  .total-row { flex-wrap:wrap; }
+
+  .admin-modal { padding:0; align-items:stretch; }
+  .admin-box { width:100%; min-height:100dvh; border-radius:0; margin:0; padding:18px 12px max(18px, env(safe-area-inset-bottom)); }
+  .admin-actions { position:sticky; bottom:0; z-index:5; margin:18px -12px -18px; padding:12px; background:#fff; border-top:1px solid #dde3ee; }
+  .admin-actions button { min-height:42px; }
+  .kpi-summary, .backup-summary-grid { grid-template-columns:1fr 1fr; }
+  .detail-head, .user-manager-head, .user-list-head { flex-direction:column; align-items:stretch; }
+  .detail-head .add-row, .secondary-action { width:100%; min-height:42px; }
+  .detail-row { grid-template-columns:1fr; padding:10px; border:1px solid #dde3ee; border-radius:9px; }
+  .remove-row { min-height:40px; }
+  .backup-toolbar { align-items:stretch; }
+  .backup-toolbar button { width:100%; min-height:43px; }
+  .backup-table-wrap, .user-table-wrap { max-height:58vh; }
+  .backup-warning { font-size:10.5px; }
+}
+
+@media (max-width: 420px) {
+  .kpi-grid { grid-template-columns:1fr; }
+  .tipo-grid { grid-template-columns:1fr 1fr; }
+  .kpi-summary, .backup-summary-grid { grid-template-columns:1fr; }
+  .chart-card .chart-container { min-width:560px; }
+}
+
+@media (display-mode: standalone) {
+  body { padding-top:env(safe-area-inset-top); }
+  .admin-toolbar { top:env(safe-area-inset-top); }
+}

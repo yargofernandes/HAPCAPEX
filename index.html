@@ -1,6 +1,6 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/icon-192.png"><link rel="stylesheet" href="styles.css?v=16"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
 <div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
-<div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="usersBtn" class="admin-only">👥 Usuários</button><button id="logoutBtn" class="secondary">Sair</button></div>
+<div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="installPwaBtn" class="secondary" hidden>📲 Instalar app</button><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="backupBtn" class="admin-only">💾 Backups</button><button id="usersBtn" class="admin-only">👥 Usuários</button><button id="logoutBtn" class="secondary">Sair</button></div>
 <div id="importModal" class="admin-modal admin-only"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha do CAPEX. A aba de manutenção pode ser importada separadamente, sem alterar as Obras.</p><label class="import-scope-label">O que deseja atualizar?<select id="importScope"><option value="all">Obras e Manutenção</option><option value="maintenance">Somente Manutenção</option><option value="works">Somente Obras</option></select></label><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div id="importCheck" class="import-check" hidden></div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
 <div id="settingsModal" class="admin-modal admin-only"><form id="settingsForm" class="admin-box kpi-editor-box">
 <h2>Gerenciar contingenciamentos e aportes</h2>
@@ -44,6 +44,29 @@
   <div id="passwordFormStatus" class="user-status" role="status"></div>
   <div class="admin-actions"><button type="button" data-close="passwordModal">Cancelar</button><button class="save" type="submit">Salvar nova senha</button></div>
 </form></div>
+
+<div id="backupModal" class="admin-modal admin-only"><div class="admin-box backup-manager-box">
+  <div class="user-manager-head"><div><h2>Backups e recuperação</h2><p>O sistema cria no máximo um backup automático a cada 24 horas. Os backups automáticos ficam disponíveis por 14 dias; backups manuais e de pré-restauração, por 60 dias.</p></div><button type="button" class="modal-x" data-close="backupModal" aria-label="Fechar">×</button></div>
+  <div class="backup-summary-grid">
+    <div><span>Backup automático</span><strong>A cada 24 horas</strong><small>Executado ao abrir o aplicativo</small></div>
+    <div><span>Retenção diária</span><strong>14 dias</strong><small>Versões automáticas</small></div>
+    <div><span>Restauração segura</span><strong>Pré-backup automático</strong><small>Antes de substituir os dados</small></div>
+  </div>
+  <div class="backup-toolbar">
+    <button id="createBackupBtn" type="button" class="backup-primary">💾 Criar backup agora</button>
+    <button id="exportBackupBtn" type="button" class="backup-primary outline">⬇️ Exportar backup completo (JSON)</button>
+    <button id="refreshBackupsBtn" type="button" class="secondary-action">↻ Atualizar lista</button>
+  </div>
+  <div id="backupStatus" class="backup-status" role="status"></div>
+  <div class="backup-warning">A restauração substitui os itens e as configurações financeiras pelo estado escolhido. Usuários, senhas e o histórico de auditoria não são apagados.</div>
+  <div class="backup-table-wrap"><table class="backup-table"><thead><tr><th>Data e hora</th><th>Tipo</th><th>Registros</th><th>Tamanho</th><th>Criado por</th><th>Ações</th></tr></thead><tbody id="backupsTableBody"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div>
+  <div class="admin-actions"><button type="button" data-close="backupModal">Fechar</button></div>
+</div></div>
+<div id="pwaInstallModal" class="admin-modal"><div class="admin-box pwa-install-box">
+  <div class="user-manager-head"><div><h2>Instalar HAPCAPEX</h2><p id="pwaInstallText">Instale o aplicativo para abrir em tela própria no celular ou computador.</p></div><button type="button" class="modal-x" data-close="pwaInstallModal" aria-label="Fechar">×</button></div>
+  <div class="pwa-install-steps" id="pwaInstallSteps"></div>
+  <div class="admin-actions"><button type="button" data-close="pwaInstallModal">Entendi</button></div>
+</div></div>
 <div id="dashboardRoot" hidden>
 
 <header>
@@ -238,4 +261,4 @@
   </div>
 </div>
 
-</div><script src="config.js"></script><script src="original-baseline.js"></script><script src="bootstrap.js"></script></body></html>
+</div><script src="config.js"></script><script src="original-baseline.js?v=16"></script><script src="bootstrap.js?v=16"></script></body></html>

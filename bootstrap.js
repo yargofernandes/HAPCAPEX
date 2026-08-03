@@ -1,3 +1,4 @@
+const APP_VERSION = '16.0.0';
 const cfg = window.CAPEX_CONFIG || {};
 const sb = window.supabase.createClient(
   cfg.supabaseUrl,
@@ -9,6 +10,8 @@ let currentProfile = null;
 let pendingImport = null;
 let coreLoaded = false;
 let usersCache = [];
+let backupsCache = [];
+let deferredInstallPrompt = null;
 
 const monthKeys = [
   'jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez',
@@ -189,6 +192,10 @@ async function loadApp() {
     script.src = 'dashboard-core.js?v=' + Date.now();
     document.body.appendChild(script);
   }
+
+  // O backup é criado no servidor e não depende do conteúdo da memória do navegador.
+  // A função do banco impede mais de uma versão automática dentro de 24 horas.
+  void ensureAutomaticBackup();
 }
 
 $('#loginForm').onsubmit = async event => {
@@ -227,6 +234,11 @@ $('#usersBtn').onclick = async () => {
   if (currentProfile?.role !== 'admin') return;
   openModal('usersModal');
   await loadUsers();
+};
+$('#backupBtn').onclick = async () => {
+  if (currentProfile?.role !== 'admin') return;
+  openModal('backupModal');
+  await loadBackups();
 };
 
 function xdate(value) {
@@ -502,6 +514,11 @@ $('#applyImport').onclick = async () => {
   $('#importStatus').textContent = 'Atualizando banco...';
 
   try {
+    const importFileName = $('#excelFile').files[0]?.name || 'planilha.xlsx';
+    $('#importStatus').textContent = 'Criando backup de segurança antes da importação...';
+    await createServerBackup('manual', true, `Antes da importação: ${importFileName}`);
+    $('#importStatus').textContent = 'Backup criado. Atualizando banco...';
+
     let created = 0;
     let updated = 0;
     let archived = 0;
@@ -605,7 +622,269 @@ function syncDraftAndTotals(){settingsDraft.conting=readRows('conting');settings
 function fillSettings(){const s=window.HAP_DATA.settings;settingsDraft={conting:cleanDetail(s.conting_detalhe),aportes:cleanDetail(s.aportes_detalhe)};renderDetailRows('conting',settingsDraft.conting);renderDetailRows('aportes',settingsDraft.aportes);syncDraftAndTotals()}
 $('#addContingRow').onclick=()=>{const e=$('#contingRows .empty-detail');if(e)e.remove();$('#contingRows').appendChild(makeDetailRow('conting'));syncDraftAndTotals()};
 $('#addAporteRow').onclick=()=>{const e=$('#aporteRows .empty-detail');if(e)e.remove();$('#aporteRows').appendChild(makeDetailRow('aportes'));syncDraftAndTotals()};
-$('#settingsForm').onsubmit=async e=>{e.preventDefault();if(currentProfile?.role!=='admin')return;syncDraftAndTotals();const s=window.HAP_DATA.settings,capex_conting=settingsDraft.conting.reduce((a,x)=>a+num(x.valor),0),capex_aportes=settingsDraft.aportes.reduce((a,x)=>a+num(x.valor),0);const payload={id:'main',capex_inicial:num(s.capex_inicial),capex_conting,capex_aportes,manutencao_inicial:num(s.manutencao_inicial),manutencao_atual:num(s.manutencao_atual),conting_detalhe:settingsDraft.conting,aportes_detalhe:settingsDraft.aportes,updated_by:currentProfile.id,updated_at:new Date().toISOString()};const {error}=await sb.from('capex_settings').upsert(payload);if(error)return alert(error.message);location.reload()};
+$('#settingsForm').onsubmit = async event => {
+  event.preventDefault();
+  if (currentProfile?.role !== 'admin') return;
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    syncDraftAndTotals();
+    await createServerBackup('manual', true, 'Antes da alteração de contingenciamentos e aportes');
+    const settings = window.HAP_DATA.settings;
+    const capex_conting = settingsDraft.conting.reduce((sum, item) => sum + num(item.valor), 0);
+    const capex_aportes = settingsDraft.aportes.reduce((sum, item) => sum + num(item.valor), 0);
+    const payload = {
+      id: 'main',
+      capex_inicial: num(settings.capex_inicial),
+      capex_conting,
+      capex_aportes,
+      manutencao_inicial: num(settings.manutencao_inicial),
+      manutencao_atual: num(settings.manutencao_atual),
+      conting_detalhe: settingsDraft.conting,
+      aportes_detalhe: settingsDraft.aportes,
+      updated_by: currentProfile.id,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await sb.from('capex_settings').upsert(payload);
+    if (error) throw error;
+    location.reload();
+  } catch (error) {
+    alert('Não foi possível salvar: ' + (error.message || String(error)));
+  } finally {
+    submit.disabled = false;
+  }
+};
+
+
+function formatBackupDate(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+function formatBytes(value) {
+  const bytes = num(value);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+function backupTypeLabel(type) {
+  return type === 'automatic' ? 'Automático'
+    : type === 'pre_restore' ? 'Pré-restauração'
+    : 'Manual';
+}
+function safeFileTimestamp(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const pad = number => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}`;
+}
+function downloadJson(data, fileName) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function createServerBackup(type = 'automatic', force = false, label = null) {
+  const { data, error } = await sb.rpc('create_capex_backup', {
+    p_type: type,
+    p_force: force,
+    p_label: label
+  });
+  if (error) throw error;
+  return data || {};
+}
+async function ensureAutomaticBackup() {
+  try {
+    const result = await createServerBackup('automatic', false, 'Backup diário automático');
+    const button = $('#backupBtn');
+    if (button) {
+      button.title = result?.created
+        ? `Backup automático criado em ${formatBackupDate(result.created_at)}`
+        : `Backup diário já existente: ${formatBackupDate(result.created_at)}`;
+    }
+  } catch (error) {
+    console.warn('Backup automático não pôde ser criado:', error);
+  }
+}
+async function loadBackups() {
+  if (currentProfile?.role !== 'admin') return;
+  const body = $('#backupsTableBody');
+  const status = $('#backupStatus');
+  body.innerHTML = '<tr><td colspan="6">Carregando backups...</td></tr>';
+  status.className = 'backup-status';
+  status.textContent = '';
+  const { data, error } = await sb.rpc('list_capex_backups');
+  if (error) {
+    body.innerHTML = `<tr><td colspan="6" class="user-error">${esc(error.message)}</td></tr>`;
+    return;
+  }
+  backupsCache = Array.isArray(data) ? data : [];
+  renderBackups();
+}
+function renderBackups() {
+  const body = $('#backupsTableBody');
+  if (!backupsCache.length) {
+    body.innerHTML = '<tr><td colspan="6">Nenhum backup encontrado.</td></tr>';
+    return;
+  }
+  body.innerHTML = backupsCache.map(backup => `
+    <tr>
+      <td><strong>${esc(formatBackupDate(backup.created_at))}</strong><small>${esc(backup.label || backup.checksum?.slice(0, 12) || '')}</small></td>
+      <td><span class="backup-type ${esc(backup.backup_type)}">${esc(backupTypeLabel(backup.backup_type))}</span></td>
+      <td>${num(backup.item_count).toLocaleString('pt-BR')}</td>
+      <td>${esc(formatBytes(backup.size_bytes))}</td>
+      <td>${esc(backup.created_by_name || backup.created_by_email || 'Sistema')}</td>
+      <td><div class="backup-row-actions">
+        <button type="button" data-backup-action="download" data-backup-id="${esc(backup.id)}">Baixar JSON</button>
+        <button type="button" class="danger" data-backup-action="restore" data-backup-id="${esc(backup.id)}">Restaurar</button>
+      </div></td>
+    </tr>`).join('');
+  body.querySelectorAll('[data-backup-action]').forEach(button => {
+    button.onclick = () => handleBackupAction(button);
+  });
+}
+async function handleBackupAction(button) {
+  if (currentProfile?.role !== 'admin') return;
+  const id = button.dataset.backupId;
+  const action = button.dataset.backupAction;
+  const backup = backupsCache.find(item => item.id === id);
+  const status = $('#backupStatus');
+  button.disabled = true;
+  try {
+    if (action === 'download') {
+      status.textContent = 'Preparando arquivo JSON do backup...';
+      const { data, error } = await sb.rpc('get_capex_backup_state', { p_backup_id: id });
+      if (error) throw error;
+      downloadJson(data, `hapcapex_backup_${safeFileTimestamp(backup?.created_at)}.json`);
+      status.className = 'backup-status success';
+      status.textContent = 'Arquivo do backup gerado com sucesso.';
+      return;
+    }
+    if (action === 'restore') {
+      const dateLabel = formatBackupDate(backup?.created_at);
+      const confirmed = confirm(
+        `Restaurar o estado de ${dateLabel}?\n\n` +
+        'Os dados financeiros atuais serão substituídos. Antes disso, o sistema criará automaticamente um backup do estado atual.'
+      );
+      if (!confirmed) return;
+      status.className = 'backup-status';
+      status.textContent = 'Restaurando backup. Não feche esta página...';
+      const { data, error } = await sb.rpc('restore_capex_backup', { p_backup_id: id });
+      if (error) throw error;
+      status.className = 'backup-status success';
+      status.textContent = `${num(data?.restored_items)} registros restaurados. Recarregando...`;
+      setTimeout(() => location.reload(), 1200);
+    }
+  } catch (error) {
+    status.className = 'backup-status error';
+    status.textContent = error.message || String(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+$('#createBackupBtn').onclick = async () => {
+  if (currentProfile?.role !== 'admin') return;
+  const button = $('#createBackupBtn');
+  const status = $('#backupStatus');
+  button.disabled = true;
+  status.className = 'backup-status';
+  status.textContent = 'Criando backup manual...';
+  try {
+    await createServerBackup('manual', true, 'Backup manual pelo aplicativo');
+    status.className = 'backup-status success';
+    status.textContent = 'Backup manual criado com sucesso.';
+    await loadBackups();
+  } catch (error) {
+    status.className = 'backup-status error';
+    status.textContent = error.message || String(error);
+  } finally {
+    button.disabled = false;
+  }
+};
+$('#exportBackupBtn').onclick = async () => {
+  if (currentProfile?.role !== 'admin') return;
+  const button = $('#exportBackupBtn');
+  const status = $('#backupStatus');
+  button.disabled = true;
+  status.className = 'backup-status';
+  status.textContent = 'Montando o backup completo...';
+  try {
+    const { data, error } = await sb.rpc('export_capex_state');
+    if (error) throw error;
+    downloadJson(data, `hapcapex_backup_completo_${safeFileTimestamp()}.json`);
+    status.className = 'backup-status success';
+    status.textContent = 'Backup completo exportado. Senhas não fazem parte do arquivo.';
+  } catch (error) {
+    status.className = 'backup-status error';
+    status.textContent = error.message || String(error);
+  } finally {
+    button.disabled = false;
+  }
+};
+$('#refreshBackupsBtn').onclick = () => loadBackups();
+
+function isPwaStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIosDevice() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function updateInstallButton() {
+  const button = $('#installPwaBtn');
+  if (!button) return;
+  button.hidden = isPwaStandalone() || (!deferredInstallPrompt && !isIosDevice());
+}
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  updateInstallButton();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  updateInstallButton();
+});
+$('#installPwaBtn').onclick = async () => {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    updateInstallButton();
+    return;
+  }
+  const steps = $('#pwaInstallSteps');
+  if (isIosDevice()) {
+    $('#pwaInstallText').textContent = 'No iPhone ou iPad, a instalação é feita pelo menu de compartilhamento do Safari.';
+    steps.innerHTML = '<ol><li>Abra este site no Safari.</li><li>Toque no botão Compartilhar.</li><li>Escolha “Adicionar à Tela de Início”.</li><li>Confirme em “Adicionar”.</li></ol>';
+  } else {
+    $('#pwaInstallText').textContent = 'Use o menu do navegador para instalar o HAPCAPEX como aplicativo.';
+    steps.innerHTML = '<ol><li>Abra o menu do navegador.</li><li>Escolha “Instalar aplicativo” ou “Adicionar à tela inicial”.</li><li>Confirme a instalação.</li></ol>';
+  }
+  openModal('pwaInstallModal');
+};
+async function registerPwaServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.register('./service-worker.js', { scope: './' });
+    registration.update().catch(() => {});
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+  } catch (error) {
+    console.warn('Não foi possível registrar o PWA:', error);
+  }
+}
+updateInstallButton();
+window.addEventListener('load', registerPwaServiceWorker);
 
 async function invokeUserAdmin(payload){
  if(currentProfile?.role!=='admin')throw new Error('Somente administradores podem gerenciar usuários.');
