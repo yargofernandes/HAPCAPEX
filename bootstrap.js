@@ -334,30 +334,62 @@ function parseExcel(workbook, scope = 'all') {
       workbook.Sheets[maintenanceSheet],
       { header: 1, defval: '', raw: true }
     );
-    const header = rows.findIndex(row =>
-      normalizeName(row[2]).includes('ORDEM INTERNA') &&
-      normalizeName(row[3]).includes('NOME DA OBRA')
-    );
-    if (header < 0) throw new Error('Cabeçalho da aba OBRAS MANUTENÇÃO não encontrado.');
+
+    // A aba de Manutenção começa na coluna C. O SheetJS elimina as colunas
+    // vazias anteriores ao intervalo usado, então C e D podem chegar como
+    // índices 0 e 1. Por isso os cabeçalhos são localizados pelo texto, sem
+    // depender de posições fixas.
+    let header = -1;
+    let orderCol = -1;
+    let nameCol = -1;
+    const monthCols = {};
+    const monthAliases = {
+      JAN: 'jan', FEV: 'fev', MAR: 'mar', ABR: 'abr', MAI: 'mai', JUN: 'jun',
+      JUL: 'jul', AGO: 'ago', SET: 'set', OUT: 'out', NOV: 'nov', DEZ: 'dez'
+    };
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const normalizedRow = (rows[rowIndex] || []).map(normalizeName);
+      const currentOrderCol = normalizedRow.findIndex(value => value.includes('ORDEM INTERNA'));
+      const currentNameCol = normalizedRow.findIndex(value => value.includes('NOME DA OBRA'));
+      if (currentOrderCol >= 0 && currentNameCol >= 0) {
+        header = rowIndex;
+        orderCol = currentOrderCol;
+        nameCol = currentNameCol;
+        normalizedRow.forEach((value, colIndex) => {
+          const key = monthAliases[value];
+          if (key) monthCols[key] = colIndex;
+        });
+        break;
+      }
+    }
+
+    const missingMonths = month2026Keys.filter(key => !Number.isInteger(monthCols[key]));
+    if (header < 0 || orderCol < 0 || nameCol < 0 || missingMonths.length > 0) {
+      const detail = missingMonths.length
+        ? ` Meses não identificados: ${missingMonths.map(key => key.toUpperCase()).join(', ')}.`
+        : '';
+      throw new Error(`Cabeçalho da aba OBRAS MANUTENÇÃO não encontrado.${detail}`);
+    }
 
     // Algumas planilhas possuem a mesma OI repetida em linhas distintas.
     // O sufixo é apenas interno e é removido antes de exibir a OI no dashboard.
     const orderOccurrences = new Map();
 
     for (let index = header + 1; index < rows.length; index++) {
-      const row = rows[index];
-      const nome = String(row[3] || '').trim();
+      const row = rows[index] || [];
+      const nome = String(row[nameCol] || '').trim();
       if (!nome) continue;
 
-      const ordemOriginal = normalizeOrder(row[2]);
+      const ordemOriginal = normalizeOrder(row[orderCol]);
       const baseOrder = ordemOriginal || `SEM_OI_${simpleHash(normalizeName(nome))}`;
       const occurrence = (orderOccurrences.get(baseOrder) || 0) + 1;
       orderOccurrences.set(baseOrder, occurrence);
       const ordem = occurrence === 1 ? baseOrder : `${baseOrder}#${occurrence}`;
 
       const realizado = {};
-      month2026Keys.forEach((key, monthIndex) => {
-        realizado[key] = num(row[4 + monthIndex]);
+      month2026Keys.forEach(key => {
+        realizado[key] = num(row[monthCols[key]]);
       });
 
       result.push({
