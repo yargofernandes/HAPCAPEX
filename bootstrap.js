@@ -68,7 +68,7 @@ function itemToRaw(item) {
   const isCurrentContingency = state !== 'active';
   const raw = {
     nome: normalizedContingencyName(item.nome, state),
-    ordem: item.ordem,
+    ordem: item.categoria === 'manutencao' ? String(item.ordem || '').replace(/#\d+$/, '') : item.ordem,
     inicio: isCurrentContingency ? fmtDate(item.inicio) : (original?.inicio || fmtDate(item.inicio)),
     fim: isCurrentContingency ? fmtDate(item.fim) : (original?.fim || fmtDate(item.fim)),
     // O CAPEX exibido nas tabelas, tipologias e totais deve ser sempre o valor
@@ -267,111 +267,142 @@ function findSheet(workbook, expectedName) {
 function isContingenciada(name) {
   return /CONTIN?G/i.test(String(name || ''));
 }
-function parseExcel(workbook) {
+function parseExcel(workbook, scope = 'all') {
   const result = [];
   let ignored = 0;
+  const needWorks = scope !== 'maintenance';
+  const needMaintenance = scope !== 'works';
   const planningSheet = findSheet(workbook, 'PLANEJAMENTO');
   const maintenanceSheet = findSheet(workbook, 'OBRAS MANUTENÇÃO');
-  if (!planningSheet || !maintenanceSheet) {
-    throw new Error('As abas PLANEJAMENTO e OBRAS MANUTENÇÃO são obrigatórias.');
+
+  if (needWorks && !planningSheet) {
+    throw new Error('A aba PLANEJAMENTO não foi encontrada.');
+  }
+  if (needMaintenance && !maintenanceSheet) {
+    throw new Error('A aba OBRAS MANUTENÇÃO não foi encontrada.');
   }
 
-  let rows = XLSX.utils.sheet_to_json(
-    workbook.Sheets[planningSheet],
-    { header: 1, defval: '', raw: true }
-  );
-  let header = rows.findIndex(row =>
-    normalizeName(row[0]).includes('ORDEM INTERNA') &&
-    normalizeName(row[1]).includes('NOME OBRA')
-  );
-  if (header < 0) throw new Error('Cabeçalho da aba PLANEJAMENTO não encontrado.');
+  if (needWorks) {
+    let rows = XLSX.utils.sheet_to_json(
+      workbook.Sheets[planningSheet],
+      { header: 1, defval: '', raw: true }
+    );
+    let header = rows.findIndex(row =>
+      normalizeName(row[0]).includes('ORDEM INTERNA') &&
+      normalizeName(row[1]).includes('NOME OBRA')
+    );
+    if (header < 0) throw new Error('Cabeçalho da aba PLANEJAMENTO não encontrado.');
 
-  for (let index = header + 1; index < rows.length; index++) {
-    const row = rows[index];
-    const nome = String(row[1] || '').trim();
-    if (!nome) continue;
+    for (let index = header + 1; index < rows.length; index++) {
+      const row = rows[index];
+      const nome = String(row[1] || '').trim();
+      if (!nome) continue;
 
-    if (isMaintenancePackageName(nome)) {
-      ignored++;
-      continue;
+      if (isMaintenancePackageName(nome)) {
+        ignored++;
+        continue;
+      }
+
+      const isNonPlanned = /OBRAS NÃO PLANEJADAS/i.test(nome);
+      const ordem = isNonPlanned ? 'NAO_PLANEJADAS' : normalizeOrder(row[0]);
+      if (!ordem) continue;
+
+      const realizado = {};
+      monthKeys.forEach((key, monthIndex) => {
+        realizado[key] = num(row[5 + monthIndex]);
+      });
+
+      const capex = num(row[4]);
+      const state = isNonPlanned ? 'active' : contingencyState(nome, capex);
+      result.push({
+        categoria: 'obra',
+        ordem,
+        nome: normalizedContingencyName(nome, state),
+        inicio: xdate(row[2]),
+        fim: xdate(row[3]),
+        capex,
+        tipologia: 'Outros',
+        contingenciada: state === 'full',
+        realizado,
+        source_order: index - header
+      });
     }
-
-    const isNonPlanned = /OBRAS NÃO PLANEJADAS/i.test(nome);
-    let ordem = isNonPlanned ? 'NAO_PLANEJADAS' : normalizeOrder(row[0]);
-    if (!ordem) continue;
-
-    const realizado = {};
-    monthKeys.forEach((key, monthIndex) => {
-      realizado[key] = num(row[5 + monthIndex]);
-    });
-
-    const capex = num(row[4]);
-    const state = isNonPlanned ? 'active' : contingencyState(nome, capex);
-    result.push({
-      categoria: 'obra',
-      ordem,
-      nome: normalizedContingencyName(nome, state),
-      inicio: xdate(row[2]),
-      fim: xdate(row[3]),
-      capex,
-      tipologia: 'Outros',
-      // CAPEX residual maior que zero caracteriza contingenciamento parcial.
-      // Somente as linhas contingenciadas com CAPEX zerado são totais.
-      contingenciada: state === 'full',
-      realizado,
-      source_order: index - header
-    });
   }
 
-  rows = XLSX.utils.sheet_to_json(
-    workbook.Sheets[maintenanceSheet],
-    { header: 1, defval: '', raw: true }
-  );
-  header = rows.findIndex(row =>
-    normalizeName(row[2]).includes('ORDEM INTERNA') &&
-    normalizeName(row[3]).includes('NOME DA OBRA')
-  );
-  if (header < 0) throw new Error('Cabeçalho da aba OBRAS MANUTENÇÃO não encontrado.');
+  if (needMaintenance) {
+    const rows = XLSX.utils.sheet_to_json(
+      workbook.Sheets[maintenanceSheet],
+      { header: 1, defval: '', raw: true }
+    );
+    const header = rows.findIndex(row =>
+      normalizeName(row[2]).includes('ORDEM INTERNA') &&
+      normalizeName(row[3]).includes('NOME DA OBRA')
+    );
+    if (header < 0) throw new Error('Cabeçalho da aba OBRAS MANUTENÇÃO não encontrado.');
 
-  for (let index = header + 1; index < rows.length; index++) {
-    const row = rows[index];
-    const nome = String(row[3] || '').trim();
-    if (!nome) continue;
-    const ordemOriginal = normalizeOrder(row[2]);
-    const ordem = ordemOriginal || `SEM_OI_${simpleHash(normalizeName(nome))}`;
-    const realizado = {};
-    month2026Keys.forEach((key, monthIndex) => {
-      realizado[key] = num(row[4 + monthIndex]);
-    });
+    // Algumas planilhas possuem a mesma OI repetida em linhas distintas.
+    // O sufixo é apenas interno e é removido antes de exibir a OI no dashboard.
+    const orderOccurrences = new Map();
 
-    result.push({
-      categoria: 'manutencao',
-      ordem,
-      nome,
-      inicio: null,
-      fim: null,
-      capex: 0,
-      tipologia: 'Manutenção',
-      contingenciada: false,
-      realizado,
-      source_order: index - header
-    });
+    for (let index = header + 1; index < rows.length; index++) {
+      const row = rows[index];
+      const nome = String(row[3] || '').trim();
+      if (!nome) continue;
+
+      const ordemOriginal = normalizeOrder(row[2]);
+      const baseOrder = ordemOriginal || `SEM_OI_${simpleHash(normalizeName(nome))}`;
+      const occurrence = (orderOccurrences.get(baseOrder) || 0) + 1;
+      orderOccurrences.set(baseOrder, occurrence);
+      const ordem = occurrence === 1 ? baseOrder : `${baseOrder}#${occurrence}`;
+
+      const realizado = {};
+      month2026Keys.forEach((key, monthIndex) => {
+        realizado[key] = num(row[4 + monthIndex]);
+      });
+
+      result.push({
+        categoria: 'manutencao',
+        ordem,
+        nome,
+        inicio: null,
+        fim: null,
+        capex: 0,
+        tipologia: 'Manutenção',
+        contingenciada: false,
+        realizado,
+        source_order: index - header
+      });
+    }
   }
+
   result.ignoredCount = ignored;
+  result.importScope = scope;
   return result;
 }
 function sameRecord(existing, incoming) {
   if (existing.categoria !== incoming.categoria) return false;
-  if (existing.ordem === incoming.ordem) return true;
-  if (existing.categoria === 'obra') {
-    const existingTokens = new Set(orderTokens(existing.ordem));
-    if (orderTokens(incoming.ordem).some(token => existingTokens.has(token))) return true;
+  // Manutenção usa a chave interna da linha. Isso preserva OIs repetidas
+  // existentes no Excel sem misturar ou sobrescrever obras diferentes.
+  if (existing.categoria === 'manutencao') {
+    return existing.ordem === incoming.ordem;
   }
+  if (existing.ordem === incoming.ordem) return true;
+  const existingTokens = new Set(orderTokens(existing.ordem));
+  if (orderTokens(incoming.ordem).some(token => existingTokens.has(token))) return true;
   return normalizeName(existing.nome) === normalizeName(incoming.nome);
 }
 function findExistingRecord(existingItems, incoming) {
   return existingItems.find(existing => sameRecord(existing, incoming));
 }
+
+$('#importScope')?.addEventListener('change', () => {
+  pendingImport = null;
+  $('#excelFile').value = '';
+  $('#importStatus').textContent = 'Selecione novamente a planilha para validar o modo escolhido.';
+  const check = $('#importCheck');
+  if (check) { check.hidden = true; check.innerHTML = ''; }
+  $('#applyImport').disabled = true;
+});
 
 $('#excelFile').onchange = async event => {
   const file = event.target.files[0];
@@ -381,7 +412,8 @@ $('#excelFile').onchange = async event => {
       type: 'array',
       cellDates: true
     });
-    pendingImport = parseExcel(workbook);
+    const importScope = $('#importScope')?.value || 'all';
+    pendingImport = parseExcel(workbook, importScope);
     const obrasCount = pendingImport.filter(
       item => item.categoria === 'obra' && item.ordem !== 'NAO_PLANEJADAS'
     ).length;
@@ -395,12 +427,28 @@ $('#excelFile').onchange = async event => {
     const fullCount = pendingImport.filter(item =>
       item.categoria === 'obra' && item.contingenciada
     ).length;
-    $('#importStatus').textContent =
-      `${obrasCount} obras, ${maintenanceCount} manutenções e ` +
-      `${hasNonPlanned ? '1 linha' : 'nenhuma linha'} de Obras Não Planejadas reconhecidas. ` +
-      `${partialCount} contingenciamentos parciais e ${fullCount} totais identificados.` +
-      (pendingImport.ignoredCount ? ` ${pendingImport.ignoredCount} linha de pacote foi ignorada.` : '');
-    $('#applyImport').disabled = false;
+    const scopeLabel = pendingImport.importScope === 'maintenance'
+      ? 'Somente Manutenção'
+      : pendingImport.importScope === 'works' ? 'Somente Obras' : 'Obras e Manutenção';
+    const statusParts = [`Modo: ${scopeLabel}.`];
+    if (pendingImport.importScope !== 'maintenance') {
+      statusParts.push(`${obrasCount} obras`);
+      statusParts.push(`${hasNonPlanned ? '1 linha' : 'nenhuma linha'} de Obras Não Planejadas`);
+      statusParts.push(`${partialCount} contingenciamentos parciais e ${fullCount} totais`);
+      if (pendingImport.ignoredCount) statusParts.push(`${pendingImport.ignoredCount} linha de pacote ignorada`);
+    }
+    if (pendingImport.importScope !== 'works') {
+      statusParts.push(`${maintenanceCount} linhas de manutenção`);
+    }
+    $('#importStatus').textContent = statusParts.join(' · ') + '.';
+    const check = $('#importCheck');
+    if (check) {
+      check.hidden = false;
+      check.innerHTML = pendingImport.importScope !== 'works'
+        ? `<strong>Conferência da Manutenção</strong><span>${maintenanceCount} linhas reconhecidas</span><span>Esperado nesta planilha: 113 linhas</span><span>${maintenanceCount === 113 ? '✅ Quantidade conferida' : '⚠️ Quantidade diferente da planilha-base'}</span>`
+        : '<strong>Conferência</strong><span>Importação restrita à aba Obras.</span>';
+    }
+    $('#applyImport').disabled = pendingImport.importScope !== 'works' && maintenanceCount === 0;
   } catch (error) {
     pendingImport = null;
     $('#importStatus').textContent = 'Erro: ' + error.message;
@@ -416,6 +464,8 @@ $('#applyImport').onclick = async () => {
   try {
     let created = 0;
     let updated = 0;
+    let archived = 0;
+    const seenMaintenanceIds = new Set();
     const { data: existingItems, error: existingError } = await sb
       .from('capex_items')
       .select('id,categoria,ordem,nome')
@@ -433,6 +483,7 @@ $('#applyImport').onclick = async () => {
       if (found) {
         const { error } = await sb.from('capex_items').update(payload).eq('id', found.id);
         if (error) throw error;
+        if (item.categoria === 'manutencao') seenMaintenanceIds.add(found.id);
         updated++;
       } else {
         const { data: inserted, error } = await sb.from('capex_items')
@@ -440,7 +491,29 @@ $('#applyImport').onclick = async () => {
           .select('id,categoria,ordem,nome').single();
         if (error) throw error;
         existing.push(inserted);
+        if (item.categoria === 'manutencao') seenMaintenanceIds.add(inserted.id);
         created++;
+      }
+    }
+
+    // A aba OBRAS MANUTENÇÃO é uma fotografia mensal completa. Ao importá-la,
+    // linhas antigas que não aparecem mais na planilha são arquivadas para que
+    // a tela permaneça exatamente igual ao Excel vigente.
+    if (pendingImport.importScope !== 'works') {
+      const staleMaintenanceIds = (existingItems || [])
+        .filter(item => item.categoria === 'manutencao' && !seenMaintenanceIds.has(item.id))
+        .map(item => item.id);
+      if (staleMaintenanceIds.length) {
+        const { error: archiveError } = await sb.from('capex_items')
+          .update({
+            deleted_at: new Date().toISOString(),
+            deleted_by: currentProfile.id,
+            updated_by: currentProfile.id,
+            updated_at: new Date().toISOString()
+          })
+          .in('id', staleMaintenanceIds);
+        if (archiveError) throw archiveError;
+        archived = staleMaintenanceIds.length;
       }
     }
 
@@ -465,7 +538,7 @@ $('#applyImport').onclick = async () => {
     });
 
     $('#importStatus').textContent =
-      `Concluído: ${created} criados, ${updated} atualizados e ` +
+      `Concluído: ${created} criados, ${updated} atualizados, ${archived} arquivados e ` +
       `${pendingImport.ignoredCount || 0} ignorados. A página será recarregada.`;
     setTimeout(() => location.reload(), 1200);
   } catch (error) {

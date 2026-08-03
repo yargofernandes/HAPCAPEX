@@ -385,3 +385,10 @@
 @media(max-width:640px){.password-field{grid-template-columns:1fr}.password-toggle{width:100%}}
 
 .financial-integrity-warning{margin:0 0 16px;padding:12px 16px;border:1px solid #c0392b;border-left:5px solid #c0392b;border-radius:8px;background:#fff5f5;color:#8a1c1c;font-weight:600;}
+
+/* V12 — conferência da importação */
+.import-scope-label { display:flex; flex-direction:column; gap:6px; margin:14px 0; font-weight:700; color:#17375e; }
+.import-scope-label select { padding:10px 12px; border:1px solid #c9d5e7; border-radius:8px; background:#fff; font:inherit; }
+.import-check { margin-top:12px; padding:12px 14px; border-radius:9px; background:#eef5ff; border:1px solid #bfd3f2; display:grid; gap:5px; color:#17375e; }
+.import-check strong { font-size:12px; text-transform:uppercase; letter-spacing:.4px; }
+.import-check span { font-size:12px; }

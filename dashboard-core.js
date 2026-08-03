@@ -1775,8 +1775,8 @@ function switchPage(id, btn) {
 // ============================================================
 // MANUTENÇÃO
 // ============================================================
-const MAN_PACOTE_INICIAL = 20000000.00;   // Pacote original antes da doação
-const MAN_PACOTE         = 19609389.82;   // Pacote Atual = Inicial − doação (R$ 390.610,18)
+const MAN_PACOTE_INICIAL = Number(window.HAP_DATA.settings.manutencao_inicial || 20000000.00);
+const MAN_PACOTE         = Number(window.HAP_DATA.settings.manutencao_atual || 19609389.82);
 let manFilteredObras = manObras;
 let manChartLine, manChartBar;
 
@@ -2021,7 +2021,7 @@ function renderManCharts() {
   // ── Top 15 por Período Filtrado ───────────────────────────────
   // Calcula realizado apenas nos meses selecionados para o ranking
   const mesesBar = activeMons ? activeMons.filter(mk => MONTHS_REAL.includes(mk)) : MONTHS_REAL;
-  const periodLabel = mesesBar.length > 0 ? mesesBar.map(m => m.toUpperCase()).join('+') + '/26' : 'Jan–Jun/26';
+  const periodLabel = mesesBar.length > 0 ? mesesBar.map(m => m.toUpperCase()).join('+') + '/26' : `Jan–${LAST_REAL_LABEL}`;
   const foComReal = fo.map(o => ({
     ...o,
     real_periodo: mesesBar.reduce((s, mk) => s + (o[mk+'_real']||0), 0)
@@ -2047,7 +2047,7 @@ function renderManRisk() {
   const fo = manObras.filter(o => o.total_real > 0);
   const manMonthly = MAN_PACOTE / 12;
   let html = `<table class="risk-table">
-    <thead><tr><th>Obra</th><th>Real Jan–Jun</th><th>% do Pacote</th><th>Status</th></tr></thead><tbody>`;
+    <thead><tr><th>Obra</th><th>Real Jan–${LAST_REAL_LABEL}</th><th>% do Pacote</th><th>Status</th></tr></thead><tbody>`;
   fo.sort((a,b)=>b.total_real-a.total_real).slice(0, 20).forEach(o => {
     const pctPacote = (o.total_real / MAN_PACOTE) * 100;
     let badge, badgeCls;
