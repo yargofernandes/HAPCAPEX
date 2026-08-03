@@ -86,6 +86,7 @@ function itemToRaw(item) {
     // deixa de valer. O cálculo passa a usar a regra de contingência total ou
     // parcial com os realizados atuais da planilha.
     _baselineFlow: isCurrentContingency ? null : (original?.flow || null),
+    _baselineCapex: original ? num(original.capex) : null,
     _isOriginalBaseline: Boolean(original) && !isCurrentContingency
   };
   monthKeys.forEach(key => raw[key + '_real'] = num(item.realizado?.[key]));

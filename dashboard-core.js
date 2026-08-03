@@ -100,11 +100,138 @@ function addMonthsYM(ym_str, n) {
   return `${y}-${String(m).padStart(2,'0')}`;
 }
 
+
+// ============================================================
+// FINANCIAL RECONCILIATION HELPERS
+// Invariant: for every planned work, the sum of the monthly forecast must
+// equal the current CAPEX recorded in the monthly spreadsheet/Supabase.
+// ============================================================
+const FLOW_TOLERANCE = 0.005; // half cent: prevents floating-point noise
+function flowMonthKeys() { return MONTHS.map(m => m.key); }
+function flowSum(flow, keys = flowMonthKeys()) {
+  return keys.reduce((s, key) => s + Number(flow?.[key] || 0), 0);
+}
+function currentReportingIndex() {
+  const key = window.HAP_DATA?.reportingMonthKey || MONTHS_REAL[MONTHS_REAL.length - 1] || 'jan';
+  const index = MONTHS.findIndex(month => month.key === key);
+  return index >= 0 ? index : 0;
+}
+function ymToFlowKey(ym) {
+  if (!ym) return null;
+  const [yearText, monthText] = String(ym).split('-');
+  const year = Number(yearText), month = Number(monthText);
+  if (year === 2026 && month >= 1 && month <= 12) return MONTHS[month - 1].key;
+  if (year === 2027 && month >= 1 && month <= 7) return MONTHS[11 + month].key;
+  return null;
+}
+function allocateByWeights(flow, keys, amount, reference = {}, add = false) {
+  const validKeys = keys.filter(key => Object.prototype.hasOwnProperty.call(flow, key));
+  if (!validKeys.length || amount <= 0) return;
+  const weightTotal = validKeys.reduce((s, key) => s + Math.max(0, Number(reference[key] || 0)), 0);
+  if (weightTotal > 0) {
+    validKeys.forEach(key => {
+      const value = amount * Math.max(0, Number(reference[key] || 0)) / weightTotal;
+      flow[key] = (add ? Number(flow[key] || 0) : 0) + value;
+    });
+  } else {
+    const key = validKeys[0];
+    flow[key] = (add ? Number(flow[key] || 0) : 0) + amount;
+  }
+}
+function standardScheduleWeights(obra) {
+  const weights = {};
+  flowMonthKeys().forEach(key => { weights[key] = 0; });
+  const startYM = dateToYM(obra.inicio);
+  const endYM = dateToYM(obra.fim);
+  if (!startYM || !endYM) return weights;
+
+  const executionMonths = [];
+  let current = addMonthsYM(startYM, 1);
+  while (current <= endYM) {
+    executionMonths.push(current);
+    current = addMonthsYM(current, 1);
+  }
+  const startKey = ymToFlowKey(startYM);
+  if (startKey) weights[startKey] += 0.15 + (executionMonths.length ? 0 : 0.75);
+  if (executionMonths.length) {
+    const monthly = 0.75 / executionMonths.length;
+    executionMonths.forEach(monthYM => {
+      const key = ymToFlowKey(monthYM);
+      if (key) weights[key] += monthly;
+    });
+  }
+  [addMonthsYM(endYM, 1), addMonthsYM(endYM, 2)].forEach(monthYM => {
+    const key = ymToFlowKey(monthYM);
+    if (key) weights[key] += 0.05;
+  });
+  return weights;
+}
+function rebaseBaselineFlowToCurrentCapex(obra, baselineFlow) {
+  const target = Math.max(0, Number(obra.capex || 0));
+  const baselineCapex = Number(obra._baselineCapex || flowSum(baselineFlow));
+  if (Math.abs(target - baselineCapex) <= FLOW_TOLERANCE) return { ...baselineFlow };
+
+  const reportingIndex = currentReportingIndex();
+  const closedKeys = MONTHS.slice(0, reportingIndex).map(month => month.key);
+  const openKeys = MONTHS.slice(reportingIndex).map(month => month.key);
+  const closedTotal = flowSum(baselineFlow, closedKeys);
+  const rebased = {};
+  flowMonthKeys().forEach(key => { rebased[key] = 0; });
+
+  // Preserve all closed-month values whenever the revised CAPEX is sufficient.
+  // The CAPEX delta is then reprogrammed only in the reporting/future months.
+  if (target + FLOW_TOLERANCE >= closedTotal) {
+    closedKeys.forEach(key => { rebased[key] = Number(baselineFlow[key] || 0); });
+    allocateByWeights(rebased, openKeys, Math.max(0, target - closedTotal), baselineFlow, false);
+  } else {
+    // Exceptional case: revised CAPEX became lower than the forecast already
+    // allocated to closed months. A proportional rebase is unavoidable.
+    allocateByWeights(rebased, closedKeys, target, baselineFlow, false);
+  }
+
+  obra._capexRevision = target - baselineCapex;
+  return rebased;
+}
+function enforceFlowEqualsCapex(obra, flow) {
+  const target = Math.max(0, Number(obra.capex || 0));
+  let difference = target - flowSum(flow);
+  if (Math.abs(difference) <= FLOW_TOLERANCE) return flow;
+
+  const reportingIndex = currentReportingIndex();
+  const openKeys = MONTHS.slice(reportingIndex).map(month => month.key);
+  const closedKeys = MONTHS.slice(0, reportingIndex).map(month => month.key);
+
+  if (difference > 0) {
+    const key = openKeys.find(monthKey => Number(flow[monthKey] || 0) > 0)
+      || openKeys[0]
+      || flowMonthKeys()[flowMonthKeys().length - 1];
+    flow[key] = Number(flow[key] || 0) + difference;
+  } else {
+    let amountToReduce = -difference;
+    const reductionOrder = [...openKeys].reverse().concat([...closedKeys].reverse());
+    for (const key of reductionOrder) {
+      const available = Math.max(0, Number(flow[key] || 0));
+      const reduction = Math.min(available, amountToReduce);
+      flow[key] = available - reduction;
+      amountToReduce -= reduction;
+      if (amountToReduce <= FLOW_TOLERANCE) break;
+    }
+  }
+
+  // Final floating-point correction is placed in the reporting month.
+  difference = target - flowSum(flow);
+  if (Math.abs(difference) > FLOW_TOLERANCE) {
+    const key = openKeys[0] || flowMonthKeys()[0];
+    flow[key] = Math.max(0, Number(flow[key] || 0) + difference);
+  }
+  return flow;
+}
+
 // ============================================================
 // COMPUTE 15/75/10 FLOW
 // For contingenciadas: flow = real values only (previsto = realizado)
 // ============================================================
-function computeFlow(obra) {
+function computeFlowRaw(obra) {
   const flow = {};
   MONTHS.forEach(m => flow[m.key] = 0);
 
@@ -123,21 +250,45 @@ function computeFlow(obra) {
     return flow;
   }
 
-  // HAPFOR (CONTING. PARCIAL): realizado mês a mês + saldo distribuído igualmente jul-out/26
+  // HAPFOR (CONTING. PARCIAL): realizado até o mês de referência +
+  // saldo residual distribuído apenas nos meses futuros até OUT/26.
   if (obra.nome.includes('CONTING. PARCIAL') && obra.nome.includes('HAPFOR')) {
     MONTHS_REAL.forEach(mk => { flow[mk] = obra[mk+'_real'] || 0; });
-    // Saldo restante do CAPEX dividido igualmente em JUL/AGO/SET/OUT de 2026
-    const saldoHapfor = obra.capex - MONTHS_REAL.reduce((s,mk) => s+(obra[mk+'_real']||0), 0);
+    const saldoHapfor = Math.max(0, Number(obra.capex || 0) - flowSum(flow));
+    const reportingIndex = currentReportingIndex();
+    const futureHapforKeys = ['jul','ago','set','out'].filter(key => {
+      const index = MONTHS.findIndex(month => month.key === key);
+      return index > reportingIndex;
+    });
     if (saldoHapfor > 0) {
-      const mensal = saldoHapfor / 4;
-      ['jul','ago','set','out'].forEach(mk => { flow[mk] = mensal; });
+      allocateByWeights(
+        flow,
+        futureHapforKeys.length ? futureHapforKeys : [MONTHS[reportingIndex]?.key || 'jul'],
+        saldoHapfor,
+        Object.fromEntries((futureHapforKeys.length ? futureHapforKeys : [MONTHS[reportingIndex]?.key || 'jul']).map(key => [key, 1])),
+        true
+      );
     }
     return flow;
   }
 
-  // Demais CONTING. PARCIAL (ex: Natal 1): previsto = realizado mês a mês
+  // Demais contingenciamentos parciais: realizado até o mês de referência
+  // mais o saldo residual programado nos meses futuros conforme os pesos 15/75/10.
   if (obra.nome.includes('CONTING. PARCIAL')) {
     MONTHS_REAL.forEach(mk => { flow[mk] = obra[mk+'_real'] || 0; });
+    const saldoResidual = Math.max(0, Number(obra.capex || 0) - flowSum(flow));
+    if (saldoResidual > 0) {
+      const reportingIndex = currentReportingIndex();
+      const futureKeys = MONTHS.slice(reportingIndex + 1).map(month => month.key);
+      const scheduleWeights = standardScheduleWeights(obra);
+      allocateByWeights(
+        flow,
+        futureKeys.length ? futureKeys : [MONTHS[reportingIndex]?.key || 'jul'],
+        saldoResidual,
+        scheduleWeights,
+        true
+      );
+    }
     return flow;
   }
 
@@ -257,11 +408,43 @@ function computeFlow(obra) {
   return flow;
 }
 
+function computeFlow(obra) {
+  let flow = computeFlowRaw(obra);
+  if (obra._baselineFlow && typeof obra._baselineFlow === 'object') {
+    flow = rebaseBaselineFlowToCurrentCapex(obra, flow);
+  }
+  return enforceFlowEqualsCapex(obra, flow);
+}
+
 // Build full obras array
 const obras = obrasRaw
   .map(o => ({ ...o, flow: computeFlow(o) }))
   .sort((a, b) => (a._sourceOrder ?? 999999) - (b._sourceOrder ?? 999999));
 obras.forEach(o => { o.total_real = MONTHS_REAL.reduce((s, m) => s + (o[m+'_real'] || 0), 0); });
+
+// Portfolio-level integrity control. This must always reconcile to zero.
+const CAPEX_OBRAS_TABELA = obras.reduce((s, obra) => s + Number(obra.capex || 0), 0);
+const PREVISTO_OBRAS_TABELA = obras.reduce((s, obra) => s + flowSum(obra.flow), 0);
+const DIFERENCA_INTEGRIDADE_FLUXO = CAPEX_OBRAS_TABELA - PREVISTO_OBRAS_TABELA;
+window.HAP_FINANCIAL_CHECK = {
+  capexGerencial: CAPEX_ATUAL,
+  capexObras: CAPEX_OBRAS_TABELA,
+  diferencaGerencial: CAPEX_OBRAS_TABELA - CAPEX_ATUAL,
+  previstoObras: PREVISTO_OBRAS_TABELA,
+  consumoNaoPlanejado: TOTAL_NAO_PLANEJADO,
+  previstoTotalComNaoPlanejado: PREVISTO_OBRAS_TABELA + TOTAL_NAO_PLANEJADO,
+  diferenca: DIFERENCA_INTEGRIDADE_FLUXO
+};
+if (Math.abs(DIFERENCA_INTEGRIDADE_FLUXO) > 0.01) {
+  console.error('Falha de integridade financeira: CAPEX e fluxo previsto não reconciliam.', window.HAP_FINANCIAL_CHECK);
+  const obrasContainer = document.querySelector('#page-obras .container');
+  if (obrasContainer) {
+    const warning = document.createElement('div');
+    warning.className = 'financial-integrity-warning';
+    warning.innerHTML = '<strong>⚠️ Alerta de integridade financeira:</strong> o fluxo previsto não está conciliado com o CAPEX atual. Não utilize os totais antes de revisar a importação.';
+    obrasContainer.prepend(warning);
+  }
+}
 
 const manObras = manObrasRaw
   .map(o => ({ ...o, total_real: MONTHS_REAL.reduce((s, m) => s + (o[m+'_real'] || 0), 0) }))
