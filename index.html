@@ -1,8 +1,8 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard CAPEX 2026 — Controle Financeiro</title><link rel="stylesheet" href="styles.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
 <div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
-<div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="logoutBtn" class="secondary">Sair</button></div>
-<div id="importModal" class="admin-modal"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha com as abas <b>PLANEJAMENTO</b> e <b>OBRAS MANUTENÇÃO</b>.</p><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
-<div id="settingsModal" class="admin-modal"><form id="settingsForm" class="admin-box kpi-editor-box">
+<div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="usersBtn" class="admin-only">👥 Usuários</button><button id="logoutBtn" class="secondary">Sair</button></div>
+<div id="importModal" class="admin-modal admin-only"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha com as abas <b>PLANEJAMENTO</b> e <b>OBRAS MANUTENÇÃO</b>.</p><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
+<div id="settingsModal" class="admin-modal admin-only"><form id="settingsForm" class="admin-box kpi-editor-box">
 <h2>Gerenciar contingenciamentos e aportes</h2>
 <p class="kpi-help">Os totais são calculados automaticamente pelas linhas abaixo. Para alterar os KPIs, inclua ou exclua itens.</p>
 <div class="kpi-summary">
@@ -21,6 +21,20 @@
 </div>
 <div class="admin-actions"><button type="button" data-close="settingsModal">Cancelar</button><button class="save">Salvar e recalcular</button></div>
 </form></div>
+<div id="usersModal" class="admin-modal admin-only"><div class="admin-box user-manager-box">
+<div class="user-manager-head"><div><h2>Gerenciar usuários</h2><p>Crie administradores ou visualizadores. Visualizadores acessam os dashboards, mas não podem importar planilhas, editar KPIs ou administrar usuários.</p></div><button type="button" class="modal-x" data-close="usersModal" aria-label="Fechar">×</button></div>
+<form id="userForm" class="user-create-form">
+  <label>Nome completo<input name="full_name" type="text" required maxlength="120" autocomplete="name"></label>
+  <label>E-mail<input name="email" type="email" required autocomplete="email"></label>
+  <label>Perfil<select name="role" required><option value="viewer">Visualizador</option><option value="admin">Administrador</option></select></label>
+  <label>Senha temporária<input name="password" type="password" required minlength="12" autocomplete="new-password" placeholder="Mínimo de 12 caracteres"></label>
+  <button class="save" type="submit">＋ Criar usuário</button>
+</form>
+<div id="userFormStatus" class="user-status" role="status"></div>
+<div class="user-list-head"><div><h3>Usuários cadastrados</h3><small>Alterações de perfil ou bloqueio encerram a sessão do usuário afetado.</small></div><button id="refreshUsersBtn" type="button" class="secondary-action">↻ Atualizar lista</button></div>
+<div class="user-table-wrap"><table class="user-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead><tbody id="usersTableBody"><tr><td colspan="4">Carregando...</td></tr></tbody></table></div>
+<div class="admin-actions"><button type="button" data-close="usersModal">Fechar</button></div>
+</div></div>
 <div id="dashboardRoot" hidden>
 
 <header>
