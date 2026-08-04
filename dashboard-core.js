@@ -2048,6 +2048,69 @@ function renderManTable() {
     ? MONTHS_REAL.filter(mk => manSelectedMonths.has(mk))
     : MONTHS_REAL;
 
+  if (document.body.classList.contains('pwa-mobile')) {
+    const wrapper = document.getElementById('man-table-wrapper');
+    if (!wrapper) return;
+    const periodLabel = manSelectedMonths.size > 0
+      ? colMeses.map(mk => (MONTHS.find(m => m.key === mk) || { label: mk.toUpperCase() }).label).join(' · ')
+      : `Jan–${LAST_REAL_LABEL}`;
+    const grandTotal = colMeses.reduce((s, mk) => s + fo.reduce((ss, o) => ss + (o[mk + '_real'] || 0), 0), 0);
+    const avgPerWork = fo.length ? grandTotal / fo.length : 0;
+
+    let html = `
+      <div class="mobile-accum-toolbar mobile-man-toolbar">
+        <div><small>Manutenção · ${periodLabel}</small><strong>Realizado por obra</strong></div>
+        <div class="mobile-man-toolbar-badge">${fo.length} obra${fo.length === 1 ? '' : 's'}</div>
+      </div>
+      <div class="mobile-accum-summary mobile-man-summary">
+        <div><span>Total realizado</span><strong>${fmt(grandTotal)}</strong></div>
+        <div><span>Média por obra</span><strong>${fmt(avgPerWork)}</strong></div>
+        <div><span>Período</span><strong>${periodLabel}</strong><small>${colMeses.length} mês${colMeses.length === 1 ? '' : 'es'} analisado${colMeses.length === 1 ? '' : 's'}</small></div>
+      </div>
+      <div class="mobile-accum-note">Visão simplificada da manutenção no aplicativo. O nome da obra fica legível e os valores aparecem sem rolagem horizontal.</div>
+      <div class="mobile-man-list">`;
+
+    fo.forEach(o => {
+      const totalPeriodo = colMeses.reduce((s, mk) => s + (o[mk + '_real'] || 0), 0);
+      let ultimoMes = null;
+      let ultimoValor = 0;
+      let maiorMes = null;
+      let maiorValor = 0;
+      colMeses.forEach(mk => {
+        const valor = Number(o[mk + '_real'] || 0);
+        if (valor > 0) {
+          ultimoMes = mk;
+          ultimoValor = valor;
+          if (valor > maiorValor) {
+            maiorValor = valor;
+            maiorMes = mk;
+          }
+        }
+      });
+      const ultimoMesLabel = ultimoMes ? (MONTHS.find(m => m.key === ultimoMes)?.label || ultimoMes.toUpperCase()) : 'Sem consumo';
+      const maiorMesLabel = maiorMes ? (MONTHS.find(m => m.key === maiorMes)?.label || maiorMes.toUpperCase()) : 'Sem consumo';
+      html += `
+        <div class="mobile-man-card">
+          <div class="mobile-man-card-head">
+            <div>
+              <strong>${o.nome}</strong>
+              <small>OI ${o.ordem || '—'}</small>
+            </div>
+            <span>${fmt(totalPeriodo, true)}</span>
+          </div>
+          <div class="mobile-man-card-grid">
+            <div><span>Total</span><strong>${fmt(totalPeriodo, true)}</strong></div>
+            <div><span>Último mês</span><strong>${ultimoMesLabel}</strong><small>${fmt(ultimoValor, true)}</small></div>
+            <div><span>Maior mês</span><strong>${maiorMesLabel}</strong><small>${fmt(maiorValor, true)}</small></div>
+          </div>
+        </div>`;
+    });
+
+    html += `</div><div class="mobile-list-footer">${fo.length} obra${fo.length === 1 ? '' : 's'} exibida${fo.length === 1 ? '' : 's'} · use a busca acima para localizar rapidamente</div>`;
+    wrapper.innerHTML = html;
+    return;
+  }
+
   let html = `<table><thead><tr><th>Obra de Manutenção</th><th>Ordem Int.</th>`;
   colMeses.forEach(mk => { html += `<th class="real">${MONTHS.find(m=>m.key===mk).label}</th>`; });
   html += `<th class="real">Total Real</th></tr></thead><tbody>`;
@@ -2216,6 +2279,35 @@ function renderManCharts() {
 function renderManRisk() {
   const fo = manObras.filter(o => o.total_real > 0);
   const manMonthly = MAN_PACOTE / 12;
+
+  if (document.body.classList.contains('pwa-mobile')) {
+    const container = document.getElementById('man-risk-panel');
+    if (!container) return;
+    const rows = [...fo].sort((a,b)=>b.total_real-a.total_real).slice(0, 20);
+    let html = `<div class="mobile-accum-toolbar mobile-man-toolbar"><div><small>Riscos de manutenção</small><strong>Maior consumo do pacote</strong></div><div class="mobile-man-toolbar-badge">Top ${rows.length}</div></div><div class="mobile-accum-note">As obras abaixo concentram o maior consumo do pacote anual de manutenção.</div><div class="mobile-man-risk-list">`;
+    rows.forEach(o => {
+      const pctPacote = (o.total_real / MAN_PACOTE) * 100;
+      let badge, badgeCls;
+      if (pctPacote < 2) { badge = 'Normal'; badgeCls = 'ok'; }
+      else if (pctPacote < 5) { badge = 'Atenção'; badgeCls = 'warn'; }
+      else { badge = 'Alto consumo'; badgeCls = 'crit'; }
+      html += `
+        <div class="mobile-man-risk-card">
+          <div class="mobile-man-risk-head">
+            <strong>${o.nome}</strong>
+            <span class="${badgeCls}">${badge}</span>
+          </div>
+          <div class="mobile-man-risk-grid">
+            <div><span>Real Jan–${LAST_REAL_LABEL}</span><strong>${fmt(o.total_real, true)}</strong></div>
+            <div><span>% do pacote</span><strong>${pctPacote.toFixed(2)}%</strong></div>
+          </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+    return;
+  }
+
   let html = `<table class="risk-table">
     <thead><tr><th>Obra</th><th>Real Jan–${LAST_REAL_LABEL}</th><th>% do Pacote</th><th>Status</th></tr></thead><tbody>`;
   fo.sort((a,b)=>b.total_real-a.total_real).slice(0, 20).forEach(o => {
