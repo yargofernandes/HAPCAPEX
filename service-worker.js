@@ -1,16 +1,16 @@
-const CACHE_NAME = 'hapcapex-v26-20260804';
+const CACHE_NAME = 'hapcapex-v27-20260804';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=26',
+  './styles.css?v=27',
   './config.js',
-  './original-baseline.js?v=26',
-  './bootstrap.js?v=26',
-  './dashboard-core.js?v=26',
-  './manifest.webmanifest?v=26',
-  './icons/hapcapex-finance-v25-180.png',
-  './icons/hapcapex-finance-v25-192.png',
-  './icons/hapcapex-finance-v25-512.png'
+  './original-baseline.js?v=27',
+  './bootstrap.js?v=27',
+  './dashboard-core.js?v=27',
+  './manifest.webmanifest?v=27',
+  './hapcapex-icon-v27-180.png',
+  './hapcapex-icon-v27-192.png',
+  './hapcapex-icon-v27-512.png'
 ];
 
 self.addEventListener('install', event => {
