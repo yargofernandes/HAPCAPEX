@@ -1073,3 +1073,18 @@ body.pwa-mobile #page-manutencao .risk-table { min-width:0 !important; }
   .mobile-man-card-grid { grid-template-columns:1fr; }
   .mobile-man-risk-grid { grid-template-columns:1fr 1fr; }
 }
+
+
+/* V25 — navegação móvel: cada conteúdo aparece apenas na sua aba. */
+body.pwa-mobile #page-obras [data-mobile-view].mobile-view-hidden,
+body.pwa-mobile #page-obras [data-mobile-view][hidden],
+body.pwa-mobile #page-manutencao [data-man-mobile-view].mobile-view-hidden,
+body.pwa-mobile #page-manutencao [data-man-mobile-view][hidden] {
+  display:none !important;
+}
+
+.pwa-desktop-note {
+  margin-top:14px; padding:11px 12px; border-radius:10px;
+  background:#edf3fa; border-left:3px solid #1a5ca8;
+  color:#4f6178; font-size:11px; line-height:1.5;
+}

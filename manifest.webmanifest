@@ -1,10 +1,10 @@
 {
-  "id": "./?app=hapcapex-v24",
+  "id": "./?app=hapcapex-v25",
   "name": "HAPCAPEX — Controle Financeiro",
   "short_name": "HAPCAPEX",
   "description": "Dashboard de controle financeiro CAPEX da Coordenação Sala Técnica.",
   "lang": "pt-BR",
-  "start_url": "./?app=hapcapex-v24",
+  "start_url": "./?app=hapcapex-v25",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -12,16 +12,26 @@
   "theme_color": "#0d2b4e",
   "icons": [
     {
-      "src": "icons/hapcapex-finance-v24-192.png",
+      "src": "icons/hapcapex-finance-v25-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icons/hapcapex-finance-v24-512.png",
+      "src": "icons/hapcapex-finance-v25-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "categories": [
+    "finance",
+    "business",
+    "productivity"
+  ],
+  "prefer_related_applications": false
 }

@@ -12,6 +12,7 @@ let coreLoaded = false;
 let usersCache = [];
 let backupsCache = [];
 let deferredInstallPrompt = null;
+let desktopInstallHelpShown = false;
 
 const monthKeys = [
   'jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez',
@@ -841,13 +842,36 @@ function isPwaStandalone() {
 function isIosDevice() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
+function isDesktopDevice() {
+  return !/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) && window.matchMedia('(min-width: 700px)').matches;
+}
 function updateInstallButton() {
   const button = $('#installPwaBtn');
   if (!button) return;
-  // O botão permanece visível em qualquer navegador enquanto o PWA não estiver
-  // aberto no modo instalado. Quando o prompt nativo não estiver disponível,
-  // o clique apresenta as instruções manuais de instalação.
   button.hidden = isPwaStandalone();
+  button.textContent = isDesktopDevice() ? '🖥️ Instalar no computador' : '📲 Instalar app';
+  button.title = isDesktopDevice()
+    ? 'Instalar o HAPCAPEX como aplicativo independente no computador'
+    : 'Instalar o HAPCAPEX neste dispositivo';
+}
+function showDesktopInstallHelp(installed = false) {
+  if (!isDesktopDevice()) return;
+  const steps = $('#pwaInstallSteps');
+  const text = $('#pwaInstallText');
+  if (!steps || !text) return;
+  text.textContent = installed
+    ? 'O HAPCAPEX foi instalado como aplicativo. Finalize os atalhos do Windows.'
+    : 'Instale o HAPCAPEX como aplicativo independente no computador.';
+  steps.innerHTML = `
+    <ol>
+      <li>Confirme a instalação exibida pelo Chrome ou Edge.</li>
+      <li>Abra o HAPCAPEX instalado. Ele funcionará em uma janela própria, sem abas do navegador.</li>
+      <li>Com o aplicativo aberto, clique com o botão direito no ícone da barra de tarefas e escolha <strong>Fixar na barra de tarefas</strong>.</li>
+      <li>Para criar o ícone na área de trabalho, procure <strong>HAPCAPEX</strong> no menu Iniciar, clique com o botão direito, abra o local do arquivo e envie o atalho para a Área de Trabalho. No Edge, a tela após a instalação também pode oferecer essa opção diretamente.</li>
+    </ol>
+    <div class="pwa-desktop-note">Por segurança, navegadores e Windows exigem confirmação do usuário para criar ou fixar atalhos. O site não pode executar essa etapa silenciosamente.</div>`;
+  desktopInstallHelpShown = installed;
+  openModal('pwaInstallModal');
 }
 window.addEventListener('beforeinstallprompt', event => {
   event.preventDefault();
@@ -857,29 +881,38 @@ window.addEventListener('beforeinstallprompt', event => {
 window.addEventListener('appinstalled', () => {
   deferredInstallPrompt = null;
   updateInstallButton();
+  if (isDesktopDevice() && !desktopInstallHelpShown) {
+    setTimeout(() => showDesktopInstallHelp(true), 500);
+  }
 });
 $('#installPwaBtn').onclick = async () => {
   if (deferredInstallPrompt) {
     deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
+    const choice = await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
     updateInstallButton();
+    if (choice?.outcome === 'accepted' && isDesktopDevice()) {
+      setTimeout(() => showDesktopInstallHelp(true), 700);
+    }
     return;
   }
   const steps = $('#pwaInstallSteps');
   if (isIosDevice()) {
     $('#pwaInstallText').textContent = 'No iPhone ou iPad, a instalação é feita pelo menu de compartilhamento do Safari.';
     steps.innerHTML = '<ol><li>Abra este site no Safari.</li><li>Toque no botão Compartilhar.</li><li>Escolha “Adicionar à Tela de Início”.</li><li>Confirme em “Adicionar”.</li></ol>';
+    openModal('pwaInstallModal');
+  } else if (isDesktopDevice()) {
+    showDesktopInstallHelp(false);
   } else {
     $('#pwaInstallText').textContent = 'Use o menu do navegador para instalar o HAPCAPEX como aplicativo.';
     steps.innerHTML = '<ol><li>Abra o menu do navegador.</li><li>Escolha “Instalar aplicativo” ou “Adicionar à tela inicial”.</li><li>Confirme a instalação.</li></ol>';
+    openModal('pwaInstallModal');
   }
-  openModal('pwaInstallModal');
 };
 async function registerPwaServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const registration = await navigator.serviceWorker.register('./service-worker.js?v=21', { scope: './' });
+    const registration = await navigator.serviceWorker.register('./service-worker.js?v=25', { scope: './' });
     registration.update().catch(() => {});
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -1041,7 +1074,10 @@ function showCorePage(pageName) {
 
 function setMobileVisibility(selector, activeValue, dataKey) {
   document.querySelectorAll(selector).forEach(element => {
-    element.classList.toggle('mobile-view-hidden', element.dataset[dataKey] !== activeValue);
+    const shouldHide = element.dataset[dataKey] !== activeValue;
+    element.classList.toggle('mobile-view-hidden', shouldHide);
+    element.toggleAttribute('hidden', shouldHide);
+    element.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
   });
 }
 
