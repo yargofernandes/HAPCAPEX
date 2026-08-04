@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>HAPCAPEX — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest?v=25"><link rel="apple-touch-icon" sizes="180x180" href="icons/hapcapex-finance-v25-180.png"><link rel="icon" type="image/png" sizes="192x192" href="icons/hapcapex-finance-v25-192.png"><link rel="stylesheet" href="styles.css?v=25"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0d2b4e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="HAPCAPEX"><title>HAPCAPEX — Controle Financeiro</title><link rel="manifest" href="manifest.webmanifest?v=26"><link rel="apple-touch-icon" sizes="180x180" href="icons/hapcapex-finance-v25-180.png"><link rel="icon" type="image/png" sizes="192x192" href="icons/hapcapex-finance-v25-192.png"><link rel="stylesheet" href="styles.css?v=26"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script></head><body>
 <div id="authGate"><form id="loginForm" class="auth-card"><h2>🔐 CAPEX HAPVIDA</h2><p>Acesso restrito — Coordenação Sala Técnica</p><label>E-mail<input name="email" type="email" required autocomplete="username"></label><label>Senha<input name="password" type="password" required autocomplete="current-password"></label><button>Entrar</button><div id="loginMsg" class="auth-msg"></div></form></div>
 <div id="adminToolbar" class="admin-toolbar" hidden><strong>CAPEX HAPVIDA</strong><small id="userLabel"></small><div class="spacer"></div><button id="installPwaBtn" class="secondary" hidden>🖥️ Instalar no computador</button><button id="importBtn" class="admin-only">📥 Importar Excel</button><button id="settingsBtn" class="admin-only">⚙️ Editar KPIs</button><button id="backupBtn" class="admin-only">💾 Backups</button><button id="usersBtn" class="admin-only">👥 Usuários</button><button id="logoutBtn" class="secondary">Sair</button></div>
 <div id="importModal" class="admin-modal admin-only"><div class="admin-box"><h2>Importar atualização mensal</h2><p>Selecione a planilha do CAPEX. A aba de manutenção pode ser importada separadamente, sem alterar as Obras.</p><label class="import-scope-label">O que deseja atualizar?<select id="importScope"><option value="all">Obras e Manutenção</option><option value="maintenance">Somente Manutenção</option><option value="works">Somente Obras</option></select></label><input id="excelFile" type="file" accept=".xlsx,.xls"><div id="importStatus" class="import-status">Nenhum arquivo selecionado.</div><div id="importCheck" class="import-check" hidden></div><div class="admin-actions"><button data-close="importModal">Cancelar</button><button id="applyImport" class="save" disabled>Importar e atualizar</button></div></div></div>
@@ -112,11 +112,11 @@
 <!-- ============================================================ PAGE OBRAS ============================================================ -->
 <div id="page-obras" class="page-section active">
 <div class="container">
-  <section class="mobile-home-card" data-mobile-view="summary">
-    <div><span>Visão executiva</span><strong>Painel rápido de acompanhamento</strong><small>Acesse obras, manutenção, gráficos e riscos com poucos toques.</small></div>
-    <div class="mobile-home-actions">
-      <button type="button" data-mobile-go="works">Ver obras</button>
-      <button type="button" data-mobile-go="charts">Ver gráficos</button>
+  <section class="mobile-home-card mobile-module-panel" data-mobile-view="summary">
+    <div><span>Painel rápido</span><strong>Escolha o módulo de acompanhamento</strong><small>Alterne entre o portfólio de Obras e o pacote de Manutenção.</small></div>
+    <div class="mobile-home-actions mobile-module-actions">
+      <button type="button" data-mobile-module="works"><span>🏗️</span><strong>Obras</strong><small>CAPEX, gráficos e riscos</small></button>
+      <button type="button" data-mobile-module="maintenance"><span>🛠️</span><strong>Manutenção</strong><small>Pacote, consumo e riscos</small></button>
     </div>
   </section>
   <div class="desktop-filter-reset" style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -187,6 +187,13 @@
 <!-- ============================================================ PAGE MANUTENÇÃO ============================================================ -->
 <div id="page-manutencao" class="page-section">
 <div class="container">
+  <section class="mobile-home-card mobile-module-panel" data-man-mobile-view="summary">
+    <div><span>Painel rápido</span><strong>Escolha o módulo de acompanhamento</strong><small>Alterne entre o portfólio de Obras e o pacote de Manutenção.</small></div>
+    <div class="mobile-home-actions mobile-module-actions">
+      <button type="button" data-mobile-module="works"><span>🏗️</span><strong>Obras</strong><small>CAPEX, gráficos e riscos</small></button>
+      <button type="button" data-mobile-module="maintenance"><span>🛠️</span><strong>Manutenção</strong><small>Pacote, consumo e riscos</small></button>
+    </div>
+  </section>
   <div class="mobile-maintenance-tabs">
     <button type="button" class="active" data-mobile-man="summary">Resumo</button>
     <button type="button" data-mobile-man="table">Obras</button>
@@ -245,12 +252,11 @@
 </div>
 
 
-<nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Navegação do aplicativo">
-  <button type="button" class="active" data-mobile-screen="summary"><span>⌂</span><small>Resumo</small></button>
-  <button type="button" data-mobile-screen="works"><span>▤</span><small>Obras</small></button>
-  <button type="button" data-mobile-screen="charts"><span>▥</span><small>Gráficos</small></button>
-  <button type="button" data-mobile-screen="risks"><span>⚠</span><small>Riscos</small></button>
-  <button type="button" data-mobile-screen="maintenance"><span>⚒</span><small>Manut.</small></button>
+<nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Navegação do módulo selecionado">
+  <button type="button" class="active" data-mobile-section="summary"><span>⌂</span><small>Resumo</small></button>
+  <button type="button" data-mobile-section="works"><span>▤</span><small>Obras</small></button>
+  <button type="button" data-mobile-section="charts"><span>▥</span><small>Gráficos</small></button>
+  <button type="button" data-mobile-section="risks"><span>⚠</span><small>Riscos</small></button>
 </nav>
 
 <div id="mobileChartViewer" class="mobile-chart-viewer" aria-hidden="true">
@@ -326,4 +332,4 @@
   </div>
 </div>
 
-</div><script src="config.js"></script><script src="original-baseline.js?v=25"></script><script src="bootstrap.js?v=25"></script></body></html>
+</div><script src="config.js"></script><script src="original-baseline.js?v=26"></script><script src="bootstrap.js?v=26"></script></body></html>

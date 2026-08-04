@@ -1,13 +1,13 @@
-const CACHE_NAME = 'hapcapex-v25-20260804';
+const CACHE_NAME = 'hapcapex-v26-20260804';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=25',
+  './styles.css?v=26',
   './config.js',
-  './original-baseline.js?v=25',
-  './bootstrap.js?v=25',
-  './dashboard-core.js?v=25',
-  './manifest.webmanifest?v=25',
+  './original-baseline.js?v=26',
+  './bootstrap.js?v=26',
+  './dashboard-core.js?v=26',
+  './manifest.webmanifest?v=26',
   './icons/hapcapex-finance-v25-180.png',
   './icons/hapcapex-finance-v25-192.png',
   './icons/hapcapex-finance-v25-512.png'

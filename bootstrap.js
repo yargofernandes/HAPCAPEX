@@ -1081,16 +1081,16 @@ function setMobileVisibility(selector, activeValue, dataKey) {
   });
 }
 
-function updateMobileHeader(screen) {
-  const titles = {
-    summary: 'Resumo executivo',
-    works: 'Obras · acumulado YTD',
-    charts: 'Gráficos financeiros',
-    risks: 'Riscos e análise',
-    maintenance: 'Manutenção'
+function updateMobileHeader(moduleName, sectionName) {
+  const moduleLabel = moduleName === 'maintenance' ? 'Manutenção' : 'Obras';
+  const sectionLabels = {
+    summary: 'resumo',
+    works: 'obras',
+    charts: 'gráficos',
+    risks: 'riscos'
   };
   const context = $('#mobileHeaderContext');
-  if (context) context.textContent = titles[screen] || 'HAPCAPEX';
+  if (context) context.textContent = `${moduleLabel} · ${sectionLabels[sectionName] || 'resumo'}`;
 }
 
 function resizeVisibleCharts() {
@@ -1103,40 +1103,63 @@ function resizeVisibleCharts() {
   }, 100);
 }
 
-function mobileSetScreen(screen, options = {}) {
+function updateMobileModuleButtons(moduleName) {
+  document.querySelectorAll('[data-mobile-module]').forEach(button => {
+    const active = button.dataset.mobileModule === moduleName;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function mobileSetSection(section, options = {}) {
   if (!document.body.classList.contains('pwa-mobile')) return;
-  const normalized = ['summary','works','charts','risks','maintenance'].includes(screen) ? screen : 'summary';
+  const normalizedSection = ['summary','works','charts','risks'].includes(section) ? section : 'summary';
+  const moduleName = document.body.dataset.mobileModule === 'maintenance' ? 'maintenance' : 'works';
+
   try { window.closeKpiPanel?.(); } catch (_) {}
   try { window.closePanel?.(); } catch (_) {}
-  document.body.dataset.mobileScreen = normalized;
-  if (normalized === 'maintenance') {
+
+  document.body.dataset.mobileSection = normalizedSection;
+  if (moduleName === 'maintenance') {
     showCorePage('manutencao');
-    if (!options.keepMaintenanceView) mobileSetMaintenanceView(document.body.dataset.manScreen || 'summary', true);
+    const maintenanceView = normalizedSection === 'works' ? 'table' : normalizedSection;
+    document.body.dataset.manScreen = maintenanceView;
+    setMobileVisibility('#page-manutencao [data-man-mobile-view]', maintenanceView, 'manMobileView');
   } else {
     showCorePage('obras');
-    setMobileVisibility('#page-obras [data-mobile-view]', normalized, 'mobileView');
+    setMobileVisibility('#page-obras [data-mobile-view]', normalizedSection, 'mobileView');
   }
-  document.querySelectorAll('#mobileBottomNav [data-mobile-screen]').forEach(button => {
-    button.classList.toggle('active', button.dataset.mobileScreen === normalized);
+
+  document.querySelectorAll('#mobileBottomNav [data-mobile-section]').forEach(button => {
+    button.classList.toggle('active', button.dataset.mobileSection === normalizedSection);
   });
-  updateMobileHeader(normalized);
+  updateMobileModuleButtons(moduleName);
+  updateMobileHeader(moduleName, normalizedSection);
   closeMobileMenu();
-  window.scrollTo({ top: 0, behavior: options.instant ? 'auto' : 'smooth' });
+  if (!options.noScroll) window.scrollTo({ top: 0, behavior: options.instant ? 'auto' : 'smooth' });
   resizeVisibleCharts();
 }
 
+function mobileSetModule(moduleName, options = {}) {
+  if (!document.body.classList.contains('pwa-mobile')) return;
+  const normalizedModule = moduleName === 'maintenance' ? 'maintenance' : 'works';
+  document.body.dataset.mobileModule = normalizedModule;
+  try { localStorage.setItem('hapcapex-mobile-module', normalizedModule); } catch (_) {}
+  mobileSetSection(options.section || 'summary', options);
+}
+
+// Compatibilidade com chamadas antigas do modo móvel.
+function mobileSetScreen(screen, options = {}) {
+  if (screen === 'maintenance') {
+    mobileSetModule('maintenance', { ...options, section: 'summary' });
+    return;
+  }
+  mobileSetSection(screen, options);
+}
+
 function mobileSetMaintenanceView(view, noScroll = false) {
-  const normalized = ['summary','table','charts','risks'].includes(view) ? view : 'summary';
-  document.body.dataset.manScreen = normalized;
-  setMobileVisibility('#page-manutencao [data-man-mobile-view]', normalized, 'manMobileView');
-  document.querySelectorAll('[data-mobile-man]').forEach(button => {
-    button.classList.toggle('active', button.dataset.mobileMan === normalized);
-  });
-  const labels = { summary:'Manutenção · resumo', table:'Manutenção · obras', charts:'Manutenção · gráficos', risks:'Manutenção · riscos' };
-  const context = $('#mobileHeaderContext');
-  if (context && document.body.dataset.mobileScreen === 'maintenance') context.textContent = labels[normalized];
-  if (!noScroll) window.scrollTo({ top: 0, behavior: 'smooth' });
-  resizeVisibleCharts();
+  const sectionMap = { summary:'summary', table:'works', charts:'charts', risks:'risks' };
+  mobileSetModule('maintenance', { section: sectionMap[view] || 'summary', noScroll });
 }
 
 function openMobileMenu() {
@@ -1280,14 +1303,11 @@ function initMobileAppShell() {
     $('#mobileMenuOverlay')?.addEventListener('click', closeMobileMenu);
     $('#mobileChartClose')?.addEventListener('click', closeMobileChart);
 
-    document.querySelectorAll('#mobileBottomNav [data-mobile-screen]').forEach(button => {
-      button.addEventListener('click', () => mobileSetScreen(button.dataset.mobileScreen));
+    document.querySelectorAll('#mobileBottomNav [data-mobile-section]').forEach(button => {
+      button.addEventListener('click', () => mobileSetSection(button.dataset.mobileSection));
     });
-    document.querySelectorAll('[data-mobile-go]').forEach(button => {
-      button.addEventListener('click', () => mobileSetScreen(button.dataset.mobileGo));
-    });
-    document.querySelectorAll('[data-mobile-man]').forEach(button => {
-      button.addEventListener('click', () => mobileSetMaintenanceView(button.dataset.mobileMan));
+    document.querySelectorAll('[data-mobile-module]').forEach(button => {
+      button.addEventListener('click', () => mobileSetModule(button.dataset.mobileModule, { section:'summary' }));
     });
     document.querySelectorAll('[data-mobile-proxy]').forEach(button => {
       button.addEventListener('click', () => {
@@ -1306,8 +1326,15 @@ function initMobileAppShell() {
     });
   }
 
-  mobileSetMaintenanceView(document.body.dataset.manScreen || 'summary', true);
-  mobileSetScreen(document.body.dataset.mobileScreen || 'summary', { instant:true, keepMaintenanceView:true });
+  let initialModule = document.body.dataset.mobileModule;
+  if (!initialModule) {
+    try { initialModule = localStorage.getItem('hapcapex-mobile-module'); } catch (_) {}
+  }
+  mobileSetModule(initialModule === 'maintenance' ? 'maintenance' : 'works', {
+    section: document.body.dataset.mobileSection || 'summary',
+    instant: true,
+    noScroll: true
+  });
 }
 
 window.addEventListener('resize', () => {

@@ -1,10 +1,10 @@
 {
-  "id": "./?app=hapcapex-v25",
+  "id": "./?app=hapcapex-v26",
   "name": "HAPCAPEX — Controle Financeiro",
   "short_name": "HAPCAPEX",
   "description": "Dashboard de controle financeiro CAPEX da Coordenação Sala Técnica.",
   "lang": "pt-BR",
-  "start_url": "./?app=hapcapex-v25",
+  "start_url": "./?app=hapcapex-v26",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
