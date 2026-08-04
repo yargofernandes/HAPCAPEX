@@ -2067,7 +2067,7 @@ function renderManTable() {
         <div><span>Média por obra</span><strong>${fmt(avgPerWork)}</strong></div>
         <div><span>Período</span><strong>${periodLabel}</strong><small>${colMeses.length} mês${colMeses.length === 1 ? '' : 'es'} analisado${colMeses.length === 1 ? '' : 's'}</small></div>
       </div>
-      <div class="mobile-accum-note">Visão simplificada da manutenção no aplicativo. O nome da obra fica legível e os valores aparecem sem rolagem horizontal.</div>
+      
       <div class="mobile-man-list">`;
 
     fo.forEach(o => {

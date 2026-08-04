@@ -1135,10 +1135,21 @@ function addMobileChartLaunchers() {
 
 function addMobileTableControls() {
   document.querySelectorAll('.table-wrapper').forEach(wrapper => {
-    if (wrapper.previousElementSibling?.classList.contains('mobile-table-controls')) return;
+    const existing = wrapper.previousElementSibling?.classList.contains('mobile-table-controls') ? wrapper.previousElementSibling : null;
+    const isMaintenancePage = !!wrapper.closest('#page-manutencao');
+    const hasHorizontalOverflow = (wrapper.scrollWidth - wrapper.clientWidth) > 40;
+    const visibleTable = wrapper.querySelector('table') && getComputedStyle(wrapper.querySelector('table')).display !== 'none';
+    const shouldShowControls = hasHorizontalOverflow && visibleTable && !isMaintenancePage;
+
+    if (!shouldShowControls) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
+
     const controls = document.createElement('div');
     controls.className = 'mobile-table-controls';
-    controls.innerHTML = '<span>Deslize para consultar os meses</span><div><button type="button" data-scroll="left" aria-label="Rolar para esquerda">←</button><button type="button" data-scroll="right" aria-label="Rolar para direita">→</button><button type="button" data-scroll="end">Fim</button></div>';
+    controls.innerHTML = '<span>Deslize para consultar a tabela</span><div><button type="button" data-scroll="left" aria-label="Rolar para esquerda">←</button><button type="button" data-scroll="right" aria-label="Rolar para direita">→</button><button type="button" data-scroll="end">Fim</button></div>';
     controls.querySelector('[data-scroll="left"]').onclick = () => wrapper.scrollBy({ left: -Math.max(260, wrapper.clientWidth * .75), behavior: 'smooth' });
     controls.querySelector('[data-scroll="right"]').onclick = () => wrapper.scrollBy({ left: Math.max(260, wrapper.clientWidth * .75), behavior: 'smooth' });
     controls.querySelector('[data-scroll="end"]').onclick = () => wrapper.scrollTo({ left: wrapper.scrollWidth, behavior: 'smooth' });
