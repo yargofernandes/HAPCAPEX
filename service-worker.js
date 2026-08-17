@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-18-horizontal-lock-20260817';
+const CACHE_NAME = 'hapcapex-v40-0-20-control-ui-consolidated-20260817';
 const APP_SHELL = [
   './',
   './index.html',
@@ -22,7 +22,7 @@ const APP_SHELL = [
   './v40-aporte-status.js?v=40.0.11',
   './v40-tipologia-governance.js?v=40.0.13',
   './v40-audit-performance.js?v=40.0.16',
-  './v40-horizontal-lock.js?v=40.0.18',
+  './v40-control-ui.js?v=40.0.20',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
   './dashboard-core.js?v=29',
@@ -41,7 +41,7 @@ const MANAGERIAL_TAG = '<script src="./v40-managerial-kpis-sort.js?v=40.0.9"></s
 const APORTE_STATUS_TAG = '<script src="./v40-aporte-status.js?v=40.0.11"></script>';
 const TIPOLOGIA_TAG = '<script src="./v40-tipologia-governance.js?v=40.0.13"></script>';
 const AUDIT_PERF_TAG = '<script src="./v40-audit-performance.js?v=40.0.16"></script>';
-const UI_STABILITY_TAG = '<script src="./v40-horizontal-lock.js?v=40.0.18"></script>';
+const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.20"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
   Nome da obra
@@ -213,7 +213,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.18',
+    'x-hapcapex-functional': 'v40.0.20',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -241,6 +241,10 @@ async function decorateHtmlResponse(response, url) {
     text = removeVersionedScript(text, 'v40-audit-performance.js');
     text = removeVersionedScript(text, 'v40-ui-stability.js');
     text = removeVersionedScript(text, 'v40-horizontal-lock.js');
+    text = removeVersionedScript(text, 'v40-stable-header.js');
+    text = removeVersionedScript(text, 'v40-control-ui.js');
+    text = removeVersionedScript(text, 'v40-stable-header.js');
+    text = removeVersionedScript(text, 'v40-control-ui.js');
     text = removeVersionedScript(text, 'v40-work-name-sync.js');
     text = removeVersionedScript(text, 'v40-tipologia-integrity.js');
 
@@ -252,10 +256,10 @@ async function decorateHtmlResponse(response, url) {
     ];
     const marker = governancePatterns.find(tag => text.includes(tag));
     if (marker) {
-      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${UI_STABILITY_TAG}`);
+      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}`);
     } else {
       const initTag = '<script>init();</script>';
-      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + UI_STABILITY_TAG;
+      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG;
       if (text.includes(initTag)) text = text.replace(initTag, `${fallbackInjection}${initTag}`);
       else if (/<\/body>/i.test(text)) text = text.replace(/<\/body>/i, `${fallbackInjection}</body>`);
       else text += fallbackInjection;
@@ -275,6 +279,10 @@ async function decorateHtmlResponse(response, url) {
     text = removeVersionedScript(text, 'v40-audit-performance.js');
     text = removeVersionedScript(text, 'v40-ui-stability.js');
     text = removeVersionedScript(text, 'v40-horizontal-lock.js');
+    text = removeVersionedScript(text, 'v40-stable-header.js');
+    text = removeVersionedScript(text, 'v40-control-ui.js');
+    text = removeVersionedScript(text, 'v40-stable-header.js');
+    text = removeVersionedScript(text, 'v40-control-ui.js');
     text = removeVersionedScript(text, 'v40-work-name-sync.js');
     text = removeVersionedScript(text, 'v40-tipologia-integrity.js');
     let injection = '';
@@ -287,7 +295,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.18'
+    'x-hapcapex-functional': 'v40.0.20'
   });
 }
 
