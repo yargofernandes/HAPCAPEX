@@ -1,0 +1,1761 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Capex — HAPCAPEX</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --azul: #0d2b4e;
+    --azul-medio: #1a4b8c;
+    --azul-claro: #2e6bbf;
+    --azul-suave: #e8f0fb;
+    --laranja: #e07020;
+    --verde: #1e8a4a;
+    --vermelho: #c0392b;
+    --amarelo-bg: #fff0c0;
+    --amarelo-texto: #8a6000;
+    --cinza-bg: #f4f6fa;
+    --cinza-borda: #dde3ee;
+    --texto: #1a2233;
+    --texto-suave: #5a6882;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: var(--cinza-bg);
+    color: var(--texto);
+    font-size: 13px;
+  }
+  #app { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  /* V35.5 — desktop: aproveitar praticamente toda a largura da janela.
+     Mantém o comportamento original em telas menores/mobile. */
+  @media (min-width: 981px) {
+    #app {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 20px 12px 24px;
+    }
+  }
+
+  .login-wrap { min-height: 100vh; display:flex; align-items:center; justify-content:center; background: var(--cinza-bg); }
+  .login-box { background:#fff; border-radius:14px; padding:32px; width:340px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .login-box h1 { font-size:18px; color:var(--azul); margin:0 0 4px; }
+  .login-box p { font-size:12px; color:var(--texto-suave); margin:0 0 20px; }
+  .field { margin-bottom: 14px; }
+  .field label { display:block; font-size:10px; font-weight:700; color:var(--texto-suave); text-transform:uppercase; margin-bottom:4px; }
+  .field input, .field select, .field textarea {
+    width:100%; padding:8px 10px; border:0.5px solid var(--cinza-borda); border-radius:8px; font-size:13px; font-family:inherit;
+  }
+  .btn { border:none; border-radius:8px; padding:9px 16px; font-size:12px; font-weight:700; cursor:pointer; }
+  .btn-primary { background: var(--azul-medio); color:#fff; }
+  .btn-primary:hover { background: var(--azul); }
+  .btn-secondary { background:#fff; border:0.5px solid var(--cinza-borda); color:var(--texto-suave); }
+  .btn-block { width:100%; }
+  .error-msg { background:#fcebeb; border:0.5px solid #e24b4a; color:#791f1f; padding:8px 10px; border-radius:8px; font-size:12px; margin-bottom:12px; }
+  .success-msg { background:#e1f5ee; border:0.5px solid #5dcaa5; color:#04342c; padding:8px 10px; border-radius:8px; font-size:12px; margin-bottom:12px; }
+
+  header.topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+  .brand-eyebrow { font-size:11px; font-weight:700; letter-spacing:0.06em; color:var(--laranja); text-transform:uppercase; }
+  .brand-title { font-size:20px; font-weight:700; color:var(--azul); }
+  .user-chip { font-size:12px; color:var(--texto-suave); display:flex; align-items:center; gap:10px; }
+  .role-badge { background:var(--azul-suave); color:var(--azul); font-weight:700; padding:2px 9px; border-radius:10px; font-size:10px; text-transform:uppercase; }
+
+  .kpi-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:16px; }
+  .kpi-card { min-width:0; background:#fff; border-left:5px solid var(--azul-medio); border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px 14px; }
+  .kpi-card .label { font-size:10px; font-weight:700; letter-spacing:0.05em; color:var(--texto-suave); text-transform:uppercase; }
+  .kpi-card .value { font-size:clamp(16px,1.35vw,19px); line-height:1.15; font-weight:800; color:var(--azul); margin-top:5px; white-space:nowrap; font-variant-numeric:tabular-nums; letter-spacing:-0.025em; }
+  .kpi-card .sub { margin-top:5px; font-size:10px; line-height:1.35; color:var(--texto-suave); }
+  .kpi-card.clickable { cursor:pointer; transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease; }
+  .kpi-card.clickable:hover,.kpi-card.clickable:focus-visible { transform:translateY(-2px); box-shadow:0 7px 18px rgba(13,43,78,.12); outline:none; }
+  .kpi-card.clickable .sub::before { content:'↗ '; font-weight:800; color:var(--azul-claro); }
+  @media(max-width:980px){.kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+  @media(max-width:720px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.kpi-card .value{font-size:16px;}}
+  @media(max-width:430px){.kpi-grid{grid-template-columns:1fr;}}
+
+  .toolbar { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center; background:#fff; border:0.5px solid var(--cinza-borda); border-radius:10px; padding:8px 10px; }
+  .toolbar input[type=text] { flex:1; min-width:200px; border:none; background:var(--cinza-bg); border-radius:8px; padding:7px 10px; font-size:12px; }
+
+  .table-card { background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.06); overflow:auto; max-height:70vh; }
+  .table-card table thead tr { position:sticky; top:0; z-index:1; }
+  table { width:100%; border-collapse:collapse; font-size:12px; min-width:760px; }
+  thead th { position:sticky; top:0; background:var(--azul); color:#fff; text-align:left; padding:9px 10px; font-weight:700; white-space:nowrap; }
+  tbody td { padding:8px 10px; white-space:nowrap; }
+  tbody tr:nth-child(even) { background:var(--azul-suave); }
+  .pct-pill { font-weight:700; padding:2px 8px; border-radius:10px; }
+  .pct-ok { background:#e1f5ee; color:#04342c; }
+  .pct-atencao { background:var(--amarelo-bg); color:var(--amarelo-texto); }
+  .pct-critico { background:#fcebeb; color:#501313; }
+  .flag { font-size:9px; font-weight:700; padding:2px 7px; border-radius:8px; margin-right:4px; display:inline-block; }
+  .flag-conting { background:var(--amarelo-bg); color:var(--amarelo-texto); }
+  .flag-aporte { background:#e1f5ee; color:#04342c; }
+  .empty-state { text-align:center; padding:40px 20px; color:var(--texto-suave); }
+  .nav-pill { background:var(--azul-suave); color:var(--texto-suave); font-size:11px; font-weight:700; padding:6px 14px; border-radius:16px; cursor:pointer; }
+  .nav-pill.active { background:var(--azul-medio); color:#fff; }
+  .nav-pill.disabled { opacity:0.5; cursor:not-allowed; }
+  .banner-ok { background:#e1f5ee; border:0.5px solid #5dcaa5; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:#04342c; }
+  .banner-warn { background:var(--amarelo-bg); border:0.5px solid #f0b429; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--amarelo-texto); }
+
+  .modal-backdrop { position:fixed; inset:0; background:rgba(13,43,78,0.45); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .modal-box { background:#fff; border-radius:14px; padding:22px; width:440px; max-width:100%; max-height:90vh; overflow:auto; }
+  .modal-box h2 { font-size:16px; color:var(--azul); margin:0 0 4px; }
+  .modal-box .sub { font-size:12px; color:var(--texto-suave); margin:0 0 16px; }
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+  .fab { position:sticky; top:0; }
+  .modal-box.modal-wide { width:640px; }
+  .history-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:12px 0 16px; }
+  .history-summary > div { background:var(--cinza-bg); border-radius:9px; padding:10px 11px; min-width:0; }
+  .history-summary span { display:block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--texto-suave); }
+  .history-summary strong { display:block; margin-top:4px; color:var(--azul); font-size:14px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .history-section { margin-top:15px; }
+  .history-section-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--azul); padding-bottom:7px; border-bottom:1px solid var(--cinza-borda); }
+  .history-row { padding:10px 0; border-bottom:1px solid var(--cinza-borda); }
+  .history-row-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .history-row-name { color:var(--azul); font-size:12px; font-weight:650; line-height:1.35; }
+  .history-row-meta { color:var(--texto-suave); font-size:10px; margin-top:2px; }
+  .history-row-value { white-space:nowrap; font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .history-bar { height:4px; border-radius:5px; background:var(--cinza-borda); overflow:hidden; margin-top:7px; }
+  .history-bar > i { display:block; height:100%; border-radius:5px; }
+  .session-loading { min-height:100vh; display:flex; align-items:center; justify-content:center; color:var(--texto-suave); }
+  .session-loading-card { background:#fff; border:1px solid var(--cinza-borda); border-radius:14px; padding:22px 26px; box-shadow:0 4px 16px rgba(0,0,0,.06); text-align:center; }
+  .session-loading-card strong { display:block; color:var(--azul); margin-bottom:5px; }
+  @media(max-width:640px){.history-summary{grid-template-columns:1fr}.modal-box.modal-wide{width:100%;}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const SUPABASE_URL = 'https://kuvwfyuhrnfsubkapeek.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+
+const app = document.getElementById('app');
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (v) => v === null || v === undefined ? '—' : (v * 100).toFixed(1) + '%';
+
+function voltarAoSeletorHapcapex() {
+  window.location.href = './';
+}
+
+let state = { session: null, role: null, rows: [], filter: '', tab: 'capex', baseOiRows: [], baseOiResumo: null, baseOiFilter: '', transferRows: [], transferFilter: '', transferDataInicio: null, transferDataFim: null, transferPendencia: null, consumoRows: [], consumoResumo: null, consumoFilter: '', consumoPage: 0, consumoPageSize: 50, consumoTotal: 0, curveFinance: null, curveContingencyItems: [] };
+
+
+function renderSessionLoading() {
+  app.innerHTML = `<div class="session-loading"><div class="session-loading-card"><strong>HAPCAPEX</strong><span>Restaurando sua sessão...</span></div></div>`;
+}
+
+function searchTerms(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return [];
+  if (/[;,\n]/.test(raw)) return raw.split(/[;,\n]+/).map(v => v.trim()).filter(Boolean);
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1 && tokens.every(v => /^\d{5,}$/.test(v))) return tokens;
+  return [raw];
+}
+
+function matchesSearch(value, fields) {
+  const terms = searchTerms(value);
+  if (!terms.length) return true;
+  const haystacks = fields.map(v => String(v || '').toLowerCase());
+  return terms.some(term => haystacks.some(text => text.includes(term)));
+}
+
+function safePostgrestSearchTerm(term) {
+  return String(term || '').replace(/[,%()]/g, '').trim();
+}
+
+const monthLabels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function detalheMesLabel(item) {
+  const key = /^\d{4}-\d{2}$/.test(String(item?.mes || '')) ? String(item.mes) : '';
+  if (!key) return 'Mês não informado';
+  const [y,m] = key.split('-').map(Number);
+  return `${monthLabels[m-1]}/${y}`;
+}
+function acumuladoLabel(lista) {
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const mesAtual = hoje.getMonth() + 1;
+  const chaveAtual = `${anoAtual}-${String(mesAtual).padStart(2,'0')}`;
+  const temLancamentoNoMesAtual = (Array.isArray(lista) ? lista : []).some(item => String(item?.mes || '') === chaveAtual);
+  let anoFim = anoAtual;
+  let mesFim = temLancamentoNoMesAtual ? mesAtual : mesAtual - 1;
+  if (mesFim === 0) { mesFim = 12; anoFim -= 1; }
+  return `Acumulado Jan–${monthLabels[mesFim-1]}/${String(anoFim).slice(-2)}`;
+}
+function realizedTotal(item) {
+  return Object.values(item?.realizado || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+}
+function curveFinanceTotals() {
+  const f = state.curveFinance || {};
+  const contingDetalhe = Array.isArray(f.conting_detalhe) ? f.conting_detalhe : [];
+  const aportesDetalhe = Array.isArray(f.aportes_detalhe) ? f.aportes_detalhe : [];
+  const conting = contingDetalhe.length ? contingDetalhe.reduce((sum,x) => sum + Number(x?.valor || 0), 0) : Number(f.capex_conting || 0);
+  const aportes = aportesDetalhe.length ? aportesDetalhe.reduce((sum,x) => sum + Number(x?.valor || 0), 0) : Number(f.capex_aportes || 0);
+  return { conting, aportes, contingDetalhe, aportesDetalhe };
+}
+
+async function loadCurveFinanceReference() {
+  const [{ data: settings, error: settingsError }, { data: items, error: itemsError }] = await Promise.all([
+    sb.from('capex_settings').select('capex_inicial,capex_conting,capex_aportes,conting_detalhe,aportes_detalhe').eq('id','main').single(),
+    sb.from('capex_items').select('id,nome,capex,realizado').eq('categoria','obra').is('deleted_at',null)
+  ]);
+  if (settingsError) throw settingsError;
+  state.curveFinance = settings || {};
+  state.curveContingencyItems = itemsError ? [] : (items || []).filter(item => /CONTIN?G/i.test(String(item.nome || '')));
+}
+
+function openControlKpiPanel(type) {
+  const k = computeKpis(state.rows || []);
+  const { conting, aportes, contingDetalhe, aportesDetalhe } = curveFinanceTotals();
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `<div class="modal-box modal-wide"><div id="kpi-modal-body"></div><div class="modal-actions"><button class="btn btn-secondary" id="kpi-modal-close">Fechar</button></div></div>`;
+  document.body.appendChild(backdrop);
+  const body = backdrop.querySelector('#kpi-modal-body');
+  const close = () => backdrop.remove();
+  backdrop.querySelector('#kpi-modal-close').onclick = close;
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+  if (type === 'contingenciamento') {
+    const label = acumuladoLabel(contingDetalhe);
+    let html = `<h2>Contingenciamento — Detalhamento</h2><p class="sub">${label}. Histórico financeiro trazido da Curva de Capex; não é somado novamente ao CAPEX atual do Controle.</p>
+      <div class="history-summary"><div><span>Total contingenciado</span><strong style="color:var(--vermelho)">${brl.format(conting)}</strong></div><div><span>Lançamentos</span><strong>${contingDetalhe.length}</strong></div><div><span>Origem</span><strong>Curva de Capex</strong></div></div>
+      <div class="history-section"><div class="history-section-title">Detalhamento por obra</div>`;
+    contingDetalhe.forEach(item => {
+      const share = conting ? Number(item.valor || 0) / conting * 100 : 0;
+      html += `<div class="history-row"><div class="history-row-head"><div><div class="history-row-name">${escapeHtml(item.nome || '—')}</div><div class="history-row-meta">Contingenciado em ${detalheMesLabel(item)} · ${share.toFixed(1)}% do total</div></div><div class="history-row-value" style="color:var(--vermelho)">${brl.format(Number(item.valor || 0))}</div></div><div class="history-bar"><i style="width:${Math.max(0,Math.min(100,share))}%;background:var(--vermelho)"></i></div></div>`;
+    });
+    html += '</div>';
+    const partials = (state.curveContingencyItems || []).filter(item => Number(item.capex || 0) > 0);
+    if (partials.length) {
+      const residual = partials.reduce((sum,item) => sum + Number(item.capex || 0),0);
+      html += `<div class="history-section"><div class="history-section-title">CAPEX residual das contingências parciais</div><div class="history-summary"><div style="grid-column:1/-1"><span>Residual preservado na Curva</span><strong>${brl.format(residual)}</strong></div></div>`;
+      partials.forEach(item => { html += `<div class="history-row"><div class="history-row-head"><div><div class="history-row-name">${escapeHtml(String(item.nome || '').replace(/\s*-\s*CONTIN?G.*$/i,''))}</div><div class="history-row-meta">Contingenciamento parcial</div></div><div class="history-row-value">${brl.format(Number(item.capex || 0))}</div></div></div>`; });
+      html += '</div>';
+    }
+    const withRealized = (state.curveContingencyItems || []).filter(item => realizedTotal(item) > 0);
+    if (withRealized.length) {
+      html += `<div class="history-section"><div class="history-section-title">Valores realizados antes do contingenciamento</div>`;
+      withRealized.forEach(item => { html += `<div class="history-row"><div class="history-row-head"><div><div class="history-row-name">${escapeHtml(String(item.nome || '').replace(/\s*-\s*CONTIN?G.*$/i,''))}</div><div class="history-row-meta">Valor já desembolsado</div></div><div class="history-row-value" style="color:var(--laranja)">${brl.format(realizedTotal(item))}</div></div></div>`; });
+      html += '</div>';
+    }
+    body.innerHTML = html;
+    return;
+  }
+
+  if (type === 'aportes') {
+    const label = acumuladoLabel(aportesDetalhe);
+    let html = `<h2>Aportes Extras — Detalhamento Acumulado</h2><p class="sub">${label}. Histórico financeiro trazido da Curva de Capex; esses aportes já ocorreram e não são adicionados novamente ao CAPEX atual do Controle.</p>
+      <div class="history-summary"><div><span>Total de aportes</span><strong style="color:var(--verde)">${brl.format(aportes)}</strong></div><div><span>Lançamentos</span><strong>${aportesDetalhe.length}</strong></div><div><span>Origem</span><strong>Curva de Capex</strong></div></div>
+      <div class="history-section"><div class="history-section-title">Obras com aporte extra</div>`;
+    aportesDetalhe.forEach(item => {
+      const share = aportes ? Number(item.valor || 0) / aportes * 100 : 0;
+      html += `<div class="history-row"><div class="history-row-head"><div><div class="history-row-name">${escapeHtml(item.nome || '—')}</div><div class="history-row-meta">Aporte em ${detalheMesLabel(item)} · ${share.toFixed(1)}% do total</div></div><div class="history-row-value" style="color:var(--verde)">${brl.format(Number(item.valor || 0))}</div></div><div class="history-bar"><i style="width:${Math.max(0,Math.min(100,share))}%;background:var(--verde)"></i></div></div>`;
+    });
+    html += '</div>';
+    body.innerHTML = html;
+    return;
+  }
+
+  const diferenca = k.montante - k.compromissado - k.saldo;
+  body.innerHTML = `<h2>Composição financeira atual</h2><p class="sub">Valores atuais do Controle de Capex. O balde histórico de contingenciamento e os aportes passados não são somados novamente aqui.</p>
+    <div class="history-summary"><div><span>Montante atribuído</span><strong>${brl.format(k.montante)}</strong></div><div><span>Compromissado</span><strong>${brl.format(k.compromissado)}</strong></div><div><span>Saldo disponível</span><strong>${brl.format(k.saldo)}</strong></div></div>
+    <div class="history-section"><div class="history-section-title">Conciliação</div><div class="history-row"><div class="history-row-head"><div><div class="history-row-name">Montante − Compromissado − Saldo</div><div class="history-row-meta">A diferença deve ser exatamente R$ 0,00.</div></div><div class="history-row-value" style="color:${Math.abs(diferenca) < 0.005 ? 'var(--verde)' : 'var(--vermelho)'}">${brl.format(diferenca)}</div></div></div><div class="history-row"><div class="history-row-head"><div><div class="history-row-name">Obras ativas</div><div class="history-row-meta">Exclui o balde histórico de contingenciamento.</div></div><div class="history-row-value">${k.qtdObras}</div></div></div></div>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function pctClass(v) {
+  if (v === null || v === undefined) return '';
+  if (v >= 0.95) return 'pct-critico';
+  if (v >= 0.7) return 'pct-atencao';
+  return 'pct-ok';
+}
+
+async function init() {
+  renderSessionLoading();
+  const { data: { session }, error } = await sb.auth.getSession();
+  if (error) { renderLogin('Não foi possível restaurar sua sessão.'); return; }
+  state.session = session;
+  if (session) { await loadRoleAndData(); } else { renderLogin(); }
+  sb.auth.onAuthStateChange((event, session) => {
+    state.session = session;
+    if (event === 'SIGNED_OUT') renderLogin();
+    if (event === 'SIGNED_IN' && session && !state.role) loadRoleAndData().catch(err => renderLogin(err.message));
+  });
+}
+
+function renderLogin(errorMsg) {
+  app.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-box">
+        <h1>Controle de Capex</h1>
+        <p>HAPCAPEX — entre com sua conta.</p>
+        ${errorMsg ? `<div class="error-msg">${errorMsg}</div>` : ''}
+        <div class="field"><label>E-mail</label><input type="email" id="login-email"></div>
+        <div class="field"><label>Senha</label><input type="password" id="login-pass"></div>
+        <button class="btn btn-primary btn-block" id="login-btn">Entrar</button>
+      </div>
+    </div>`;
+  document.getElementById('login-btn').onclick = async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-pass').value;
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { renderLogin(error.message); return; }
+    await loadRoleAndData();
+  };
+}
+
+async function loadRoleAndData() {
+  const uid = state.session.user.id;
+  const { data: profile, error: profErr } = await sb.from('profiles').select('role, full_name').eq('id', uid).single();
+  if (profErr) { renderLogin('Não foi possível ler seu perfil: ' + profErr.message); return; }
+  if (profile.role !== 'admin') {
+    // V33: Controle de Capex restrito a Administradores.
+    // Visualizadores retornam para a Curva mesmo se tentarem acessar esta URL diretamente.
+    window.location.replace('./?hapModule=curve&controlAccess=denied');
+    return;
+  }
+  state.role = profile.role;
+  state.fullName = profile.full_name || state.session.user.email;
+  await loadCurveFinanceReference();
+  await refreshCurrent();
+}
+
+async function refreshCurrent() {
+  if (state.tab === 'base_oi') { await loadBaseOiTab(); }
+  else if (state.tab === 'transferencias') { await loadTransferenciasTab(); }
+  else if (state.tab === 'base_consumo') { await loadBaseConsumoTab(); }
+  else { await loadCapexTab(); }
+}
+
+function switchTab(tab) {
+  state.tab = tab;
+  refreshCurrent();
+}
+
+function navHtml(isAdmin) {
+  const pill = (id, label, enabled) => `<span class="nav-pill ${state.tab===id?'active':''} ${enabled?'':'disabled'}" ${enabled?`onclick="switchTab('${id}')"`:''}>${label}</span>`;
+  if (!isAdmin) return '';
+  return `<div style="display:flex;gap:6px;">
+    ${pill('capex','CAPEX', true)}
+    ${pill('base_oi','BASE O.I', true)}
+    ${pill('base_consumo','BASE CONSUMO', true)}
+    ${pill('transferencias','TRANSFERÊNCIAS', true)}
+  </div>`;
+}
+
+async function fetchAllRows(viewName, orderCol, ascending) {
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await sb.from(viewName).select('*').order(orderCol, { ascending }).range(from, from + PAGE - 1);
+    if (error) return { data: null, error };
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return { data: all, error: null };
+}
+
+async function loadCapexTab() {
+  const viewName = state.role === 'admin' ? 'vw_controle_capex_admin' : 'vw_controle_capex_executivo';
+  const { data, error } = await fetchAllRows(viewName, 'ordem_interna', true);
+  if (error) { app.innerHTML = `<div class="error-msg" style="margin:40px;">Erro ao carregar dados: ${error.message}</div>`; return; }
+  state.rows = data || [];
+  renderCapexTab();
+}
+
+function computeKpis(rows) {
+  const obras = rows.filter(r => r.ordem_interna !== '9999999999');
+  const montante = obras.reduce((s, r) => s + Number(r.montante_atribuido || 0), 0);
+  const compromissado = obras.reduce((s, r) => s + Number(r.valor_compromissado || 0), 0);
+  const saldo = obras.reduce((s, r) => s + Number(r.saldo_disponivel || 0), 0);
+  const historical = curveFinanceTotals();
+  return {
+    montante, compromissado, saldo,
+    pctComp: montante > 0 ? compromissado / montante : null,
+    qtdObras: obras.length,
+    contingenciamento: historical.conting,
+    aportes: historical.aportes
+  };
+}
+
+async function loadTransferenciasTab() {
+  const { data, error } = await fetchAllRows('vw_controle_transferencias', 'data', false);
+  if (error) { app.innerHTML = `<div class="error-msg" style="margin:40px;">Erro ao carregar Transferências: ${error.message}</div>`; return; }
+  state.transferRows = data || [];
+  renderTransferenciasTab();
+}
+
+function renderTransferenciasTab() {
+  const allRows = state.transferRows || [];
+  const rows = allRows.filter(r => {
+    const matchTexto = matchesSearch(state.transferFilter, [r.numero_documento, r.oi_origem, r.oi_destino]);
+    const matchInicio = !state.transferDataInicio || (r.data && r.data.slice(0,10) >= state.transferDataInicio);
+    const matchFim = !state.transferDataFim || (r.data && r.data.slice(0,10) <= state.transferDataFim);
+    const matchPendencia =
+      !state.transferPendencia ||
+      (state.transferPendencia === 'sem_data' && !r.data) ||
+      (state.transferPendencia === 'sem_documento' && !r.numero_documento) ||
+      (state.transferPendencia === 'sem_justificativa' && !r.justificativa);
+    return matchTexto && matchInicio && matchFim && matchPendencia;
+  });
+  const total = rows.reduce((s, r) => s + Number(r.valor || 0), 0);
+
+  app.innerHTML = `
+    <header class="topbar">
+      <div>
+        <div class="brand-eyebrow">Controle de Capex</div>
+        <div class="brand-title">Transferências</div>
+      </div>
+      ${navHtml(true)}
+      <div class="user-chip">
+        ${state.fullName} <span class="role-badge">Admin</span>
+        <button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button>
+        <button class="btn btn-secondary" id="logout-btn">Sair</button>
+      </div>
+    </header>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-left-color:var(--azul-medio)"><div class="label">Total transferido</div><div class="value">${brl.format(total)}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--azul-claro)"><div class="label">Qtde de transferências</div><div class="value">${rows.length}</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="search-input" placeholder="Buscar documento ou várias OIs (separe por vírgula)" value="${state.transferFilter}">
+      <span style="font-size:11px;color:var(--texto-suave);white-space:nowrap;">De: <input type="date" id="filtro-data-inicio" value="${state.transferDataInicio || ''}"></span>
+      <span style="font-size:11px;color:var(--texto-suave);white-space:nowrap;">Até: <input type="date" id="filtro-data-fim" value="${state.transferDataFim || ''}"></span>
+      ${(state.transferDataInicio || state.transferDataFim) ? `<span style="cursor:pointer;color:var(--vermelho);font-size:11px;font-weight:700;" id="limpar-datas-btn">Limpar datas</span>` : ''}
+      <select id="filtro-pendencia" style="padding:8px 10px;border-radius:8px;border:0.5px solid var(--cinza-borda);font-size:12px;">
+        <option value="">Todas as transferências</option>
+        <option value="sem_data" ${state.transferPendencia==='sem_data'?'selected':''}>Sem data</option>
+        <option value="sem_documento" ${state.transferPendencia==='sem_documento'?'selected':''}>Sem nº documento</option>
+        <option value="sem_justificativa" ${state.transferPendencia==='sem_justificativa'?'selected':''}>Sem justificativa</option>
+      </select>
+      <span id="import-status-transf" style="font-size:11px;color:var(--texto-suave);"></span>
+      <input type="file" id="import-file-input-transf" accept=".xlsx,.xls" style="display:none;">
+      <button class="btn btn-secondary" id="importar-transf-btn">+ Importar planilha</button>
+      <button class="btn btn-primary" id="nova-transf-btn">+ Nova transferência</button>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr><th>Nº doc.</th><th>Origem</th><th>Destino</th><th>Valor</th><th>Data</th><th>Justificativa</th><th>Ações</th></tr>
+        </thead>
+        <tbody>
+          ${rows.length === 0 ? `<tr><td colspan="7"><div class="empty-state">Nenhuma transferência encontrada.</div></td></tr>` :
+            rows.map(r => `
+            <tr>
+              <td style="font-weight:700;">${r.numero_documento || '—'}</td>
+              <td>${r.oi_origem}<br><span style="font-size:10px;color:var(--texto-suave)">${r.obra_origem_nome || ''}</span></td>
+              <td>${r.oi_destino}<br><span style="font-size:10px;color:var(--texto-suave)">${r.obra_destino_nome || ''}</span></td>
+              <td>${brl.format(r.valor || 0)} ${r.autorizado_diferenca ? '<span class="flag flag-conting">Entre pacotes diferentes</span>' : ''}</td>
+              <td>${r.data ? new Date(r.data).toLocaleDateString('pt-BR') : '—'}</td>
+              <td style="color:var(--texto-suave)">${r.justificativa || '—'}</td>
+              <td>
+                <span style="cursor:pointer;color:var(--azul-medio);font-weight:700;margin-right:12px;" onclick="editarTransferencia('${r.id}')">Editar</span>
+                <span style="cursor:pointer;color:var(--vermelho);font-weight:700;" onclick="excluirTransferencia('${r.id}')">Excluir</span>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('logout-btn').onclick = () => sb.auth.signOut();
+  document.getElementById('search-input').oninput = (e) => { state.transferFilter = e.target.value.toLowerCase(); renderTransferenciasTab(); refocusSearchInput(); };
+  document.getElementById('filtro-data-inicio').onchange = (e) => { state.transferDataInicio = e.target.value || null; renderTransferenciasTab(); };
+  document.getElementById('filtro-data-fim').onchange = (e) => { state.transferDataFim = e.target.value || null; renderTransferenciasTab(); };
+  const limparBtn = document.getElementById('limpar-datas-btn');
+  if (limparBtn) limparBtn.onclick = () => { state.transferDataInicio = null; state.transferDataFim = null; renderTransferenciasTab(); };
+  document.getElementById('filtro-pendencia').onchange = (e) => { state.transferPendencia = e.target.value || null; renderTransferenciasTab(); };
+  document.getElementById('nova-transf-btn').onclick = openNovaTransferenciaModal;
+  document.getElementById('importar-transf-btn').onclick = () => document.getElementById('import-file-input-transf').click();
+  document.getElementById('import-file-input-transf').onchange = (e) => { if (e.target.files[0]) importarArquivoTransferencias(e.target.files[0]); };
+}
+
+let autoFillTimer = null;
+function ligarAutoFill(inputId, nomeId, onPacote) {
+  const input = document.getElementById(inputId);
+  input.addEventListener('input', () => {
+    clearTimeout(autoFillTimer);
+    const oi = input.value.trim();
+    const nomeEl = document.getElementById(nomeId);
+    if (!oi) { nomeEl.innerHTML = ''; if (onPacote) onPacote(null); return; }
+    autoFillTimer = setTimeout(async () => {
+      const { data } = await sb.rpc('buscar_obra_por_oi', { p_ordem_interna: oi });
+      if (data && data.existe) {
+        nomeEl.innerHTML = `🔒 ${data.nome || '(sem nome)'} · ${data.grupo || 'sem grupo'} · pacote: ${data.pacote || 'sem pacote'}`;
+        if (onPacote) onPacote(data.pacote || '(sem pacote)');
+      } else {
+        nomeEl.innerHTML = `<span style="color:var(--vermelho)">OI não encontrada no cadastro</span>`;
+        if (onPacote) onPacote(null);
+      }
+    }, 400);
+  });
+}
+
+function openNovaTransferenciaModal() {
+  let linhaSeq = 0;
+  const pacotesPorLinha = {};
+
+  function linhaHtml(idx) {
+    return `
+    <tr class="linha-transf" data-idx="${idx}">
+      <td style="padding:6px 8px;color:var(--texto-suave);vertical-align:top;padding-top:12px;">${idx+1}</td>
+      <td style="padding:6px 8px;vertical-align:top;">
+        <input type="text" id="t-origem-${idx}" style="width:100px;">
+        <div id="t-origem-nome-${idx}" style="font-size:10px;color:var(--texto-suave);min-height:12px;margin-top:2px;"></div>
+      </td>
+      <td style="padding:6px 8px;vertical-align:top;">
+        <input type="text" id="t-destino-${idx}" style="width:100px;">
+        <div id="t-destino-nome-${idx}" style="font-size:10px;color:var(--texto-suave);min-height:12px;margin-top:2px;"></div>
+      </td>
+      <td style="padding:6px 8px;vertical-align:top;">
+        <input type="number" step="0.01" id="t-valor-${idx}" style="width:110px;text-align:right;">
+      </td>
+      <td style="padding:6px 8px;vertical-align:top;">
+        <input type="text" id="t-justificativa-${idx}" style="width:180px;">
+        <div id="t-pacote-alerta-${idx}"></div>
+      </td>
+      <td style="padding:6px 8px;vertical-align:top;padding-top:12px;">
+        <span class="remover-linha" data-idx="${idx}" style="cursor:pointer;color:var(--vermelho);font-weight:700;">✕</span>
+      </td>
+    </tr>`;
+  }
+
+  function ligarLinha(idx) {
+    const checar = () => {
+      const p = pacotesPorLinha[idx] || {};
+      const alertaEl = document.getElementById(`t-pacote-alerta-${idx}`);
+      if (p.origem && p.destino && p.origem !== p.destino) {
+        alertaEl.innerHTML = `
+          <div class="banner-warn" style="margin-top:4px;padding:4px 6px;font-size:10px;">
+            Pacotes diferentes (${p.origem} \u2192 ${p.destino}).
+            <label style="display:flex;align-items:center;gap:4px;margin-top:4px;font-weight:700;white-space:nowrap;">
+              <input type="checkbox" id="t-confirma-${idx}"> Autorizado pelo diretor
+            </label>
+          </div>`;
+      } else {
+        alertaEl.innerHTML = '';
+      }
+    };
+    ligarAutoFill(`t-origem-${idx}`, `t-origem-nome-${idx}`, (p) => { pacotesPorLinha[idx] = {...(pacotesPorLinha[idx]||{}), origem: p}; checar(); });
+    ligarAutoFill(`t-destino-${idx}`, `t-destino-nome-${idx}`, (p) => { pacotesPorLinha[idx] = {...(pacotesPorLinha[idx]||{}), destino: p}; checar(); });
+  }
+
+  function adicionarLinha() {
+    const idx = linhaSeq++;
+    document.getElementById('linhas-container').insertAdjacentHTML('beforeend', linhaHtml(idx));
+    ligarLinha(idx);
+    document.querySelector(`.remover-linha[data-idx="${idx}"]`).onclick = () => {
+      const el = document.querySelector(`.linha-transf[data-idx="${idx}"]`);
+      if (el) el.remove();
+      delete pacotesPorLinha[idx];
+    };
+  }
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box" style="width:760px;">
+      <h2>Nova transferência</h2>
+      <p class="sub">Pode incluir várias linhas no mesmo documento — cada uma é conferida separadamente (saldo e pacote). Só entra tudo, ou nada.</p>
+      <div id="modal-error"></div>
+      <div class="grid-2">
+        <div class="field"><label>Nº documento</label><input type="text" id="t-doc"></div>
+        <div class="field"><label>Data</label><input type="date" id="t-data" value="${new Date().toISOString().slice(0,10)}"></div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:var(--azul);color:#fff;">
+              <th style="padding:6px 8px;text-align:left;">#</th>
+              <th style="padding:6px 8px;text-align:left;">OI Origem</th>
+              <th style="padding:6px 8px;text-align:left;">OI Destino</th>
+              <th style="padding:6px 8px;text-align:right;">Valor</th>
+              <th style="padding:6px 8px;text-align:left;">Justificativa</th>
+              <th style="padding:6px 8px;"></th>
+            </tr>
+          </thead>
+          <tbody id="linhas-container"></tbody>
+        </table>
+      </div>
+      <p style="text-align:center;margin:10px 0 16px;"><span id="add-linha-btn" style="cursor:pointer;color:var(--azul-medio);font-weight:700;font-size:12px;">+ Adicionar linha</span></p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Registrar transferência(s)</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+  document.getElementById('add-linha-btn').onclick = adicionarLinha;
+  adicionarLinha();
+
+  document.getElementById('modal-save').onclick = async () => {
+    const linhas = Array.from(document.querySelectorAll('.linha-transf'));
+    if (linhas.length === 0) {
+      document.getElementById('modal-error').innerHTML = '<div class="error-msg">Inclua ao menos uma linha.</div>';
+      return;
+    }
+    const itens = [];
+    for (const linhaEl of linhas) {
+      const idx = linhaEl.dataset.idx;
+      const oiOrigem = document.getElementById(`t-origem-${idx}`).value.trim();
+      const oiDestino = document.getElementById(`t-destino-${idx}`).value.trim();
+      const valor = Number(document.getElementById(`t-valor-${idx}`).value || 0);
+      const justificativa = document.getElementById(`t-justificativa-${idx}`).value.trim() || null;
+      const confirmaEl = document.getElementById(`t-confirma-${idx}`);
+      if (!oiOrigem || !oiDestino || !valor) {
+        document.getElementById('modal-error').innerHTML = `<div class="error-msg">Preencha origem, destino e valor em todas as linhas.</div>`;
+        return;
+      }
+      if (confirmaEl && !confirmaEl.checked) {
+        document.getElementById('modal-error').innerHTML = `<div class="error-msg">Marque a confirmação de autorização do diretor na linha com pacotes diferentes.</div>`;
+        return;
+      }
+      itens.push({
+        oi_origem: oiOrigem, oi_destino: oiDestino, valor,
+        justificativa, confirma_pacotes_diferentes: confirmaEl ? confirmaEl.checked : false
+      });
+    }
+    const { error } = await sb.rpc('criar_transferencias_lote', {
+      p_numero_documento: document.getElementById('t-doc').value.trim() || null,
+      p_data: document.getElementById('t-data').value || null,
+      p_itens: itens
+    });
+    if (error) {
+      document.getElementById('modal-error').innerHTML = `<div class="error-msg">${error.message}</div>`;
+      return;
+    }
+    backdrop.remove();
+    await refreshCurrent();
+  };
+}
+
+function refocusSearchInput() {
+  const el = document.getElementById('search-input');
+  if (el) {
+    el.focus();
+    const len = el.value.length;
+    try { el.setSelectionRange(len, len); } catch (_) {}
+  }
+}
+
+function normalizeHeader(s) {
+  return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+}
+
+function classificarColunaCapex(headerRaw) {
+  const h = normalizeHeader(headerRaw);
+  if (!h) return null;
+  if (h.includes('ORDEM') && h.includes('INTERNA')) return 'ordem_interna';
+  if (h.includes('NOME') && h.includes('OBRA')) return 'nome_obra_plano';
+  if (h.includes('PACOTE')) return 'classificacao_pacote_capex';
+  if (h.includes('HEAD')) return 'classificacao_head_operacao';
+  if (h.includes('GRUPO')) return 'grupo_executivo';
+  if (h.includes('DETALHAMENTO') && h.includes('ORC')) return 'detalhamento_orc';
+  if (h.includes('DETALHAMENTO')) return 'detalhamento';
+  if (h.includes('CATEGORIA') && h.includes('ORC') && !h.includes('VALOR')) return 'categoria_orc';
+  return null;
+}
+function encontrarLinhaCabecalhoCapex(aoa) {
+  for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+    const row = aoa[i] || [];
+    const classes = row.map(classificarColunaCapex);
+    if (classes.includes('ordem_interna') && classes.includes('classificacao_pacote_capex')) return i;
+  }
+  return -1;
+}
+
+async function importarArquivoClassificacoes(file) {
+  const statusEl = document.getElementById('import-status-capex');
+  statusEl.innerHTML = 'Lendo o arquivo...';
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const sheetName = wb.SheetNames.find(n => normalizeHeader(n) === 'CAPEX') || wb.SheetNames.find(n => normalizeHeader(n).includes('CAPEX')) || wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+
+  const headerIdx = encontrarLinhaCabecalhoCapex(aoa);
+  if (headerIdx === -1) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Não encontrei os cabeçalhos esperados (Ordem Interna + Classificação Pacote CAPEX).</span>';
+    return;
+  }
+  const headerRow = aoa[headerIdx];
+  const colMap = {};
+  headerRow.forEach((h, i) => { const c = classificarColunaCapex(h); if (c) colMap[c] = i; });
+
+  const linhas = [];
+  for (let i = headerIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row || row.every(c => c === null || c === '')) continue;
+    const oi = colMap.ordem_interna !== undefined ? row[colMap.ordem_interna] : null;
+    if (!oi) continue;
+    linhas.push({
+      ordem_interna: String(oi).trim(),
+      nome_obra_plano: colMap.nome_obra_plano !== undefined ? row[colMap.nome_obra_plano] : null,
+      classificacao_pacote_capex: colMap.classificacao_pacote_capex !== undefined ? row[colMap.classificacao_pacote_capex] : null,
+      classificacao_head_operacao: colMap.classificacao_head_operacao !== undefined ? row[colMap.classificacao_head_operacao] : null,
+      grupo_executivo: colMap.grupo_executivo !== undefined ? row[colMap.grupo_executivo] : null,
+      detalhamento: colMap.detalhamento !== undefined ? row[colMap.detalhamento] : null,
+      categoria_orc: colMap.categoria_orc !== undefined ? row[colMap.categoria_orc] : null,
+      detalhamento_orc: colMap.detalhamento_orc !== undefined ? row[colMap.detalhamento_orc] : null
+    });
+  }
+
+  if (linhas.length === 0) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Nenhuma linha com OI encontrada no arquivo.</span>';
+    return;
+  }
+
+  statusEl.innerHTML = `${linhas.length} linhas encontradas. Importando classificações...`;
+  const { data: loteId, error: loteErr } = await sb.rpc('iniciar_importacao', {
+    p_tipo_base: 'classificacoes', p_nome_arquivo: file.name, p_tamanho_bytes: file.size
+  });
+  if (loteErr) { statusEl.innerHTML = `<span style="color:var(--vermelho)">${loteErr.message}</span>`; return; }
+
+  const TAMANHO_LOTE = 300;
+  let atualizadas = 0, ignoradas = 0;
+  for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
+    const pedaco = linhas.slice(i, i + TAMANHO_LOTE);
+    const { data: r, error: chunkErr } = await sb.rpc('importar_classificacoes_lote', { p_lote_id: loteId, p_linhas: pedaco });
+    if (chunkErr) {
+      await sb.rpc('marcar_importacao_erro', { p_lote_id: loteId, p_mensagem: chunkErr.message });
+      statusEl.innerHTML = `<span style="color:var(--vermelho)">Interrompido em ${i} de ${linhas.length}: ${chunkErr.message}</span>`;
+      return;
+    }
+    atualizadas += r.atualizadas; ignoradas += r.ignoradas;
+    statusEl.innerHTML = `Importando... ${Math.min(i + TAMANHO_LOTE, linhas.length)} de ${linhas.length}.`;
+  }
+
+  const { error: finalizeErr } = await sb.rpc('finalizar_importacao', { p_lote_id: loteId });
+  if (finalizeErr) { statusEl.innerHTML = `<span style="color:var(--amarelo-texto)">Dados importados, mas houve falha ao fechar o histórico do lote: ${finalizeErr.message}</span>`; return; }
+  statusEl.innerHTML = `<span style="color:var(--verde)">Concluído: ${atualizadas} obra(s) com classificação atualizada, ${ignoradas} ignorada(s) (OI não cadastrada).</span>`;
+  await refreshCurrent();
+}
+
+function classificarColunaTransferencias(headerRaw) {
+  const h = normalizeHeader(headerRaw);
+  if (!h) return null;
+  if (h.includes('COD') && h.includes('ORIGEM')) return 'oi_origem';
+  if (h.includes('GRUPO') && h.includes('ORIGEM')) return 'grupo_origem';
+  if (h === 'ORIGEM') return 'obra_origem_nome';
+  if (h.includes('COD') && h.includes('DESTINO')) return 'oi_destino';
+  if (h.includes('GRUPO') && h.includes('DESTINO')) return 'grupo_destino';
+  if (h === 'DESTINO') return 'obra_destino_nome';
+  if (h.includes('VALOR')) return 'valor';
+  if (h.includes('DOC')) return 'numero_documento';
+  if (h.includes('JUSTIFICATIVA')) return 'justificativa';
+  if (h.includes('DATA')) return 'data';
+  return null;
+}
+function encontrarLinhaCabecalhoTransferencias(aoa) {
+  for (let i = 0; i < Math.min(aoa.length, 20); i++) {
+    const row = aoa[i] || [];
+    const classes = row.map(classificarColunaTransferencias);
+    if (classes.includes('oi_origem') && classes.includes('valor')) return i;
+  }
+  return -1;
+}
+
+async function importarArquivoTransferencias(file) {
+  const statusEl = document.getElementById('import-status-transf');
+  statusEl.innerHTML = 'Lendo o arquivo...';
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const sheetName = wb.SheetNames.find(n => normalizeHeader(n).includes('TRANSFER')) || wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+
+  const headerIdx = encontrarLinhaCabecalhoTransferencias(aoa);
+  if (headerIdx === -1) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Não encontrei os cabeçalhos esperados (Cód. Obra Origem + Valor).</span>';
+    return;
+  }
+  const headerRow = aoa[headerIdx];
+  const colMap = {};
+  headerRow.forEach((h, i) => { const c = classificarColunaTransferencias(h); if (c) colMap[c] = i; });
+
+  const linhas = [];
+  for (let i = headerIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row || row.every(c => c === null || c === '')) continue;
+    const oiOrigem = colMap.oi_origem !== undefined ? row[colMap.oi_origem] : null;
+    const oiDestino = colMap.oi_destino !== undefined ? row[colMap.oi_destino] : null;
+    const valor = colMap.valor !== undefined ? row[colMap.valor] : null;
+    if (!oiOrigem || !oiDestino || typeof valor !== 'number') continue;
+    linhas.push({
+      oi_origem: String(oiOrigem).trim(),
+      obra_origem_nome: colMap.obra_origem_nome !== undefined ? row[colMap.obra_origem_nome] : null,
+      grupo_origem: colMap.grupo_origem !== undefined ? row[colMap.grupo_origem] : null,
+      oi_destino: String(oiDestino).trim(),
+      obra_destino_nome: colMap.obra_destino_nome !== undefined ? row[colMap.obra_destino_nome] : null,
+      grupo_destino: colMap.grupo_destino !== undefined ? row[colMap.grupo_destino] : null,
+      valor: valor,
+      numero_documento: colMap.numero_documento !== undefined && row[colMap.numero_documento] !== null ? String(row[colMap.numero_documento]) : null,
+      justificativa: colMap.justificativa !== undefined ? row[colMap.justificativa] : null,
+      data: colMap.data !== undefined ? paraDataISO(row[colMap.data]) : null
+    });
+  }
+
+  if (linhas.length === 0) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Nenhuma linha válida encontrada no arquivo.</span>';
+    return;
+  }
+
+  statusEl.innerHTML = `${linhas.length} transferências encontradas. Importando como histórico (sem mexer nos saldos atuais)...`;
+  const { data: loteId, error: loteErr } = await sb.rpc('iniciar_importacao', {
+    p_tipo_base: 'transferencias', p_nome_arquivo: file.name, p_tamanho_bytes: file.size
+  });
+  if (loteErr) { statusEl.innerHTML = `<span style="color:var(--vermelho)">${loteErr.message}</span>`; return; }
+
+  const TAMANHO_LOTE = 200;
+  let inseridas = 0, ignoradas = 0;
+  for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
+    const pedaco = linhas.slice(i, i + TAMANHO_LOTE);
+    const { data: r, error: chunkErr } = await sb.rpc('importar_transferencias_lote', { p_lote_id: loteId, p_linhas: pedaco });
+    if (chunkErr) {
+      await sb.rpc('marcar_importacao_erro', { p_lote_id: loteId, p_mensagem: chunkErr.message });
+      statusEl.innerHTML = `<span style="color:var(--vermelho)">Interrompido em ${i} de ${linhas.length}: ${chunkErr.message}</span>`;
+      return;
+    }
+    inseridas += r.inseridas; ignoradas += r.ignoradas;
+    statusEl.innerHTML = `Importando... ${Math.min(i + TAMANHO_LOTE, linhas.length)} de ${linhas.length}.`;
+  }
+
+  const { error: finalizeErr } = await sb.rpc('finalizar_importacao', { p_lote_id: loteId });
+  if (finalizeErr) { statusEl.innerHTML = `<span style="color:var(--amarelo-texto)">Transferências importadas, mas houve falha ao fechar o histórico do lote: ${finalizeErr.message}</span>`; return; }
+  statusEl.innerHTML = `<span style="color:var(--verde)">Concluído: ${inseridas} transferências históricas importadas, ${ignoradas} ignoradas.</span>`;
+  await refreshCurrent();
+}
+
+function classificarColunaBaseOI(headerRaw) {
+  const h = normalizeHeader(headerRaw);
+  if (!h) return null;
+  if (h.includes('ORDEM') && h.includes('INTERNA')) return 'ordem_interna';
+  if (h.includes('DESCRICAO')) return 'descricao';
+  if (h.includes('EXERCICIO')) return 'exercicio';
+  if (h.includes('DISPONIVEL')) return 'saldo_disponivel';
+  if (h.includes('RECURSOS') && h.includes('ATRIB')) return 'valor_compromissado';
+  if (h.includes('MONT') && h.includes('ATRIB')) return 'montante_atribuido';
+  return null;
+}
+function encontrarLinhaCabecalhoBaseOI(aoa) {
+  for (let i = 0; i < Math.min(aoa.length, 20); i++) {
+    const row = aoa[i] || [];
+    const classes = row.map(classificarColunaBaseOI);
+    if (classes.includes('ordem_interna') && (classes.includes('saldo_disponivel') || classes.includes('montante_atribuido'))) return i;
+  }
+  return -1;
+}
+
+async function importarArquivoBaseOi(file) {
+  const statusEl = document.getElementById('import-status-oi');
+  statusEl.innerHTML = 'Lendo o arquivo...';
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const sheetName = wb.SheetNames.find(n => normalizeHeader(n).includes('OI') || normalizeHeader(n).includes('O.I')) || wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+
+  const headerIdx = encontrarLinhaCabecalhoBaseOI(aoa);
+  if (headerIdx === -1) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Não encontrei os cabeçalhos esperados (Ordem Interna + Montante/Saldo).</span>';
+    return;
+  }
+  const headerRow = aoa[headerIdx];
+  const colMap = {};
+  headerRow.forEach((h, i) => { const c = classificarColunaBaseOI(h); if (c) colMap[c] = i; });
+
+  const linhas = [];
+  for (let i = headerIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row || row.every(c => c === null || c === '')) continue;
+    const oi = colMap.ordem_interna !== undefined ? row[colMap.ordem_interna] : null;
+    if (!oi) continue;
+    linhas.push({
+      ordem_interna: String(oi).trim(),
+      descricao: colMap.descricao !== undefined ? row[colMap.descricao] : null,
+      montante_atribuido: colMap.montante_atribuido !== undefined ? paraNumero(row[colMap.montante_atribuido]) : null,
+      valor_compromissado: colMap.valor_compromissado !== undefined ? paraNumero(row[colMap.valor_compromissado]) : null,
+      saldo_disponivel: colMap.saldo_disponivel !== undefined ? paraNumero(row[colMap.saldo_disponivel]) : null,
+      exercicio: colMap.exercicio !== undefined ? row[colMap.exercicio] : null
+    });
+  }
+
+  if (linhas.length === 0) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Nenhuma linha com OI encontrada no arquivo.</span>';
+    return;
+  }
+
+  statusEl.innerHTML = `${linhas.length} linhas encontradas. Conferindo consistência...`;
+  const { data: loteId, error: loteErr } = await sb.rpc('iniciar_importacao', {
+    p_tipo_base: 'base_oi', p_nome_arquivo: file.name, p_tamanho_bytes: file.size
+  });
+  if (loteErr) { statusEl.innerHTML = `<span style="color:var(--vermelho)">${loteErr.message}</span>`; return; }
+
+  const { data: resultado, error: importErr } = await sb.rpc('importar_base_oi_lote', { p_lote_id: loteId, p_linhas: linhas });
+  if (importErr) {
+    await sb.rpc('marcar_importacao_erro', { p_lote_id: loteId, p_mensagem: importErr.message });
+    statusEl.innerHTML = `<span style="color:var(--vermelho)">${importErr.message}</span>`;
+    return;
+  }
+
+  const avisosTxt = resultado.avisos.length ? ` · ${resultado.avisos.length} aviso(s) de OI duplicada (preservadas)` : '';
+  const { error: finalizeErr } = await sb.rpc('finalizar_importacao', { p_lote_id: loteId });
+  if (finalizeErr) { statusEl.innerHTML = `<span style="color:var(--amarelo-texto)">Base O.I importada, mas houve falha ao fechar o histórico do lote: ${finalizeErr.message}</span>`; return; }
+  statusEl.innerHTML = `<span style="color:var(--verde)">Concluído: ${resultado.criados} obra(s) nova(s), ${resultado.atualizados} atualizada(s)${avisosTxt}.</span>`;
+  await refreshCurrent();
+}
+
+function classificarColuna(headerRaw) {
+  const h = normalizeHeader(headerRaw);
+  if (!h) return null;
+  if (h.includes('DESCRICAO')) return 'descricao';
+  if (h.includes('(OI)') || h.includes('ORDEM INTERNA') || h === 'OI' || (h.includes('PROGRAMA') && h.includes('ORCAMENTO'))) return 'ordem_interna';
+  if (h.includes('CATEGORIA') && h.includes('VALOR') && !h.includes('RESUMO')) return 'categoria_valor';
+  if (h.includes('MONT')) return 'montante';
+  if (h.includes('DATA')) return 'data_lancamento';
+  if (h.includes('FORNECEDOR')) return 'fornecedor';
+  if (h.includes('NOME')) return 'fornecedor_nome';
+  if (h === 'LOCAL' || h === 'CIDADE') return 'local';
+  if (h.includes('CENTRO') && h.includes('CUSTO')) return 'centro_custo';
+  if (h.includes('EMPRESA')) return 'empresa';
+  if (h.includes('CRIADO')) return 'criado_por';
+  return null;
+}
+
+function encontrarLinhaCabecalho(aoa) {
+  for (let i = 0; i < Math.min(aoa.length, 25); i++) {
+    const row = aoa[i] || [];
+    const classes = row.map(classificarColuna);
+    if (classes.includes('ordem_interna') && classes.includes('montante')) return i;
+  }
+  return -1;
+}
+
+function paraDataISO(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+  return String(v).trim() || null;
+}
+
+function paraNumero(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+async function importarArquivoBaseConsumo(file) {
+  const statusEl = document.getElementById('import-status');
+  statusEl.innerHTML = 'Lendo o arquivo...';
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const sheetName = wb.SheetNames.find(n => normalizeHeader(n).includes('CONSUMO')) || wb.SheetNames[0];
+  const sheet = wb.Sheets[sheetName];
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+
+  const headerIdx = encontrarLinhaCabecalho(aoa);
+  if (headerIdx === -1) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Não encontrei os cabeçalhos esperados (Ordem Interna + Montante) nas primeiras linhas.</span>';
+    return;
+  }
+  const headerRow = aoa[headerIdx];
+  const colMap = {};
+  headerRow.forEach((h, i) => { const c = classificarColuna(h); if (c) colMap[c] = i; });
+
+  const linhas = [];
+  for (let i = headerIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row || row.every(c => c === null || c === '')) continue;
+    const oi = colMap.ordem_interna !== undefined ? row[colMap.ordem_interna] : null;
+    const montante = colMap.montante !== undefined ? row[colMap.montante] : null;
+    if (!oi || montante === null || montante === '') continue;
+    linhas.push({
+      ordem_interna: String(oi).trim(),
+      descricao: colMap.descricao !== undefined ? row[colMap.descricao] : null,
+      categoria_valor: colMap.categoria_valor !== undefined ? row[colMap.categoria_valor] : null,
+      montante: paraNumero(montante),
+      data_lancamento: colMap.data_lancamento !== undefined ? paraDataISO(row[colMap.data_lancamento]) : null,
+      fornecedor: colMap.fornecedor !== undefined ? row[colMap.fornecedor] : null,
+      fornecedor_nome: colMap.fornecedor_nome !== undefined ? row[colMap.fornecedor_nome] : null,
+      local: colMap.local !== undefined ? row[colMap.local] : null,
+      centro_custo: colMap.centro_custo !== undefined ? row[colMap.centro_custo] : null,
+      empresa: colMap.empresa !== undefined ? row[colMap.empresa] : null,
+      criado_por: colMap.criado_por !== undefined ? row[colMap.criado_por] : null,
+      linha_origem: i + 1
+    });
+  }
+
+  if (linhas.length === 0) {
+    statusEl.innerHTML = '<span style="color:var(--vermelho)">Nenhuma linha válida encontrada no arquivo.</span>';
+    return;
+  }
+
+  statusEl.innerHTML = `${linhas.length} linhas válidas encontradas no arquivo (de ${aoa.length - headerIdx - 1} linhas totais após o cabeçalho). Iniciando importação...`;
+  const { data: loteId, error: loteErr } = await sb.rpc('iniciar_importacao', {
+    p_tipo_base: 'base_consumo', p_nome_arquivo: file.name, p_tamanho_bytes: file.size
+  });
+  if (loteErr) { statusEl.innerHTML = `<span style="color:var(--vermelho)">${loteErr.message}</span>`; return; }
+
+  const TAMANHO_LOTE = 500;
+  let inseridos = 0, ignorados = 0, processados = 0;
+  for (let i = 0; i < linhas.length; i += TAMANHO_LOTE) {
+    const pedaco = linhas.slice(i, i + TAMANHO_LOTE);
+    const { data: r, error: chunkErr } = await sb.rpc('importar_base_consumo_lote', { p_lote_id: loteId, p_linhas: pedaco });
+    if (chunkErr) {
+      await sb.rpc('marcar_importacao_erro', { p_lote_id: loteId, p_mensagem: `Falhou no bloco iniciado na linha ${i}: ${chunkErr.message}` });
+      statusEl.innerHTML = `<span style="color:var(--vermelho)">Importação interrompida no bloco da linha ${i} de ${linhas.length}: ${chunkErr.message}. Nada foi liberado para consulta — os dados já enviados ficaram marcados como "erro" e não aparecem na tela até uma nova tentativa completa.</span>`;
+      return;
+    }
+    inseridos += r.inseridos; ignorados += r.ignorados; processados += pedaco.length;
+    statusEl.innerHTML = `Importando... ${processados} de ${linhas.length} linhas processadas.`;
+  }
+
+  if (processados !== linhas.length) {
+    await sb.rpc('marcar_importacao_erro', { p_lote_id: loteId, p_mensagem: `Processadas ${processados} de ${linhas.length} esperadas` });
+    statusEl.innerHTML = `<span style="color:var(--vermelho)">Algo parou no meio do caminho: só ${processados} de ${linhas.length} linhas foram processadas. A importação não foi liberada para consulta — tente novamente.</span>`;
+    return;
+  }
+
+  await sb.rpc('finalizar_importacao', { p_lote_id: loteId });
+  statusEl.innerHTML = `<span style="color:var(--verde)">Concluído: ${linhas.length} linhas do arquivo processadas → ${inseridos} lançamentos importados, ${ignorados} ignorados (sem OI ou sem montante).</span>`;
+  await refreshCurrent();
+}
+
+async function loadBaseConsumoTab() {
+  const from = state.consumoPage * state.consumoPageSize;
+  const to = from + state.consumoPageSize - 1;
+  let query = sb.from('vw_controle_base_consumo').select('*', { count: 'exact' }).order('data_lancamento', { ascending: false }).range(from, to);
+  if (state.consumoFilter) {
+    const terms = searchTerms(state.consumoFilter).map(safePostgrestSearchTerm).filter(Boolean);
+    if (terms.length) {
+      const conditions = [];
+      terms.forEach(term => {
+        conditions.push(`ordem_interna.ilike.%${term}%`,`descricao.ilike.%${term}%`,`fornecedor.ilike.%${term}%`,`fornecedor_nome.ilike.%${term}%`);
+      });
+      query = query.or(conditions.join(','));
+    }
+  }
+  const [{ data: rows, error: err1, count }, { data: resumo, error: err2 }] = await Promise.all([
+    query,
+    sb.from('vw_controle_base_consumo_resumo').select('*').maybeSingle()
+  ]);
+  if (err1 || err2) { app.innerHTML = `<div class="error-msg" style="margin:40px;">Erro ao carregar Base Consumo: ${(err1||err2).message}</div>`; return; }
+  state.consumoRows = rows || [];
+  state.consumoResumo = resumo || {};
+  state.consumoTotal = count || 0;
+  renderBaseConsumoTab();
+}
+
+function renderBaseConsumoTab() {
+  const r = state.consumoResumo || {};
+  const totalPaginas = Math.max(1, Math.ceil(state.consumoTotal / state.consumoPageSize));
+
+  app.innerHTML = `
+    <header class="topbar">
+      <div>
+        <div class="brand-eyebrow">Controle de Capex</div>
+        <div class="brand-title">Base Consumo</div>
+      </div>
+      ${navHtml(true)}
+      <div class="user-chip">
+        ${state.fullName} <span class="role-badge">Admin</span>
+        <button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button>
+        <button class="btn btn-secondary" id="logout-btn">Sair</button>
+      </div>
+    </header>
+
+    <div style="font-size:11px;color:var(--texto-suave);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+      🔒 Somente leitura — só é atualizada por importação. A fotografia anterior fica guardada, nunca é apagada.
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-left-color:var(--azul-medio)"><div class="label">Lançamentos (total)</div><div class="value">${state.consumoTotal.toLocaleString('pt-BR')}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--azul-claro)"><div class="label">Valor total</div><div class="value">${brl.format(r.valor_total||0)}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--vermelho)"><div class="label">OI não encontrada</div><div class="value" style="color:var(--vermelho)">${r.qtd_oi_nao_encontrada||0}</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="search-input" placeholder="Buscar uma ou várias OIs (separe por vírgula), descrição ou fornecedor" value="${state.consumoFilter}">
+      <span id="import-status" style="font-size:11px;color:var(--texto-suave);"></span>
+      <input type="file" id="import-file-input" accept=".xlsx,.xls" style="display:none;">
+      <button class="btn btn-primary" id="importar-btn">+ Importar planilha</button>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr><th>OI</th><th>Descrição</th><th>Categoria</th><th>Resumo</th><th>Montante</th><th>Data</th><th>Fornecedor</th></tr>
+        </thead>
+        <tbody>
+          ${state.consumoRows.length === 0 ? `<tr><td colspan="7"><div class="empty-state">Nenhum lançamento encontrado. Importe uma planilha para começar.</div></td></tr>` :
+            state.consumoRows.map(x => `
+            <tr>
+              <td>${x.ordem_interna || '—'} ${x.oi_nao_encontrada ? `<span class="flag" style="background:#fff0c0;color:#8a6000;">sem cadastro</span> <span style="cursor:pointer;color:var(--azul-medio);font-size:10px;font-weight:700;" onclick='abrirCriarOiPrefill(${JSON.stringify({ordem_interna: x.ordem_interna, descricao: x.descricao||""})})'>Criar OI</span>` : ''}</td>
+              <td>${x.descricao || '—'}</td>
+              <td>${x.categoria_valor || '—'}</td>
+              <td>${x.categoria_resumo ? `<span class="flag ${x.categoria_resumo==='REALIZADO'?'flag-aporte':'flag-conting'}">${x.categoria_resumo}</span>` : '—'}</td>
+              <td>${brl.format(x.montante || 0)}</td>
+              <td>${x.data_lancamento ? new Date(x.data_lancamento).toLocaleDateString('pt-BR') : '—'}</td>
+              <td>${x.fornecedor_nome || x.fornecedor || '—'}${x.fornecedor_nome && x.fornecedor ? `<br><span style="font-size:10px;color:var(--texto-suave)">${x.fornecedor}</span>` : ''}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--texto-suave);margin-top:8px;">
+      <span>Mostrando ${state.consumoRows.length === 0 ? 0 : state.consumoPage * state.consumoPageSize + 1}–${state.consumoPage * state.consumoPageSize + state.consumoRows.length} de ${state.consumoTotal.toLocaleString('pt-BR')}</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="cursor:${state.consumoPage>0?'pointer':'default'};opacity:${state.consumoPage>0?1:0.4};" id="pag-anterior">◀ Anterior</span>
+        <span>Página ${state.consumoPage+1} de ${totalPaginas}</span>
+        <span style="cursor:${state.consumoPage<totalPaginas-1?'pointer':'default'};opacity:${state.consumoPage<totalPaginas-1?1:0.4};" id="pag-proxima">Próxima ▶</span>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('logout-btn').onclick = () => sb.auth.signOut();
+  document.getElementById('search-input').oninput = (e) => { state.consumoFilter = e.target.value; state.consumoPage = 0; loadBaseConsumoTab().then(refocusSearchInput); };
+  document.getElementById('importar-btn').onclick = () => document.getElementById('import-file-input').click();
+  document.getElementById('import-file-input').onchange = (e) => { if (e.target.files[0]) importarArquivoBaseConsumo(e.target.files[0]); };
+  document.getElementById('pag-anterior').onclick = () => { if (state.consumoPage > 0) { state.consumoPage--; loadBaseConsumoTab(); } };
+  document.getElementById('pag-proxima').onclick = () => { if (state.consumoPage < totalPaginas - 1) { state.consumoPage++; loadBaseConsumoTab(); } };
+}
+
+function abrirCriarOiPrefill(prefill) {
+  openNovaOiModal(prefill);
+}
+
+async function loadBaseOiTab() {
+  const [{ data: rows, error: err1 }, { data: resumo, error: err2 }] = await Promise.all([
+    fetchAllRows('vw_controle_base_oi', 'ordem_interna', true),
+    sb.from('vw_controle_base_oi_resumo').select('*').maybeSingle()
+  ]);
+  if (err1 || err2) { app.innerHTML = `<div class="error-msg" style="margin:40px;">Erro ao carregar Base O.I: ${(err1||err2).message}</div>`; return; }
+  state.baseOiRows = rows || [];
+  state.baseOiResumo = resumo || {};
+  renderBaseOiTab();
+}
+
+function renderBaseOiTab() {
+  const isAdmin = state.role === 'admin';
+  const r = state.baseOiResumo || {};
+  const filtered = state.baseOiRows.filter(x => matchesSearch(state.baseOiFilter, [x.ordem_interna, x.descricao]));
+  const semDivergencia = (r.ois_ausentes_no_capex || 0) === 0 && (r.ois_ausentes_na_base_oi || 0) === 0;
+
+  app.innerHTML = `
+    <header class="topbar">
+      <div>
+        <div class="brand-eyebrow">Controle de Capex</div>
+        <div class="brand-title">Base O.I</div>
+      </div>
+      ${navHtml(isAdmin)}
+      <div class="user-chip">
+        ${state.fullName} <span class="role-badge">Admin</span>
+        <button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button>
+        <button class="btn btn-secondary" id="logout-btn">Sair</button>
+      </div>
+    </header>
+
+    <div class="${semDivergencia ? 'banner-ok' : 'banner-warn'}">
+      <strong>Consistência com o CAPEX:</strong>
+      ${r.ois_ausentes_no_capex || 0} OI(s) na Base O.I ausente(s) no CAPEX ·
+      ${r.ois_ausentes_na_base_oi || 0} OI(s) no CAPEX ausente(s) na Base O.I
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card" style="border-left-color:var(--azul-medio)"><div class="label">Montante total</div><div class="value">${brl.format(r.total_montante||0)}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--azul-claro)"><div class="label">Recursos atribuídos</div><div class="value">${brl.format(r.total_compromissado||0)}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--azul-medio)"><div class="label">Qtde de OIs</div><div class="value">${r.qtd_ois_base_oi||0}</div></div>
+      <div class="kpi-card" style="border-left-color:var(--vermelho)"><div class="label">OIs duplicadas</div><div class="value" style="color:var(--vermelho)">${r.qtd_duplicadas||0}</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="search-input" placeholder="Buscar uma ou várias OIs (separe por vírgula) ou descrição" value="${state.baseOiFilter}">
+      <span id="import-status-oi" style="font-size:11px;color:var(--texto-suave);"></span>
+      <input type="file" id="import-file-input-oi" accept=".xlsx,.xls" style="display:none;">
+      <button class="btn btn-secondary" id="importar-oi-btn">+ Importar planilha</button>
+      <button class="btn btn-primary" id="nova-oi-btn">+ Nova ordem interna</button>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>OI</th><th>Descrição</th><th>Montante (D)</th><th>Recursos atrib. (E)</th><th>Saldo (F)</th><th>Exercício</th><th>Status</th><th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filtered.length === 0 ? `<tr><td colspan="8"><div class="empty-state">Nenhuma OI cadastrada ainda.</div></td></tr>` :
+            filtered.map(x => `
+            <tr style="${x.duplicada ? 'background:#fcebeb;' : ''}">
+              <td>${x.ordem_interna} ${x.duplicada ? '<span class="flag" style="background:#f7c1c1;color:#501313;">duplicada</span>' : ''} ${x.ausente_no_capex ? '<span class="flag" style="background:#e8e6e1;color:#2c2c2a;">ausente no CAPEX</span>' : ''}</td>
+              <td>${x.descricao || '—'}</td>
+              <td>${brl.format(x.montante_atribuido || 0)}</td>
+              <td>${brl.format(x.valor_compromissado || 0)}</td>
+              <td>${brl.format(x.saldo_disponivel || 0)}</td>
+              <td>${x.exercicio || '—'}</td>
+              <td>${x.status_classificacao === 'pendente' ? '<span class="flag flag-conting">Pendente</span>' : (x.status_classificacao ? '<span class="flag flag-aporte">Completa</span>' : '—')}</td>
+              <td>${x.oi_master_id ? `
+                <span style="cursor:pointer;color:var(--azul-medio);font-weight:700;margin-right:12px;" onclick="editarOi('${x.oi_master_id}')">Editar</span>
+                <span style="cursor:pointer;color:var(--vermelho);font-weight:700;" onclick="excluirOi('${x.oi_master_id}','${(x.descricao||'').replace(/'/g,"")}')">Excluir</span>
+              ` : '—'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('logout-btn').onclick = () => sb.auth.signOut();
+  document.getElementById('search-input').oninput = (e) => { state.baseOiFilter = e.target.value.toLowerCase(); renderBaseOiTab(); refocusSearchInput(); };
+  document.getElementById('nova-oi-btn').onclick = openNovaOiModal;
+  document.getElementById('importar-oi-btn').onclick = () => document.getElementById('import-file-input-oi').click();
+  document.getElementById('import-file-input-oi').onchange = (e) => { if (e.target.files[0]) importarArquivoBaseOi(e.target.files[0]); };
+}
+
+function renderCapexTab() {
+  const isAdmin = state.role === 'admin';
+  const k = computeKpis(state.rows);
+  const filtered = state.rows.filter(r => matchesSearch(state.filter, [r.ordem_interna, r.obra]));
+
+  const classCols = isAdmin
+    ? `<th>Pacote CAPEX</th><th>HEAD Operação</th><th>Grupo Executivo</th><th>Detalhamento</th><th>Categoria ORC</th><th>Detalhamento ORC</th>`
+    : `<th>Grupo Executivo</th><th>Detalhamento</th><th>Categoria ORC</th><th>Detalhamento ORC</th>`;
+  const extraCols = isAdmin ? `<th>Ações</th>` : '';
+
+  app.innerHTML = `
+    <header class="topbar">
+      <div>
+        <div class="brand-eyebrow">Controle de Capex</div>
+        <div class="brand-title">CAPEX</div>
+      </div>
+      ${navHtml(isAdmin)}
+      <div class="user-chip">
+        ${state.fullName} <span class="role-badge">${isAdmin ? 'Admin' : 'Viewer'}</span>
+        <button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button>
+        <button class="btn btn-secondary" id="logout-btn">Sair</button>
+      </div>
+    </header>
+
+    ${(() => {
+      const rowConting = state.rows.find(r => r.ordem_interna === '9999999999');
+      const controlConting = Number(rowConting?.montante_atribuido || 0);
+      const curveConting = curveFinanceTotals().conting;
+      return Math.abs(controlConting - curveConting) > 0.005 ? `<div class="banner-warn"><strong>Contingenciamento histórico divergente:</strong> Controle ${brl.format(controlConting)} · Curva ${brl.format(curveConting)}.</div>` : '';
+    })()}
+
+    <div class="kpi-grid">
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('atual')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('atual')" style="border-left-color:var(--azul-medio)"><div class="label">Montante atribuído</div><div class="value">${brl.format(k.montante)}</div><div class="sub">Detalhar composição atual</div></div>
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('atual')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('atual')" style="border-left-color:var(--azul-claro)"><div class="label">Compromissado</div><div class="value">${brl.format(k.compromissado)}</div><div class="sub">Detalhar composição atual</div></div>
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('atual')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('atual')" style="border-left-color:var(--verde)"><div class="label">Saldo disponível</div><div class="value" style="color:var(--verde)">${brl.format(k.saldo)}</div><div class="sub">Detalhar composição atual</div></div>
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('atual')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('atual')" style="border-left-color:var(--laranja)"><div class="label">% Compromissado</div><div class="value" style="color:var(--laranja)">${pct(k.pctComp)}</div><div class="sub">Detalhar composição atual</div></div>
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('atual')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('atual')" style="border-left-color:var(--azul-medio)"><div class="label">Qtde de obras</div><div class="value">${k.qtdObras}</div><div class="sub">Detalhar cadastro atual</div></div>
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('contingenciamento')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('contingenciamento')" style="border-left-color:var(--vermelho);background:#fffafa"><div class="label">Contingenciamento</div><div class="value" style="color:var(--vermelho)">${brl.format(k.contingenciamento)}</div><div class="sub">${acumuladoLabel(curveFinanceTotals().contingDetalhe)} · histórico da Curva</div></div>
+      <div class="kpi-card clickable" tabindex="0" role="button" onclick="openControlKpiPanel('aportes')" onkeydown="if(event.key==='Enter'||event.key===' ')openControlKpiPanel('aportes')" style="border-left-color:var(--verde);background:#f8fffb"><div class="label">Aportes extras</div><div class="value" style="color:var(--verde)">${brl.format(k.aportes)}</div><div class="sub">${acumuladoLabel(curveFinanceTotals().aportesDetalhe)} · histórico da Curva</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="search-input" placeholder="Buscar uma ou várias OIs (separe por vírgula) ou nome da obra" value="${state.filter}">
+      ${isAdmin ? `<span id="import-status-capex" style="font-size:11px;color:var(--texto-suave);"></span>
+      <button class="btn btn-secondary" id="contingenciar-btn">Contingenciar obra</button>
+      <button class="btn btn-secondary" id="aporte-btn">Inserir aporte extra</button>
+      <button class="btn btn-primary" id="nova-oi-btn">+ Nova ordem interna</button>` : ''}
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>OI</th><th>Obra</th><th>Montante</th><th>Compromissado</th><th>Saldo</th><th>% Comp.</th>
+            ${classCols}${extraCols}
+          </tr>
+        </thead>
+        <tbody>
+          ${filtered.length === 0 ? `<tr><td colspan="12"><div class="empty-state">Nenhuma obra encontrada ainda.</div></td></tr>` :
+            filtered.map(r => `
+            <tr>
+              <td>${r.ordem_interna === '9999999999' ? '—' : r.ordem_interna}</td>
+              <td>
+                ${r.contingenciada ? '<span class="flag flag-conting">Contingenciada</span>' : ''}
+                ${r.aporte_extra ? '<span class="flag flag-aporte">Aporte extra</span>' : ''}
+                ${r.obra || ''}
+              </td>
+              <td>${brl.format(r.montante_atribuido || 0)}</td>
+              <td>${brl.format(r.valor_compromissado || 0)}</td>
+              <td>${brl.format(r.saldo_disponivel || 0)}</td>
+              <td><span class="pct-pill ${pctClass(r.percentual_compromissado)}">${pct(r.percentual_compromissado)}</span></td>
+              ${isAdmin ? `<td>${r.classificacao_pacote_capex || '—'}</td><td>${r.classificacao_head_operacao || '—'}</td>` : ''}
+              <td>${r.grupo_executivo || '—'}</td>
+              <td>${r.detalhamento || '—'}</td>
+              <td>${r.categoria_orc || '—'}</td>
+              <td>${r.detalhamento_orc || '—'}</td>
+              ${isAdmin ? `<td>${r.ordem_interna === '9999999999' ? '' : `
+                  <span style="cursor:pointer;color:var(--azul-medio);font-weight:700;margin-right:12px;" onclick="editarOi('${r.id}')">Editar</span>
+                  <span style="cursor:pointer;color:var(--vermelho);font-weight:700;" onclick="excluirOi('${r.id}','${(r.obra||'').replace(/'/g,"")}')">Excluir</span>
+                `}</td>` : ''}
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('logout-btn').onclick = () => sb.auth.signOut();
+  document.getElementById('search-input').oninput = (e) => { state.filter = e.target.value.toLowerCase(); renderCapexTab(); refocusSearchInput(); };
+  if (isAdmin) {
+    document.getElementById('nova-oi-btn').onclick = openNovaOiModal;
+    document.getElementById('contingenciar-btn').onclick = openContingenciarModal;
+    document.getElementById('aporte-btn').onclick = openAporteExtraModal;
+  }
+}
+
+function editarTransferencia(id) {
+  const r = (state.transferRows || []).find(x => x.id === id);
+  if (!r) return;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box">
+      <h2>Editar transferência</h2>
+      <p class="sub">${r.oi_origem} → ${r.oi_destino} · a origem e o destino não podem ser trocados aqui — para isso, exclua e crie uma nova.</p>
+      <div id="modal-error"></div>
+      <div class="grid-2">
+        <div class="field"><label>Valor *</label><input type="number" step="0.01" id="et-valor" value="${r.valor}"></div>
+        <div class="field"><label>Nº documento</label><input type="text" id="et-doc" value="${(r.numero_documento||'').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Data</label><input type="date" id="et-data" value="${r.data ? r.data.slice(0,10) : ''}"></div>
+        <div class="field"><label>Justificativa</label><input type="text" id="et-justificativa" value="${(r.justificativa||'').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Salvar alterações</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+  document.getElementById('modal-save').onclick = async () => {
+    const { error } = await sb.rpc('editar_transferencia', {
+      p_id: id,
+      p_valor: Number(document.getElementById('et-valor').value || 0),
+      p_numero_documento: document.getElementById('et-doc').value.trim() || null,
+      p_justificativa: document.getElementById('et-justificativa').value.trim() || null,
+      p_data: document.getElementById('et-data').value || null
+    });
+    if (error) {
+      document.getElementById('modal-error').innerHTML = `<div class="error-msg">${error.message}</div>`;
+      return;
+    }
+    backdrop.remove();
+    await refreshCurrent();
+  };
+}
+
+async function excluirTransferencia(id) {
+  if (!window.confirm('Excluir esta transferência?\n\nO valor volta para a obra de origem e sai da obra de destino. Se o destino já tiver comprometido esse valor, o sistema vai recusar.')) return;
+  const { error } = await sb.rpc('excluir_transferencia', { p_id: id });
+  if (error) { alert('Erro ao excluir: ' + error.message); return; }
+  await refreshCurrent();
+}
+
+async function editarOi(id) {
+  const { data: r, error: fetchErr } = await sb.from('vw_controle_capex_admin').select('*').eq('id', id).maybeSingle();
+  if (fetchErr || !r) { alert('Não foi possível carregar os dados dessa OI: ' + (fetchErr ? fetchErr.message : 'não encontrada')); return; }
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box">
+      <h2>Editar ordem interna</h2>
+      <p class="sub">${r.ordem_interna}</p>
+      <div id="modal-error"></div>
+      <div class="grid-2">
+        <div class="field"><label>Descrição / obra *</label><input type="text" id="e-desc" value="${(r.obra||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field"><label>Pacote CAPEX * (col. G)</label><input type="text" id="e-pacote" list="dl-e-pacote" value="${(r.classificacao_pacote_capex||'').replace(/"/g,'&quot;')}"><datalist id="dl-e-pacote"></datalist></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>HEAD operação * (col. H)</label><input type="text" id="e-head" list="dl-e-head" value="${(r.classificacao_head_operacao||'').replace(/"/g,'&quot;')}"><datalist id="dl-e-head"></datalist></div>
+        <div class="field"><label>Grupo executivo * (col. I)</label><input type="text" id="e-grupo" list="dl-e-grupo" value="${(r.grupo_executivo||'').replace(/"/g,'&quot;')}"><datalist id="dl-e-grupo"></datalist></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Detalhamento * (col. J)</label><input type="text" id="e-detalhamento" list="dl-e-detalhamento" value="${(r.detalhamento||'').replace(/"/g,'&quot;')}"><datalist id="dl-e-detalhamento"></datalist></div>
+        <div class="field"><label>Categoria ORC * (col. K)</label><input type="text" id="e-categoria" list="dl-e-categoria" value="${(r.categoria_orc||'').replace(/"/g,'&quot;')}"><datalist id="dl-e-categoria"></datalist></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Detalhamento ORC * (col. L)</label><input type="text" id="e-detalhamento-orc" list="dl-e-detalhamento-orc" value="${(r.detalhamento_orc||'').replace(/"/g,'&quot;')}"><datalist id="dl-e-detalhamento-orc"></datalist></div>
+        <div class="field"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Montante atribuído</label><input type="number" step="0.01" id="e-montante" value="${r.montante_atribuido||0}"></div>
+        <div class="field"><label>Valor compromissado</label><input type="number" step="0.01" id="e-compromissado" value="${r.valor_compromissado||0}"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Data de início (opcional)</label><input type="date" id="e-data-inicio" value="${r.data_inicio ? r.data_inicio.slice(0,10) : ''}"></div>
+        <div class="field"><label>Data de fim (opcional)</label><input type="date" id="e-data-fim" value="${r.data_fim ? r.data_fim.slice(0,10) : ''}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Salvar alterações</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+
+  sb.rpc('get_classificacoes_existentes').then(({ data, error }) => {
+    if (error || !data) return;
+    const map = {
+      'dl-e-grupo': data.grupo_executivo, 'dl-e-categoria': data.categoria_orc,
+      'dl-e-pacote': data.classificacao_pacote_capex, 'dl-e-head': data.classificacao_head_operacao,
+      'dl-e-detalhamento': data.detalhamento, 'dl-e-detalhamento-orc': data.detalhamento_orc
+    };
+    Object.keys(map).forEach(dlid => {
+      const el = document.getElementById(dlid);
+      if (el && Array.isArray(map[dlid])) el.innerHTML = map[dlid].map(v => `<option value="${v.replace(/"/g,'&quot;')}">`).join('');
+    });
+  });
+
+  document.getElementById('modal-save').onclick = async () => {
+    const payload = {
+      p_id: id,
+      p_descricao: document.getElementById('e-desc').value.trim(),
+      p_grupo_executivo: document.getElementById('e-grupo').value.trim(),
+      p_categoria_orc: document.getElementById('e-categoria').value.trim(),
+      p_classificacao_pacote_capex: document.getElementById('e-pacote').value.trim(),
+      p_classificacao_head_operacao: document.getElementById('e-head').value.trim(),
+      p_detalhamento: document.getElementById('e-detalhamento').value.trim(),
+      p_detalhamento_orc: document.getElementById('e-detalhamento-orc').value.trim(),
+      p_montante_atribuido: Number(document.getElementById('e-montante').value || 0),
+      p_valor_compromissado: Number(document.getElementById('e-compromissado').value || 0),
+      p_data_inicio: document.getElementById('e-data-inicio').value || null,
+      p_data_fim: document.getElementById('e-data-fim').value || null
+    };
+    const { error } = await sb.rpc('editar_ordem_interna', payload);
+    if (error) {
+      document.getElementById('modal-error').innerHTML = `<div class="error-msg">${error.message}</div>`;
+      return;
+    }
+    backdrop.remove();
+    await refreshCurrent();
+  };
+}
+
+async function excluirOi(id, nome) {
+  if (!window.confirm(`Excluir a obra "${nome}"?\n\nEla vai sair da lista, mas o histórico continua guardado (nada é apagado de vez).`)) return;
+  const { error } = await sb.rpc('excluir_ordem_interna', { p_id: id });
+  if (error) { alert('Erro ao excluir: ' + error.message); return; }
+  await refreshCurrent();
+}
+
+async function mostrarConfirmacaoSincroniaCurva(oi, modo, valor, nomeSugerido) {
+  const { data: prev, error } = await sb.rpc('prever_sincronia_curva', { p_ordem_interna: oi });
+  if (error) { alert('Não foi possível consultar a Curva de Capex: ' + error.message); return; }
+
+  if (!prev.sincronizavel) {
+    alert('Atenção: ' + prev.motivo + '\n\nO Controle de Capex já foi atualizado normalmente — só a sincronização automática com a Curva de Capex não será feita para esta OI.');
+    return;
+  }
+
+  const capexAtual = Number(prev.capex_atual_curva || 0);
+  let novoCapex, novoFlowRule;
+  if (modo === 'zerar') { novoCapex = 0; novoFlowRule = 'contingency_full'; }
+  else if (modo === 'reduzir') { novoCapex = Math.max(0, capexAtual - valor); novoFlowRule = 'contingency_partial_standard'; }
+  else { novoCapex = capexAtual + valor; novoFlowRule = null; }
+
+  const criarNovo = !prev.existe_na_curva;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box">
+      <h2>Sincronizar com a Curva de Capex?</h2>
+      <p class="sub">${criarNovo ? 'Esta obra ainda não existe na Curva de Capex — será criada.' : `Obra na Curva: ${prev.nome_curva}`}</p>
+      <div style="background:var(--cinza-bg);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span>CAPEX</span><strong>${brl.format(capexAtual)} → ${brl.format(novoCapex)}</strong>
+        </div>
+        ${novoFlowRule ? `<div style="display:flex;justify-content:space-between;">
+          <span>Regra de planejamento (flow_rule)</span><strong>${prev.flow_rule_atual || '—'} → ${novoFlowRule}</strong>
+        </div>` : ''}
+      </div>
+      ${criarNovo ? `<div class="grid-2">
+        <div class="field"><label>Data de início</label><input type="date" id="sync-inicio" value="${prev.data_inicio_controle ? prev.data_inicio_controle.slice(0,10) : ''}"></div>
+        <div class="field"><label>Data de fim</label><input type="date" id="sync-fim" value="${prev.data_fim_controle ? prev.data_fim_controle.slice(0,10) : ''}"></div>
+      </div>` : ''}
+      <div id="modal-error"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Não sincronizar agora</button>
+        <button class="btn btn-primary" id="modal-save">Confirmar e aplicar na Curva</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+  document.getElementById('modal-save').onclick = async () => {
+    const payload = {
+      p_ordem_interna: oi,
+      p_novo_capex: novoCapex,
+      p_novo_flow_rule: novoFlowRule,
+      p_criar_novo: criarNovo,
+      p_nome: nomeSugerido,
+      p_categoria: 'obra'
+    };
+    if (criarNovo) {
+      payload.p_novo_inicio = document.getElementById('sync-inicio').value || null;
+      payload.p_novo_fim = document.getElementById('sync-fim').value || null;
+    }
+    const { error: applyErr } = await sb.rpc('aplicar_sincronia_curva', payload);
+    if (applyErr) { document.getElementById('modal-error').innerHTML = `<div class="error-msg">${applyErr.message}</div>`; return; }
+    backdrop.remove();
+  };
+}
+
+function openContingenciarModal() {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box">
+      <h2>Contingenciar obra</h2>
+      <p class="sub">O valor sai do saldo disponível da obra e entra no balde de Contingenciamento — atualizando também a Curva de Capex.</p>
+      <div id="modal-error"></div>
+      <div class="field">
+        <label>Ordem interna *</label>
+        <input type="text" id="c-oi">
+        <div id="c-oi-info" style="background:var(--cinza-bg);border-radius:6px;padding:6px 8px;margin-top:6px;font-size:11px;color:var(--texto-suave);min-height:14px;"></div>
+      </div>
+      <div class="grid-2" style="margin-top:10px;">
+        <div style="flex:1;border:2px solid var(--azul-medio);background:var(--azul-suave);border-radius:8px;padding:10px;text-align:center;cursor:pointer;" id="tipo-parcial">
+          <div style="font-size:12px;font-weight:700;color:var(--azul);">Parcial</div>
+        </div>
+        <div style="flex:1;border:0.5px solid var(--cinza-borda);border-radius:8px;padding:10px;text-align:center;cursor:pointer;" id="tipo-total">
+          <div style="font-size:12px;font-weight:700;color:var(--texto-suave);">Total</div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:10px;" id="valor-parcial-wrap">
+        <label>Valor a contingenciar</label>
+        <input type="number" step="0.01" id="c-valor">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Confirmar contingenciamento</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+
+  let tipo = 'parcial';
+  let saldoAtual = null;
+  document.getElementById('tipo-parcial').onclick = () => {
+    tipo = 'parcial';
+    document.getElementById('tipo-parcial').style.border = '2px solid var(--azul-medio)';
+    document.getElementById('tipo-parcial').style.background = 'var(--azul-suave)';
+    document.getElementById('tipo-total').style.border = '0.5px solid var(--cinza-borda)';
+    document.getElementById('tipo-total').style.background = '#fff';
+    document.getElementById('valor-parcial-wrap').style.display = 'block';
+  };
+  document.getElementById('tipo-total').onclick = () => {
+    tipo = 'total';
+    document.getElementById('tipo-total').style.border = '2px solid var(--azul-medio)';
+    document.getElementById('tipo-total').style.background = 'var(--azul-suave)';
+    document.getElementById('tipo-parcial').style.border = '0.5px solid var(--cinza-borda)';
+    document.getElementById('tipo-parcial').style.background = '#fff';
+    document.getElementById('valor-parcial-wrap').style.display = 'none';
+  };
+
+  document.getElementById('c-oi').addEventListener('input', () => {
+    clearTimeout(autoFillTimer);
+    const oi = document.getElementById('c-oi').value.trim();
+    const infoEl = document.getElementById('c-oi-info');
+    if (!oi) { infoEl.innerHTML = ''; return; }
+    autoFillTimer = setTimeout(async () => {
+      const { data } = await sb.rpc('buscar_obra_por_oi', { p_ordem_interna: oi });
+      if (data && data.existe) {
+        saldoAtual = data.saldo_disponivel;
+        infoEl.innerHTML = `🔒 ${data.nome || '(sem nome)'} · saldo disponível: ${brl.format(saldoAtual)}`;
+      } else {
+        saldoAtual = null;
+        infoEl.innerHTML = `<span style="color:var(--vermelho)">OI não encontrada no cadastro</span>`;
+      }
+    }, 400);
+  });
+
+  document.getElementById('modal-save').onclick = async () => {
+    const oi = document.getElementById('c-oi').value.trim();
+    if (!oi) { document.getElementById('modal-error').innerHTML = '<div class="error-msg">Informe a ordem interna.</div>'; return; }
+    const payload = { p_ordem_interna: oi, p_tipo: tipo };
+    if (tipo === 'parcial') payload.p_valor = Number(document.getElementById('c-valor').value || 0);
+    const { error } = await sb.rpc('contingenciar_obra', payload);
+    if (error) { document.getElementById('modal-error').innerHTML = `<div class="error-msg">${error.message}</div>`; return; }
+    backdrop.remove();
+    await loadCurveFinanceReference();
+    await refreshCurrent();
+  };
+}
+
+function openAporteExtraModal() {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box">
+      <h2>Inserir aporte extra</h2>
+      <p class="sub">Dinheiro novo entrando na obra — não sai de nenhuma outra obra. Atualiza também a Curva de Capex.</p>
+      <div id="modal-error"></div>
+      <div class="field">
+        <label>Ordem interna *</label>
+        <input type="text" id="a-oi">
+        <div id="a-oi-info" style="background:var(--cinza-bg);border-radius:6px;padding:6px 8px;margin-top:6px;font-size:11px;color:var(--texto-suave);min-height:14px;"></div>
+      </div>
+      <div class="grid-2" style="margin-top:10px;">
+        <div class="field"><label>Valor *</label><input type="number" step="0.01" id="a-valor"></div>
+        <div class="field"><label>Nome do aporte (opcional)</label><input type="text" id="a-nome"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Confirmar aporte</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+
+  document.getElementById('a-oi').addEventListener('input', () => {
+    clearTimeout(autoFillTimer);
+    const oi = document.getElementById('a-oi').value.trim();
+    const infoEl = document.getElementById('a-oi-info');
+    if (!oi) { infoEl.innerHTML = ''; return; }
+    autoFillTimer = setTimeout(async () => {
+      const { data } = await sb.rpc('buscar_obra_por_oi', { p_ordem_interna: oi });
+      if (data && data.existe) {
+        infoEl.innerHTML = `🔒 ${data.nome || '(sem nome)'} · montante atual: ${brl.format(data.montante_atribuido)}`;
+      } else {
+        infoEl.innerHTML = `<span style="color:var(--vermelho)">OI não encontrada no cadastro</span>`;
+      }
+    }, 400);
+  });
+
+  document.getElementById('modal-save').onclick = async () => {
+    const oi = document.getElementById('a-oi').value.trim();
+    const valor = Number(document.getElementById('a-valor').value || 0);
+    if (!oi || !valor) { document.getElementById('modal-error').innerHTML = '<div class="error-msg">Informe a ordem interna e o valor.</div>'; return; }
+    const { error } = await sb.rpc('dar_aporte_extra', {
+      p_ordem_interna: oi, p_valor: valor, p_nome_aporte: document.getElementById('a-nome').value.trim() || null
+    });
+    if (error) { document.getElementById('modal-error').innerHTML = `<div class="error-msg">${error.message}</div>`; return; }
+    backdrop.remove();
+    await loadCurveFinanceReference();
+    await refreshCurrent();
+  };
+}
+
+function openNovaOiModal(prefill) {
+  prefill = prefill || {};
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal-box">
+      <h2>Nova ordem interna</h2>
+      <p class="sub">Preencha os dados. O saldo é calculado automaticamente.</p>
+      <div id="modal-error"></div>
+      <div class="grid-2">
+        <div class="field"><label>Ordem interna *</label><input type="text" id="f-oi" value="${(prefill.ordem_interna||'').replace(/"/g,'&quot;')}"></div>
+        <div class="field"><label>Descrição / obra *</label><input type="text" id="f-desc" value="${(prefill.descricao||'').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Classificação pacote CAPEX * (col. G)</label><input type="text" id="f-pacote" list="dl-pacote"><datalist id="dl-pacote"></datalist></div>
+        <div class="field"><label>Classificação HEAD operação * (col. H)</label><input type="text" id="f-head" list="dl-head"><datalist id="dl-head"></datalist></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Grupo executivo * (col. I)</label><input type="text" id="f-grupo" list="dl-grupo"><datalist id="dl-grupo"></datalist></div>
+        <div class="field"><label>Detalhamento * (col. J)</label><input type="text" id="f-detalhamento" list="dl-detalhamento"><datalist id="dl-detalhamento"></datalist></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Categoria ORC * (col. K)</label><input type="text" id="f-categoria" list="dl-categoria"><datalist id="dl-categoria"></datalist></div>
+        <div class="field"><label>Detalhamento ORC * (col. L)</label><input type="text" id="f-detalhamento-orc" list="dl-detalhamento-orc"><datalist id="dl-detalhamento-orc"></datalist></div>
+      </div>
+      <p class="sub" style="margin:4px 0 12px;">comece a digitar para ver classificações já usadas, ou digite uma nova</p>
+      <div class="grid-2">
+        <div class="field"><label>Montante atribuído (opcional)</label><input type="number" step="0.01" id="f-montante" value="0"></div>
+        <div class="field"><label>Valor compromissado (opcional)</label><input type="number" step="0.01" id="f-compromissado" value="0"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Data de início (opcional)</label><input type="date" id="f-data-inicio"></div>
+        <div class="field"><label>Data de fim (opcional)</label><input type="date" id="f-data-fim"></div>
+      </div>
+      <p class="sub" style="margin:4px 0 12px;">Usadas futuramente para a obra entrar como planejada na Curva de Capex</p>
+      <p class="sub" style="margin:0 0 12px;">* obrigatório</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Criar ordem interna</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  document.getElementById('modal-cancel').onclick = () => backdrop.remove();
+
+  sb.rpc('get_classificacoes_existentes').then(({ data, error }) => {
+    if (error || !data) return;
+    const map = {
+      'dl-grupo': data.grupo_executivo, 'dl-categoria': data.categoria_orc,
+      'dl-pacote': data.classificacao_pacote_capex, 'dl-head': data.classificacao_head_operacao,
+      'dl-detalhamento': data.detalhamento, 'dl-detalhamento-orc': data.detalhamento_orc
+    };
+    Object.keys(map).forEach(id => {
+      const el = document.getElementById(id);
+      if (el && Array.isArray(map[id])) el.innerHTML = map[id].map(v => `<option value="${v.replace(/"/g,'&quot;')}">`).join('');
+    });
+  });
+
+  document.getElementById('modal-save').onclick = async () => {
+    const payload = {
+      p_ordem_interna: document.getElementById('f-oi').value.trim(),
+      p_descricao: document.getElementById('f-desc').value.trim(),
+      p_grupo_executivo: document.getElementById('f-grupo').value.trim(),
+      p_categoria_orc: document.getElementById('f-categoria').value.trim(),
+      p_classificacao_pacote_capex: document.getElementById('f-pacote').value.trim(),
+      p_classificacao_head_operacao: document.getElementById('f-head').value.trim(),
+      p_detalhamento: document.getElementById('f-detalhamento').value.trim(),
+      p_detalhamento_orc: document.getElementById('f-detalhamento-orc').value.trim(),
+      p_montante_atribuido: Number(document.getElementById('f-montante').value || 0),
+      p_valor_compromissado: Number(document.getElementById('f-compromissado').value || 0),
+      p_data_inicio: document.getElementById('f-data-inicio').value || null,
+      p_data_fim: document.getElementById('f-data-fim').value || null
+    };
+    const labels = {
+      p_ordem_interna: 'Ordem interna', p_descricao: 'Descrição / obra', p_grupo_executivo: 'Grupo executivo',
+      p_categoria_orc: 'Categoria ORC', p_classificacao_pacote_capex: 'Classificação pacote CAPEX',
+      p_classificacao_head_operacao: 'Classificação HEAD operação', p_detalhamento: 'Detalhamento',
+      p_detalhamento_orc: 'Detalhamento ORC'
+    };
+    const faltando = Object.keys(labels).filter(k => !payload[k]).map(k => labels[k]);
+    if (faltando.length > 0) {
+      document.getElementById('modal-error').innerHTML = `<div class="error-msg">Preencha os campos obrigatórios: ${faltando.join(', ')}.</div>`;
+      return;
+    }
+    const { error } = await sb.rpc('criar_ordem_interna', payload);
+    if (error) {
+      document.getElementById('modal-error').innerHTML = `<div class="error-msg">${error.message}</div>`;
+      return;
+    }
+    backdrop.remove();
+    await refreshCurrent();
+  };
+}
+
+</script>
+<script src="v35-control-addon.js?v=35.6.4"></script>
+<script src="v36-control-integration.js?v=36.1"></script>
+<script src="v37-control-governance.js?v=37.0"></script>
+<script>init();</script>
+</body>
+</html>

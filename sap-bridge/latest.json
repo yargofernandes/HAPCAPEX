@@ -1,0 +1,14 @@
+{
+  "product": "HAPCAPEX SAP Bridge",
+  "version": "1.1.4-alpha",
+  "distribution": "corporate",
+  "distributionVersion": "1.0.6",
+  "releasedAt": "2026-08-16T13:55:00-03:00",
+  "packageUrl": "https://yargofernandes.github.io/HAPCAPEX/sap-bridge/HAPCAPEX-SAP-Bridge-CORPORATIVO.zip",
+  "downloadPath": "./sap-bridge/HAPCAPEX-SAP-Bridge-CORPORATIVO.zip",
+  "sha256": "ce8d99652b663982ab2c79ceaecc723b4edcdd08c888a14f7d4da46051dd9a6b",
+  "port": 17891,
+  "minimumFrontend": "39.6.0",
+  "installScope": "CurrentUser",
+  "autoStart": true
+}
