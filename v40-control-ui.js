@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.24 — Governança de planejamento + retorno PMO
+/* HAPCAPEX V40.0.26 — Governança + tipologias dinâmicas
    - Nova O.I.: decisão explícita se participa da Curva (Sim/Não).
    - Edição futura da decisão de participação na Curva.
    - Nova aba OBRAS A PLANEJAR: novas O.I.s + aportes pendentes em uma única fila.
@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '40.0.24';
+  const VERSION = '40.0.26';
   let planningRowsV4023 = [];
   let planningSearchV4023 = '';
   let planningOriginV4023 = '';
@@ -140,10 +140,17 @@
         </div>
 
         <div id="v4023-planning-options" hidden>
-          <div class="field">
-            <label>Regra de planejamento da Curva</label>
-            <select id="f-flow-rule"><option value="standard_15_75_10">15 / 75 / 10</option></select>
-            <div id="f-flow-rule-note" style="font-size:10px;color:var(--texto-suave);margin-top:4px;"></div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Tipologia da Curva *</label>
+              <select id="f-tipologia-curva"><option value="">Carregando tipologias...</option></select>
+              <div style="font-size:10px;color:var(--texto-suave);margin-top:4px;">Lista central compartilhada com a Curva de Capex.</div>
+            </div>
+            <div class="field">
+              <label>Regra de planejamento da Curva</label>
+              <select id="f-flow-rule"><option value="standard_15_75_10">15 / 75 / 10</option></select>
+              <div id="f-flow-rule-note" style="font-size:10px;color:var(--texto-suave);margin-top:4px;"></div>
+            </div>
           </div>
           <div class="v4023-plan-note"><strong>Planejar agora:</strong> cria a obra na Curva junto com a O.I.; exige montante, início e fim.<br><strong>Planejar depois:</strong> a O.I. entra na aba <strong>Obras a Planejar</strong> para tratamento posterior/PMO.</div>
         </div>
@@ -160,12 +167,16 @@
     backdrop.querySelector('#modal-cancel').onclick = close;
     backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
 
-    Promise.all([sb.rpc('get_classificacoes_existentes'), getRulesV4023()]).then(([classResult, rules]) => {
+    Promise.all([sb.rpc('get_classificacoes_existentes'), getRulesV4023(), loadTipologiasV4026()]).then(([classResult, rules, tipologias]) => {
       if (!classResult.error && classResult.data) {
         const d = classResult.data;
         populateDatalist('dl-grupo', d.grupo_executivo); populateDatalist('dl-categoria', d.categoria_orc);
         populateDatalist('dl-pacote', d.classificacao_pacote_capex); populateDatalist('dl-head', d.classificacao_head_operacao);
         populateDatalist('dl-detalhamento', d.detalhamento); populateDatalist('dl-detalhamento-orc', d.detalhamento_orc);
+      }
+      const tipoSelect = backdrop.querySelector('#f-tipologia-curva');
+      if (tipoSelect) {
+        tipoSelect.innerHTML = '<option value="">Selecione a tipologia</option>' + tipologias.map(t => `<option value="${esc(t.nome)}">${esc(t.emoji||'📌')} ${esc(t.nome)}</option>`).join('');
       }
       const select = backdrop.querySelector('#f-flow-rule');
       if (select && rules.length) {
@@ -204,18 +215,20 @@
         p_montante_atribuido: Number(backdrop.querySelector('#f-montante').value || 0), p_valor_compromissado: Number(backdrop.querySelector('#f-compromissado').value || 0),
         p_data_inicio: backdrop.querySelector('#f-data-inicio').value || null, p_data_fim: backdrop.querySelector('#f-data-fim').value || null,
         p_vai_para_curva: vai, p_planejar_agora: !!planejarAgora,
-        p_flow_rule: backdrop.querySelector('#f-flow-rule').value || 'standard_15_75_10'
+        p_flow_rule: backdrop.querySelector('#f-flow-rule').value || 'standard_15_75_10',
+        p_tipologia_curva: backdrop.querySelector('#f-tipologia-curva')?.value || null
       };
       const labels = [['p_ordem_interna','Ordem interna'],['p_descricao','Descrição / obra'],['p_grupo_executivo','Grupo executivo'],['p_categoria_orc','Categoria ORC'],['p_classificacao_pacote_capex','Classificação pacote CAPEX'],['p_classificacao_head_operacao','Classificação HEAD operação'],['p_detalhamento','Detalhamento'],['p_detalhamento_orc','Detalhamento ORC']];
       const missing = labels.filter(([k])=>!payload[k]).map(([,v])=>v);
       if (missing.length) { errorBox.innerHTML=`<div class="error-msg">Preencha os campos obrigatórios: ${esc(missing.join(', '))}.</div>`; return; }
       if (planejarAgora && payload.p_montante_atribuido<=0) { errorBox.innerHTML='<div class="error-msg">Para planejar agora, informe Montante atribuído maior que zero.</div>'; return; }
       if (planejarAgora && (!payload.p_data_inicio || !payload.p_data_fim)) { errorBox.innerHTML='<div class="error-msg">Para planejar agora, informe as datas de início e fim.</div>'; return; }
+      if (planejarAgora && !payload.p_tipologia_curva) { errorBox.innerHTML='<div class="error-msg">Para planejar agora, selecione a Tipologia da Curva.</div>'; return; }
 
       later.disabled=true; now.disabled=true; const active=planejarAgora?now:later; const old=active.textContent;
       active.textContent=planejarAgora?'Criando e planejando...':'Criando O.I...'; errorBox.innerHTML='';
       try {
-        const { data, error } = await sb.rpc('criar_ordem_interna_integrada_v4023', payload);
+        const { data, error } = await sb.rpc('criar_ordem_interna_integrada_v4026', payload);
         if (error) throw error;
         close(); await refreshCurrent();
         if (vai && !planejarAgora && data?.planejamento_status==='pendente') alert(`O.I. ${payload.p_ordem_interna} criada com sucesso.\n\nEla foi incluída na aba "Obras a Planejar".`);
@@ -233,23 +246,25 @@
       <div id="v4023-plan-loading" class="v4023-plan-note">Carregando dados atuais da O.I...</div>
       <div id="v4023-plan-form" hidden><div class="v4023-plan-note"><strong id="v4023-plan-name"></strong><br>Montante atual: <strong id="v4023-plan-value"></strong></div>
       <div class="grid-2"><div class="field"><label>Data de início *</label><input type="date" id="v4023-plan-start"></div><div class="field"><label>Data de fim *</label><input type="date" id="v4023-plan-end"></div></div>
-      <div class="field"><label>Regra de planejamento *</label><select id="v4023-plan-rule"></select><div id="v4023-plan-rule-note" style="font-size:10px;color:var(--texto-suave);margin-top:4px;"></div></div></div>
+      <div class="grid-2"><div class="field"><label>Tipologia da Curva *</label><select id="v4023-plan-type"><option value="">Carregando...</option></select></div><div class="field"><label>Regra de planejamento *</label><select id="v4023-plan-rule"></select><div id="v4023-plan-rule-note" style="font-size:10px;color:var(--texto-suave);margin-top:4px;"></div></div></div></div>
       <div class="modal-actions"><button class="btn btn-secondary" id="v4023-plan-cancel">Cancelar</button><button class="btn btn-primary" id="v4023-plan-save" disabled>Planejar na Curva</button></div></div>`;
     document.body.appendChild(backdrop); backdrop.querySelector('#v4023-plan-cancel').onclick=()=>backdrop.remove();
     try {
-      const [workResult,rules]=await Promise.all([sb.from('vw_controle_capex_admin').select('ordem_interna,obra,montante_atribuido,data_inicio,data_fim').eq('ordem_interna',oi).maybeSingle(),getRulesV4023()]);
+      const [workResult,rules,tipologias,tipoAtualResult]=await Promise.all([sb.from('vw_controle_capex_admin').select('ordem_interna,obra,montante_atribuido,data_inicio,data_fim').eq('ordem_interna',oi).maybeSingle(),getRulesV4023(),loadTipologiasV4026(),sb.rpc('obter_tipologia_curva_oi',{p_ordem_interna:oi})]);
       if(workResult.error)throw workResult.error; if(!workResult.data)throw new Error('O.I. não encontrada no Controle.');
       const w=workResult.data; backdrop.querySelector('#v4023-plan-name').textContent=w.obra||oi; backdrop.querySelector('#v4023-plan-value').textContent=money(w.montante_atribuido||0);
       backdrop.querySelector('#v4023-plan-start').value=w.data_inicio?String(w.data_inicio).slice(0,10):''; backdrop.querySelector('#v4023-plan-end').value=w.data_fim?String(w.data_fim).slice(0,10):'';
+      const tipoSel=backdrop.querySelector('#v4023-plan-type'); const inferred=inferTipoV4024({obra:w.obra,tipologia_curva:tipoAtualResult?.data||''}); tipoSel.innerHTML='<option value="">Selecione a tipologia</option>'+tipologias.map(t=>`<option value="${esc(t.nome)}" ${t.nome===inferred?'selected':''}>${esc(t.emoji||'📌')} ${esc(t.nome)}</option>`).join('');
       const sel=backdrop.querySelector('#v4023-plan-rule'); sel.innerHTML=rules.map(r=>`<option value="${esc(r.code)}" ${r.code==='standard_15_75_10'?'selected':''}>${esc(r.name)}</option>`).join('');
       const note=()=>{const r=rules.find(x=>x.code===sel.value);backdrop.querySelector('#v4023-plan-rule-note').textContent=r?.description||'';}; sel.onchange=note;note();
       backdrop.querySelector('#v4023-plan-loading').hidden=true;backdrop.querySelector('#v4023-plan-form').hidden=false;backdrop.querySelector('#v4023-plan-save').disabled=false;
     } catch(e) { backdrop.querySelector('#v4023-plan-loading').hidden=true;backdrop.querySelector('#v4023-plan-error').innerHTML=`<div class="error-msg">${esc(e?.message||String(e))}</div>`; }
     backdrop.querySelector('#v4023-plan-save').onclick=async()=>{
-      const start=backdrop.querySelector('#v4023-plan-start').value||null,end=backdrop.querySelector('#v4023-plan-end').value||null,rule=backdrop.querySelector('#v4023-plan-rule').value||'standard_15_75_10',err=backdrop.querySelector('#v4023-plan-error');
+      const start=backdrop.querySelector('#v4023-plan-start').value||null,end=backdrop.querySelector('#v4023-plan-end').value||null,rule=backdrop.querySelector('#v4023-plan-rule').value||'standard_15_75_10',tipo=backdrop.querySelector('#v4023-plan-type').value||'',err=backdrop.querySelector('#v4023-plan-error');
       if(!start||!end){err.innerHTML='<div class="error-msg">Informe as datas de início e fim.</div>';return;}
+      if(!tipo){err.innerHTML='<div class="error-msg">Selecione a Tipologia da Curva.</div>';return;}
       const btn=backdrop.querySelector('#v4023-plan-save');btn.disabled=true;btn.textContent='Planejando...';err.innerHTML='';
-      try{const {error}=await sb.rpc('planejar_oi_pendente_v4022',{p_ordem_interna:oi,p_data_inicio:start,p_data_fim:end,p_flow_rule:rule});if(error)throw error;backdrop.remove();await refreshCurrent();}
+      try{const {error}=await sb.rpc('planejar_oi_pendente_v4026',{p_ordem_interna:oi,p_data_inicio:start,p_data_fim:end,p_flow_rule:rule,p_tipologia_curva:tipo});if(error)throw error;backdrop.remove();await refreshCurrent();}
       catch(e){btn.disabled=false;btn.textContent='Planejar na Curva';err.innerHTML=`<div class="error-msg">${esc(e?.message||String(e))}</div>`;}
     };
   }
@@ -326,7 +341,18 @@
   }
 
 
-  const TIPOLOGIAS_V4024=['Classificação','Hospital','TEA','Medprev','Posto de Coleta','Leitos / Virose','Pronto Atendimento','Clínica','Ag. Transfusional','Hemodinâmica','Lab / Diagnóstico','CD','Mega Unidade','Pacotes Regulatórios','Qualivida','ADM'];
+  let TIPOLOGIAS_CATALOGO_V4026=[];
+  let TIPOLOGIAS_V4024=['Legalização','Hospital','TEA','Medprev','Posto de Coleta','Leitos / Virose','Pronto Atendimento','Clínica','Ag. Transfusional','Hemodinâmica','Lab / Diagnóstico','CD','Mega Unidade','Pacotes Regulatórios','Qualivida','ADM'];
+
+  async function loadTipologiasV4026(force=false){
+    if(!force&&TIPOLOGIAS_CATALOGO_V4026.length)return TIPOLOGIAS_CATALOGO_V4026;
+    const {data,error}=await sb.rpc('listar_tipologias_curva_v4026');
+    if(error)throw error;
+    TIPOLOGIAS_CATALOGO_V4026=(Array.isArray(data)?data:[]).filter(x=>x?.nome);
+    if(TIPOLOGIAS_CATALOGO_V4026.length)TIPOLOGIAS_V4024=TIPOLOGIAS_CATALOGO_V4026.map(x=>String(x.nome));
+    return TIPOLOGIAS_CATALOGO_V4026;
+  }
+  function tipoNomePorChaveV4026(key,fallback){return TIPOLOGIAS_CATALOGO_V4026.find(x=>x.system_key===key)?.nome||fallback;}
 
   function normHeaderV4024(value){return String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ');}
   function isoDateV4024(value){
@@ -342,19 +368,21 @@
   }
   function inferTipoV4024(r){
     if(TIPOLOGIAS_V4024.includes(r.tipologia_curva))return r.tipologia_curva;
+    if(String(r.tipologia_curva||'').trim()==='Classificação')return tipoNomePorChaveV4026('legalizacao','Legalização');
     if(TIPOLOGIAS_V4024.includes(r.tipologia_atual_curva))return r.tipologia_atual_curva;
     const n=String(r.obra||'').toLowerCase();
-    if(n.includes('hospital')||/\bho\b/.test(n)||n.includes('hapfor')||n.includes('salvalus'))return 'Hospital';
-    if(n.includes('clínica')||n.includes('clinica'))return 'Clínica';
-    if(n.includes('resson')||n.includes('diagn')||n.includes('laborat'))return 'Lab / Diagnóstico';
-    if(n.includes('tea')||n.includes('autismo'))return 'TEA';
-    if(n.includes('medprev'))return 'Medprev';
-    if(n.includes('coleta'))return 'Posto de Coleta';
-    if(n.includes('hemodin'))return 'Hemodinâmica';
-    if(n.includes('ag.')||n.includes('transfus'))return 'Ag. Transfusional';
-    if(n.includes(' cd ')||n.startsWith('cd ')||n.includes('centro de distrib'))return 'CD';
-    if(n.includes('adm')||n.includes('patrimônio')||n.includes('patrimonio'))return 'ADM';
-    return 'Classificação';
+    if(n.includes('visa')||n.includes('ppci')||n.includes('legaliza'))return tipoNomePorChaveV4026('legalizacao','Legalização');
+    if(n.includes('hospital')||/\bho\b/.test(n)||n.includes('hapfor')||n.includes('salvalus'))return tipoNomePorChaveV4026('hospital','Hospital');
+    if(n.includes('clínica')||n.includes('clinica'))return tipoNomePorChaveV4026('clinica','Clínica');
+    if(n.includes('resson')||n.includes('diagn')||n.includes('laborat'))return tipoNomePorChaveV4026('lab_diagnostico','Lab / Diagnóstico');
+    if(n.includes('tea')||n.includes('autismo'))return tipoNomePorChaveV4026('tea','TEA');
+    if(n.includes('medprev'))return tipoNomePorChaveV4026('medprev','Medprev');
+    if(n.includes('coleta'))return tipoNomePorChaveV4026('posto_coleta','Posto de Coleta');
+    if(n.includes('hemodin'))return tipoNomePorChaveV4026('hemodinamica','Hemodinâmica');
+    if(n.includes('ag.')||n.includes('transfus'))return tipoNomePorChaveV4026('ag_transfusional','Ag. Transfusional');
+    if(n.includes(' cd ')||n.startsWith('cd ')||n.includes('centro de distrib'))return tipoNomePorChaveV4026('cd','CD');
+    if(n.includes('adm')||n.includes('patrimônio')||n.includes('patrimonio'))return tipoNomePorChaveV4026('adm','ADM');
+    return tipoNomePorChaveV4026('legalizacao','Legalização');
   }
   function defaultRuleV4024(r){return r.flow_rule_curva||(/_OPER\s*$/i.test(String(r.obra||''))?'oper_realized_plus_balance_dec':'standard_15_75_10');}
 
@@ -389,6 +417,7 @@
   }
 
   async function openPmoPreviewV4024(parsed){
+    await loadTipologiasV4026();
     const {data,error}=await sb.rpc('prever_planejamento_pmo_v4024',{p_linhas:parsed.valid});
     if(error)throw error;
     const preview=Array.isArray(data)?data:[];if(!preview.length)throw new Error('Nenhuma obra válida para pré-visualização.');
@@ -419,7 +448,7 @@
   }
 
   async function importPlanningExcelV4024(file){
-    try{const parsed=await parsePlanningWorkbookV4024(file);await openPmoPreviewV4024(parsed);}catch(e){alert('Não foi possível importar o planejamento do PMO:\n\n'+(e?.message||String(e)));}
+    try{await loadTipologiasV4026();const parsed=await parsePlanningWorkbookV4024(file);await openPmoPreviewV4024(parsed);}catch(e){alert('Não foi possível importar o planejamento do PMO:\n\n'+(e?.message||String(e)));}
   }
 
   function choosePlanningExcelV4024(){
@@ -464,11 +493,13 @@
     window.__HAP_V4023_NAV_WRAPPED__=true;
   }
 
+
+
   injectStyles();
   window.openNovaOiModal=openNovaOiV4023;
   wrapTransferModalV4023();
   wrapEditOiV4023();
   wrapPlanningNavigationV4023();
 
-  window.HAP_V40_CONTROL_UI={version:VERSION,active:true,features:['nova-oi-intencao-curva','edicao-intencao-curva','obras-a-planejar','exportacao-pmo','retorno-pmo-confirmacao-curva','transferencia-expandir']};
+  window.HAP_V40_CONTROL_UI={version:VERSION,active:true,features:['nova-oi-intencao-curva','edicao-intencao-curva','obras-a-planejar','exportacao-pmo','retorno-pmo-confirmacao-curva','transferencia-expandir','tipologias-dinamicas']};
 })();
