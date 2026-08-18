@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.26 — Governança + tipologias dinâmicas
+/* HAPCAPEX V40.0.27 — Participação na Curva: individual / pacote / não participa
    - Nova O.I.: decisão explícita se participa da Curva (Sim/Não).
    - Edição futura da decisão de participação na Curva.
    - Nova aba OBRAS A PLANEJAR: novas O.I.s + aportes pendentes em uma única fila.
@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '40.0.26';
+  const VERSION = '40.0.27';
   let planningRowsV4023 = [];
   let planningSearchV4023 = '';
   let planningOriginV4023 = '';
@@ -53,7 +53,7 @@
       .v4023-plan-toolbar select{min-width:205px;padding:8px 10px;border:1px solid var(--cinza-borda);border-radius:8px;background:#fff;font:inherit}
       .v4023-origin{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:800;white-space:nowrap}
       .v4023-origin.oi{background:#e8f0fb;color:#1a4b8c}
-      .v4023-origin.aporte{background:#e1f5ee;color:#126b37}
+      .v4023-origin.aporte{background:#e1f5ee;color:#126b37}\n      .v4023-origin.pacote{background:#f2eafb;color:#6a3ea1}
       .v4023-plan-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
       .v4023-plan-table td{vertical-align:middle}
       .v4024-import-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 12px}
@@ -83,6 +83,15 @@
       .select('code,name,description,sort_order').eq('selectable', true).order('sort_order', { ascending:true });
     if (error) throw error;
     return data || [];
+  }
+
+  let PACOTES_CURVA_V4027 = [];
+  async function loadPacotesCurvaV4027(force=false) {
+    if (!force && PACOTES_CURVA_V4027.length) return PACOTES_CURVA_V4027;
+    const { data, error } = await sb.rpc('listar_pacotes_curva_v4027');
+    if (error) throw error;
+    PACOTES_CURVA_V4027 = Array.isArray(data) ? data : [];
+    return PACOTES_CURVA_V4027;
   }
 
   function populateDatalist(id, values) {
@@ -129,14 +138,19 @@
 
         <div class="v4023-intent-box">
           <div class="field">
-            <label>Esta O.I. irá para a Curva de Capex? *</label>
+            <label>Como esta O.I. participa da Curva de Capex? *</label>
             <select id="f-vai-curva">
               <option value="">Selecione...</option>
-              <option value="sim">Sim — deve ser planejada na Curva</option>
-              <option value="nao">Não — não participa da Curva</option>
+              <option value="individual">Obra individual — possui linha e planejamento próprios</option>
+              <option value="pacote">Consolidada em pacote — compõe um agrupador da Curva</option>
+              <option value="nao">Não participa da Curva</option>
             </select>
           </div>
-          <div class="v4023-intent-help">Essa decisão pode ser alterada futuramente em <strong>Editar O.I.</strong>. O sistema nunca apaga automaticamente um planejamento que já exista na Curva.</div>
+          <div class="field" id="v4027-package-field" hidden style="margin-top:10px">
+            <label>Pacote de destino *</label>
+            <select id="f-pacote-destino"><option value="">Carregando pacotes...</option></select>
+          </div>
+          <div class="v4023-intent-help"><strong>Obra individual:</strong> recebe planejamento próprio. <strong>Consolidada em pacote:</strong> mantém O.I., aporte e consumo no Controle, mas o efeito financeiro da Curva pertence ao pacote escolhido. <strong>Não participa:</strong> não possui efeito na Curva.</div>
         </div>
 
         <div id="v4023-planning-options" hidden>
@@ -167,7 +181,7 @@
     backdrop.querySelector('#modal-cancel').onclick = close;
     backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
 
-    Promise.all([sb.rpc('get_classificacoes_existentes'), getRulesV4023(), loadTipologiasV4026()]).then(([classResult, rules, tipologias]) => {
+    Promise.all([sb.rpc('get_classificacoes_existentes'), getRulesV4023(), loadTipologiasV4026(), loadPacotesCurvaV4027()]).then(([classResult, rules, tipologias, pacotes]) => {
       if (!classResult.error && classResult.data) {
         const d = classResult.data;
         populateDatalist('dl-grupo', d.grupo_executivo); populateDatalist('dl-categoria', d.categoria_orc);
@@ -178,6 +192,8 @@
       if (tipoSelect) {
         tipoSelect.innerHTML = '<option value="">Selecione a tipologia</option>' + tipologias.map(t => `<option value="${esc(t.nome)}">${esc(t.emoji||'📌')} ${esc(t.nome)}</option>`).join('');
       }
+      const pacoteSelect = backdrop.querySelector('#f-pacote-destino');
+      if (pacoteSelect) pacoteSelect.innerHTML = '<option value="">Selecione o pacote</option>' + pacotes.map(p => `<option value="${esc(p.id)}">${esc(p.nome)} · ${money(p.capex_atual||0)}</option>`).join('');
       const select = backdrop.querySelector('#f-flow-rule');
       if (select && rules.length) {
         select.innerHTML = rules.map(r => `<option value="${esc(r.code)}" ${r.code==='standard_15_75_10'?'selected':''}>${esc(r.name)}</option>`).join('');
@@ -190,13 +206,16 @@
     const later = backdrop.querySelector('#v4023-save-later');
     const now = backdrop.querySelector('#v4023-save-now');
     const options = backdrop.querySelector('#v4023-planning-options');
+    const packageField = backdrop.querySelector('#v4027-package-field');
     const syncIntentUi = () => {
       const v = intent.value;
-      options.hidden = v !== 'sim';
-      now.hidden = v !== 'sim';
+      options.hidden = v !== 'individual';
+      packageField.hidden = v !== 'pacote';
+      now.hidden = v !== 'individual';
       later.disabled = !v;
-      if (!v) later.textContent = 'Selecione Sim/Não';
-      else if (v === 'sim') later.textContent = 'Criar e planejar depois';
+      if (!v) later.textContent = 'Selecione o modo de participação';
+      else if (v === 'individual') later.textContent = 'Criar e planejar depois';
+      else if (v === 'pacote') later.textContent = 'Criar O.I. vinculada ao pacote';
       else later.textContent = 'Criar O.I. sem Curva';
     };
     intent.onchange = syncIntentUi; syncIntentUi();
@@ -204,9 +223,11 @@
     async function save(planejarAgora) {
       const errorBox = backdrop.querySelector('#modal-error');
       const escolha = intent.value;
-      if (!escolha) { errorBox.innerHTML='<div class="error-msg">Informe se esta O.I. irá para a Curva de Capex.</div>'; return; }
-      const vai = escolha === 'sim';
-      if (planejarAgora && !vai) return;
+      if (!escolha) { errorBox.innerHTML='<div class="error-msg">Informe como esta O.I. participa da Curva de Capex.</div>'; return; }
+      const modo = escolha;
+      if (planejarAgora && modo !== 'individual') return;
+      const pacoteDestino = backdrop.querySelector('#f-pacote-destino')?.value || null;
+      if (modo === 'pacote' && !pacoteDestino) { errorBox.innerHTML='<div class="error-msg">Selecione o pacote de destino da Curva.</div>'; return; }
       const payload = {
         p_ordem_interna: backdrop.querySelector('#f-oi').value.trim(), p_descricao: backdrop.querySelector('#f-desc').value.trim(),
         p_grupo_executivo: backdrop.querySelector('#f-grupo').value.trim(), p_categoria_orc: backdrop.querySelector('#f-categoria').value.trim(),
@@ -214,7 +235,7 @@
         p_detalhamento: backdrop.querySelector('#f-detalhamento').value.trim(), p_detalhamento_orc: backdrop.querySelector('#f-detalhamento-orc').value.trim(),
         p_montante_atribuido: Number(backdrop.querySelector('#f-montante').value || 0), p_valor_compromissado: Number(backdrop.querySelector('#f-compromissado').value || 0),
         p_data_inicio: backdrop.querySelector('#f-data-inicio').value || null, p_data_fim: backdrop.querySelector('#f-data-fim').value || null,
-        p_vai_para_curva: vai, p_planejar_agora: !!planejarAgora,
+        p_participacao_curva: modo, p_pacote_destino_id: pacoteDestino, p_planejar_agora: !!planejarAgora,
         p_flow_rule: backdrop.querySelector('#f-flow-rule').value || 'standard_15_75_10',
         p_tipologia_curva: backdrop.querySelector('#f-tipologia-curva')?.value || null
       };
@@ -228,10 +249,11 @@
       later.disabled=true; now.disabled=true; const active=planejarAgora?now:later; const old=active.textContent;
       active.textContent=planejarAgora?'Criando e planejando...':'Criando O.I...'; errorBox.innerHTML='';
       try {
-        const { data, error } = await sb.rpc('criar_ordem_interna_integrada_v4026', payload);
+        const { data, error } = await sb.rpc('criar_ordem_interna_integrada_v4027', payload);
         if (error) throw error;
         close(); await refreshCurrent();
-        if (vai && !planejarAgora && data?.planejamento_status==='pendente') alert(`O.I. ${payload.p_ordem_interna} criada com sucesso.\n\nEla foi incluída na aba "Obras a Planejar".`);
+        if (modo==='individual' && !planejarAgora && data?.planejamento_status==='pendente') alert(`O.I. ${payload.p_ordem_interna} criada com sucesso.\n\nEla foi incluída na aba "Obras a Planejar".`);
+        if (modo==='pacote') alert(`O.I. ${payload.p_ordem_interna} criada e vinculada ao pacote ${data?.pacote_destino_nome||''}.\n\nEla não receberá planejamento individual na Curva.`);
       } catch (e) {
         later.disabled=false; now.disabled=false; active.textContent=old;
         errorBox.innerHTML=`<div class="error-msg">${esc(e?.message||String(e))}</div>`;
@@ -283,30 +305,21 @@
     if(typeof original!=='function')return; window.openNovaTransferenciaModal=function(...args){const r=original.apply(this,args);queueMicrotask(enhanceTransferModalV4023);return r;};window.__HAP_V4023_TRANSFER_WRAPPED__=true;
   }
 
-  function enhanceEditOiV4023(backdrop,id,gov) {
+  async function enhanceEditOiV4023(backdrop,id,gov) {
     const box=backdrop?.querySelector('.modal-box'); if(!box||box.dataset.v4023Governance==='1')return;
     box.dataset.v4023Governance='1'; const actions=box.querySelector('.modal-actions'); if(!actions)return;
-    const block=document.createElement('div');block.className='v4023-intent-box';block.innerHTML=`<div class="field"><label>Esta O.I. irá para a Curva de Capex?</label><select id="v4023-edit-vai-curva"><option value="" ${gov?.vai_para_curva==null?'selected':''}>Não definido (cadastro legado)</option><option value="sim" ${gov?.vai_para_curva===true?'selected':''}>Sim — deve participar da Curva</option><option value="nao" ${gov?.vai_para_curva===false?'selected':''}>Não — não participa da Curva</option></select></div><div class="v4023-intent-help">Você pode alterar essa decisão. Planejamento já existente nunca é apagado automaticamente.</div><div id="v4023-edit-curve-warning"></div>`;
-    actions.before(block); const select=block.querySelector('#v4023-edit-vai-curva'),warn=block.querySelector('#v4023-edit-curve-warning');
-    const updateWarn=()=>{
-      if(select.value==='nao'&&Number(gov?.qtd_aportes_pendentes||0)>0) warn.innerHTML=`<div class="v4023-edit-warning"><strong>Atenção:</strong> existem ${Number(gov.qtd_aportes_pendentes)} aporte(s) aguardando planejamento. O sistema exigirá que sejam planejados ou cancelados antes de marcar “Não”.</div>`;
-      else if(select.value==='nao'&&gov?.existe_na_curva) warn.innerHTML='<div class="v4023-edit-warning"><strong>Planejamento existente protegido:</strong> ao salvar “Não”, o planejamento que já existe na Curva será preservado. Apenas a decisão de governança do cadastro será alterada.</div>';
-      else if(select.value==='sim'&&!gov?.existe_na_curva) warn.innerHTML='<div class="v4023-plan-note"><strong>Ao salvar:</strong> esta O.I. entrará automaticamente na aba “Obras a Planejar”.</div>';
-      else warn.innerHTML='';
-    };select.onchange=updateWarn;updateWarn();
-
+    const pacotes=await loadPacotesCurvaV4027();
+    const currentMode=gov?.participacao_curva || (gov?.vai_para_curva===true?'individual':gov?.vai_para_curva===false?'nao':'');
+    const block=document.createElement('div');block.className='v4023-intent-box';block.innerHTML=`<div class="field"><label>Como esta O.I. participa da Curva de Capex?</label><select id="v4023-edit-vai-curva"><option value="" ${!currentMode?'selected':''}>Não definido (cadastro legado)</option><option value="individual" ${currentMode==='individual'?'selected':''}>Obra individual — linha e planejamento próprios</option><option value="pacote" ${currentMode==='pacote'?'selected':''}>Consolidada em pacote</option><option value="nao" ${currentMode==='nao'?'selected':''}>Não participa da Curva</option></select></div><div class="field" id="v4027-edit-package-field" style="margin-top:10px"><label>Pacote de destino</label><select id="v4027-edit-package"><option value="">Selecione o pacote</option>${pacotes.map(p=>`<option value="${esc(p.id)}" ${String(gov?.pacote_destino_id||'')===String(p.id)?'selected':''}>${esc(p.nome)} · ${money(p.capex_atual||0)}</option>`).join('')}</select></div><div class="v4023-intent-help">Obra individual recebe planejamento próprio. Consolidada em pacote mantém O.I., aporte e consumo, mas o destino financeiro é o pacote selecionado.</div><div id="v4023-edit-curve-warning"></div>`;
+    actions.before(block); const select=block.querySelector('#v4023-edit-vai-curva'),packageField=block.querySelector('#v4027-edit-package-field'),packageSelect=block.querySelector('#v4027-edit-package'),warn=block.querySelector('#v4023-edit-curve-warning');
+    const updateWarn=()=>{packageField.hidden=select.value!=='pacote';if(select.value==='nao'&&Number(gov?.qtd_aportes_pendentes||0)>0) warn.innerHTML=`<div class="v4023-edit-warning"><strong>Atenção:</strong> existem ${Number(gov.qtd_aportes_pendentes)} aporte(s) com destino pendente. Para manter esses aportes, escolha Obra individual ou Consolidada em pacote.</div>`;else if(select.value==='pacote') warn.innerHTML=`<div class="v4023-plan-note"><strong>Consolidação em pacote:</strong> esta O.I. não receberá planejamento individual. Seus aportes/consumo permanecem vinculados à O.I., com destino financeiro no pacote escolhido.</div>`;else if(select.value==='nao'&&gov?.existe_na_curva) warn.innerHTML='<div class="v4023-edit-warning"><strong>Planejamento existente protegido:</strong> a linha individual já existente na Curva não será apagada automaticamente.</div>';else if(select.value==='individual'&&!gov?.existe_na_curva) warn.innerHTML='<div class="v4023-plan-note"><strong>Ao salvar:</strong> esta O.I. entrará na aba “Obras a Planejar” para planejamento individual.</div>';else warn.innerHTML='';};select.onchange=updateWarn;updateWarn();
     const save=box.querySelector('#modal-save'); if(!save)return;
-    save.onclick=async()=>{
-      const payload={p_id:id,p_descricao:box.querySelector('#e-desc').value.trim(),p_grupo_executivo:box.querySelector('#e-grupo').value.trim(),p_categoria_orc:box.querySelector('#e-categoria').value.trim(),p_classificacao_pacote_capex:box.querySelector('#e-pacote').value.trim(),p_classificacao_head_operacao:box.querySelector('#e-head').value.trim(),p_detalhamento:box.querySelector('#e-detalhamento').value.trim(),p_detalhamento_orc:box.querySelector('#e-detalhamento-orc').value.trim(),p_montante_atribuido:Number(box.querySelector('#e-montante').value||0),p_valor_compromissado:Number(box.querySelector('#e-compromissado').value||0),p_data_inicio:box.querySelector('#e-data-inicio').value||null,p_data_fim:box.querySelector('#e-data-fim').value||null,p_vai_para_curva:select.value===''?null:select.value==='sim'};
-      const err=box.querySelector('#modal-error');save.disabled=true;save.textContent='Salvando...';err.innerHTML='';
-      try{const {data,error}=await sb.rpc('editar_ordem_interna_integrada_v4023',payload);if(error)throw error;backdrop.remove();await refreshCurrent();if(data?.aviso)alert(data.aviso);}
-      catch(e){save.disabled=false;save.textContent='Salvar alterações';err.innerHTML=`<div class="error-msg">${esc(e?.message||String(e))}</div>`;}
-    };
+    save.onclick=async()=>{const mode=select.value||null; const dest=mode==='pacote'?(packageSelect.value||null):null;if(!mode){const err=box.querySelector('#modal-error');err.innerHTML='<div class="error-msg">Informe como esta O.I. participa da Curva.</div>';return;}if(mode==='pacote'&&!dest){const err=box.querySelector('#modal-error');err.innerHTML='<div class="error-msg">Selecione o pacote de destino.</div>';return;}const payload={p_id:id,p_descricao:box.querySelector('#e-desc').value.trim(),p_grupo_executivo:box.querySelector('#e-grupo').value.trim(),p_categoria_orc:box.querySelector('#e-categoria').value.trim(),p_classificacao_pacote_capex:box.querySelector('#e-pacote').value.trim(),p_classificacao_head_operacao:box.querySelector('#e-head').value.trim(),p_detalhamento:box.querySelector('#e-detalhamento').value.trim(),p_detalhamento_orc:box.querySelector('#e-detalhamento-orc').value.trim(),p_montante_atribuido:Number(box.querySelector('#e-montante').value||0),p_valor_compromissado:Number(box.querySelector('#e-compromissado').value||0),p_data_inicio:box.querySelector('#e-data-inicio').value||null,p_data_fim:box.querySelector('#e-data-fim').value||null,p_participacao_curva:mode,p_pacote_destino_id:dest};const err=box.querySelector('#modal-error');save.disabled=true;save.textContent='Salvando...';err.innerHTML='';try{const {data,error}=await sb.rpc('editar_ordem_interna_integrada_v4027',payload);if(error)throw error;backdrop.remove();await refreshCurrent();if(data?.aviso)alert(data.aviso);}catch(e){save.disabled=false;save.textContent='Salvar alterações';err.innerHTML=`<div class="error-msg">${esc(e?.message||String(e))}</div>`;}};
   }
 
   function wrapEditOiV4023() {
     if(window.__HAP_V4023_EDIT_WRAPPED__)return; const original=window.editarOi;if(typeof original!=='function')return;
-    window.editarOi=async function(id){await original(id);const boxes=Array.from(document.querySelectorAll('.modal-backdrop')).reverse();const backdrop=boxes.find(b=>b.querySelector('h2')?.textContent?.trim()==='Editar ordem interna'&&b.querySelector('#e-desc'));if(!backdrop)return;try{const {data,error}=await sb.rpc('obter_governanca_oi_v4023',{p_id:id});if(error)throw error;enhanceEditOiV4023(backdrop,id,data||{});}catch(e){const err=backdrop.querySelector('#modal-error');if(err)err.innerHTML=`<div class="error-msg">Não foi possível carregar a configuração da Curva: ${esc(e?.message||String(e))}</div>`;}};
+    window.editarOi=async function(id){await original(id);const boxes=Array.from(document.querySelectorAll('.modal-backdrop')).reverse();const backdrop=boxes.find(b=>b.querySelector('h2')?.textContent?.trim()==='Editar ordem interna'&&b.querySelector('#e-desc'));if(!backdrop)return;try{const {data,error}=await sb.rpc('obter_governanca_oi_v4027',{p_id:id});if(error)throw error;await enhanceEditOiV4023(backdrop,id,data||{});}catch(e){const err=backdrop.querySelector('#modal-error');if(err)err.innerHTML=`<div class="error-msg">Não foi possível carregar a configuração da Curva: ${esc(e?.message||String(e))}</div>`;}};
     window.__HAP_V4023_EDIT_WRAPPED__=true;
   }
 
@@ -315,7 +328,7 @@
     return planningRowsV4023.filter(r=>{
       const text=[r.ordem_interna,r.obra,r.grupo_executivo,r.categoria_orc,r.classificacao_pacote_capex].join(' ').toLowerCase();
       const searchOk=!q||text.includes(q);
-      const origin=r.qtd_aportes_pendentes>0?'aporte':'oi';
+      const origin=r.participacao_curva==='pacote'?'pacote':(r.qtd_aportes_pendentes>0?'aporte':'oi');
       return searchOk&&(!planningOriginV4023||planningOriginV4023===origin);
     });
   }
@@ -324,7 +337,7 @@
     if(typeof XLSX==='undefined'){alert('Biblioteca de Excel não disponível nesta sessão.');return;}
     const rows=filteredPlanningRowsV4023(); if(!rows.length){alert('Não há obras para exportar com os filtros atuais.');return;}
     const data=rows.map(r=>({
-      'Ordem Interna':r.ordem_interna,'Obra':r.obra||'','Motivo':r.qtd_aportes_pendentes>0?'Aporte extra aguardando planejamento':'Nova O.I. destinada à Curva',
+      'Ordem Interna':r.ordem_interna,'Obra':r.obra||'','Modo na Curva':r.participacao_curva==='pacote'?'Consolidada em pacote':'Obra individual','Destino na Curva':r.participacao_curva==='pacote'?(r.pacote_destino_nome||r.pacote_item_nome||'Pacote'):'Obra individual','Motivo':r.participacao_curva==='pacote'?'Aporte extra destinado ao pacote':(r.qtd_aportes_pendentes>0?'Aporte extra aguardando planejamento':'Nova O.I. destinada à Curva'),
       'Montante Atual':Number(r.montante_atribuido||0),'Aportes Pendentes':Number(r.valor_aportes_pendentes||0),'Qtde Aportes Pendentes':Number(r.qtd_aportes_pendentes||0),
       'Mês(es) dos Aportes':r.meses_aportes||'','Data Início (PMO)':r.data_inicio||'','Data Fim (PMO)':r.data_fim||'','Existe na Curva':r.existe_na_curva?'Sim':'Não',
       'Grupo Executivo':r.grupo_executivo||'','Categoria ORC':r.categoria_orc||'','Pacote CAPEX':r.classificacao_pacote_capex||'','Status':r.status_planejamento||'',
@@ -405,6 +418,7 @@
       const row=aoa[i]||[];const oi=String(row[oiCol]??'').replace(/\.0$/,'').trim();if(!oi)continue;
       if(seen.has(oi)){invalid.push(`OI ${oi}: aparece mais de uma vez no Excel.`);continue;}seen.add(oi);
       const live=current.get(oi);if(!live){ignored.push(oi);continue;}
+      if(live.participacao_curva==='pacote'){ignored.push(oi);continue;}
       const inicio=isoDateV4024(row[iniCol]),fim=isoDateV4024(row[fimCol]);
       if(!row[iniCol]&&!row[fimCol]){missing.push(oi);continue;}
       if(!inicio||!fim){invalid.push(`OI ${oi}: início e fim precisam ser datas válidas.`);continue;}
@@ -462,12 +476,12 @@
 
   function renderPlanningTabV4023() {
     const rows=filteredPlanningRowsV4023();
-    const withAporte=planningRowsV4023.filter(r=>Number(r.qtd_aportes_pendentes||0)>0),newOnly=planningRowsV4023.filter(r=>Number(r.qtd_aportes_pendentes||0)===0&&!r.existe_na_curva),totalAportes=withAporte.reduce((s,r)=>s+Number(r.valor_aportes_pendentes||0),0),qtdAportes=withAporte.reduce((s,r)=>s+Number(r.qtd_aportes_pendentes||0),0);
+    const withAporte=planningRowsV4023.filter(r=>Number(r.qtd_aportes_pendentes||0)>0),newOnly=planningRowsV4023.filter(r=>r.participacao_curva!=='pacote'&&Number(r.qtd_aportes_pendentes||0)===0&&!r.existe_na_curva),totalAportes=withAporte.reduce((s,r)=>s+Number(r.valor_aportes_pendentes||0),0),qtdAportes=withAporte.reduce((s,r)=>s+Number(r.qtd_aportes_pendentes||0),0);
     app.innerHTML=`${commonPlanningHeaderV4023()}
       <div class="kpi-grid"><div class="kpi-card"><div class="label">Obras pendentes</div><div class="value">${planningRowsV4023.length}</div><div class="sub">Fila consolidada para planejamento</div></div><div class="kpi-card"><div class="label">Novas O.I.s</div><div class="value">${newOnly.length}</div><div class="sub">Destinadas à Curva e ainda sem planejamento</div></div><div class="kpi-card" style="border-left-color:var(--verde)"><div class="label">Aportes pendentes</div><div class="value" style="color:var(--verde)">${money(totalAportes)}</div><div class="sub">Valor aguardando planejamento</div></div><div class="kpi-card" style="border-left-color:var(--laranja)"><div class="label">Lançamentos de aporte</div><div class="value" style="color:var(--laranja)">${qtdAportes}</div><div class="sub">Aportes ainda não aplicados à Curva</div></div></div>
-      <div class="v4023-plan-note"><strong>Fila única para PMO:</strong> reúne novas O.I.s marcadas para participar da Curva e aportes extras que ainda precisam de planejamento. O Excel respeita os filtros exibidos.</div>
-      <div class="v4023-plan-toolbar"><input id="v4023-plan-search" placeholder="Buscar por O.I., obra, grupo, categoria ou pacote" value="${esc(planningSearchV4023)}"><select id="v4023-plan-origin"><option value="" ${!planningOriginV4023?'selected':''}>Todos os motivos</option><option value="oi" ${planningOriginV4023==='oi'?'selected':''}>Nova O.I.</option><option value="aporte" ${planningOriginV4023==='aporte'?'selected':''}>Aporte extra</option></select><span style="font-size:10px;color:var(--texto-suave)">${rows.length} de ${planningRowsV4023.length}</span><button class="btn btn-secondary" id="v4023-export">Exportar Excel</button><button class="btn btn-primary" id="v4024-import">Importar Excel preenchido</button></div>
-      <div class="table-card"><table class="v4023-plan-table"><thead><tr><th>O.I.</th><th>Obra</th><th>Motivo</th><th>Montante atual</th><th>Aportes pendentes</th><th>Mês(es)</th><th>Início</th><th>Fim</th><th>Curva</th><th>Ações</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${esc(r.ordem_interna)}</td><td>${esc(r.obra||'—')}</td><td><span class="v4023-origin ${Number(r.qtd_aportes_pendentes||0)>0?'aporte':'oi'}">${Number(r.qtd_aportes_pendentes||0)>0?'APORTE EXTRA':'NOVA O.I.'}</span></td><td>${money(r.montante_atribuido||0)}</td><td>${Number(r.qtd_aportes_pendentes||0)>0?`${money(r.valor_aportes_pendentes||0)}<br><span style="font-size:9px;color:var(--texto-suave)">${Number(r.qtd_aportes_pendentes)} lançamento(s)</span>`:'—'}</td><td>${esc(r.meses_aportes||'—')}</td><td>${dateBr(r.data_inicio)}</td><td>${dateBr(r.data_fim)}</td><td>${r.existe_na_curva?'<span class="flag flag-aporte">Já existe</span>':'<span class="flag flag-conting">Ainda não</span>'}</td><td><div class="v4023-plan-actions">${Number(r.qtd_aportes_pendentes||0)>0?`<button class="btn btn-primary v4023-open-aportes" data-oi="${esc(r.ordem_interna)}">Abrir Aportes</button>`:!r.existe_na_curva?`<button class="btn btn-primary v4023-plan-one" data-oi="${esc(r.ordem_interna)}">Planejar</button>`:''}<button class="btn btn-secondary v4023-edit-oi" data-id="${esc(r.oi_id)}">Editar O.I.</button></div></td></tr>`).join(''):'<tr><td colspan="10"><div class="empty-state">Nenhuma obra pendente com os filtros atuais.</div></td></tr>'}</tbody></table></div>`;
+      <div class="v4023-plan-note"><strong>Fila de governança da Curva:</strong> reúne obras individuais que precisam de planejamento e O.I.s consolidadas em pacote com aportes ainda pendentes de integração. Linhas de pacote não exigem datas individuais do PMO.</div>
+      <div class="v4023-plan-toolbar"><input id="v4023-plan-search" placeholder="Buscar por O.I., obra, grupo, categoria ou pacote" value="${esc(planningSearchV4023)}"><select id="v4023-plan-origin"><option value="" ${!planningOriginV4023?'selected':''}>Todos os motivos</option><option value="oi" ${planningOriginV4023==='oi'?'selected':''}>Nova O.I.</option><option value="aporte" ${planningOriginV4023==='aporte'?'selected':''}>Aporte extra — obra individual</option><option value="pacote" ${planningOriginV4023==='pacote'?'selected':''}>Consolidada em pacote</option></select><span style="font-size:10px;color:var(--texto-suave)">${rows.length} de ${planningRowsV4023.length}</span><button class="btn btn-secondary" id="v4023-export">Exportar Excel</button><button class="btn btn-primary" id="v4024-import">Importar Excel preenchido</button></div>
+      <div class="table-card"><table class="v4023-plan-table"><thead><tr><th>O.I.</th><th>Obra</th><th>Motivo</th><th>Montante atual</th><th>Aportes pendentes</th><th>Mês(es)</th><th>Início</th><th>Fim</th><th>Curva</th><th>Ações</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td>${esc(r.ordem_interna)}</td><td>${esc(r.obra||'—')}${r.participacao_curva==='pacote'?`<br><small style="color:var(--texto-suave)">Destino: ${esc(r.pacote_destino_nome||r.pacote_item_nome||'Pacote')}</small>`:''}</td><td><span class="v4023-origin ${r.participacao_curva==='pacote'?'pacote':(Number(r.qtd_aportes_pendentes||0)>0?'aporte':'oi')}">${r.participacao_curva==='pacote'?'APORTE → PACOTE':(Number(r.qtd_aportes_pendentes||0)>0?'APORTE EXTRA':'NOVA O.I.')}</span></td><td>${money(r.montante_atribuido||0)}</td><td>${Number(r.qtd_aportes_pendentes||0)>0?`${money(r.valor_aportes_pendentes||0)}<br><span style="font-size:9px;color:var(--texto-suave)">${Number(r.qtd_aportes_pendentes)} lançamento(s)</span>`:'—'}</td><td>${esc(r.meses_aportes||'—')}</td><td>${r.participacao_curva==='pacote'?'<span style="color:var(--texto-suave)">Não se aplica</span>':dateBr(r.data_inicio)}</td><td>${r.participacao_curva==='pacote'?'<span style="color:var(--texto-suave)">Não se aplica</span>':dateBr(r.data_fim)}</td><td>${r.participacao_curva==='pacote'?`<span class="flag flag-aporte">${esc(r.pacote_destino_nome||'Pacote')}</span>`:(r.existe_na_curva?'<span class="flag flag-aporte">Já existe</span>':'<span class="flag flag-conting">Ainda não</span>')}</td><td><div class="v4023-plan-actions">${r.participacao_curva==='pacote'?(Number(r.qtd_aportes_pendentes||0)>0?`<button class="btn btn-secondary v4023-open-aportes" data-oi="${esc(r.ordem_interna)}">Ver Aportes</button>`:''):(Number(r.qtd_aportes_pendentes||0)>0?`<button class="btn btn-primary v4023-open-aportes" data-oi="${esc(r.ordem_interna)}">Abrir Aportes</button>`:!r.existe_na_curva?`<button class="btn btn-primary v4023-plan-one" data-oi="${esc(r.ordem_interna)}">Planejar</button>`:'')}<button class="btn btn-secondary v4023-edit-oi" data-id="${esc(r.oi_id)}">Editar O.I.</button></div></td></tr>`).join(''):'<tr><td colspan="10"><div class="empty-state">Nenhuma obra pendente com os filtros atuais.</div></td></tr>'}</tbody></table></div>`;
     document.getElementById('logout-btn').onclick=()=>sb.auth.signOut();
     document.getElementById('v4023-plan-search').oninput=e=>{planningSearchV4023=e.target.value;renderPlanningTabV4023();const x=document.getElementById('v4023-plan-search');if(x){x.focus();try{x.setSelectionRange(x.value.length,x.value.length);}catch(_){}}};
     document.getElementById('v4023-plan-origin').onchange=e=>{planningOriginV4023=e.target.value;renderPlanningTabV4023();};
@@ -479,7 +493,7 @@
   }
 
   async function loadPlanningTabV4023() {
-    const {data,error}=await sb.rpc('obter_obras_a_planejar_v4023');
+    const {data,error}=await sb.rpc('obter_obras_a_planejar_v4027');
     if(error){app.innerHTML=`<div class="error-msg" style="margin:40px">Erro ao carregar Obras a Planejar: ${esc(error.message)}</div>`;return;}
     planningRowsV4023=Array.isArray(data)?data:[];renderPlanningTabV4023();
   }
@@ -501,5 +515,5 @@
   wrapEditOiV4023();
   wrapPlanningNavigationV4023();
 
-  window.HAP_V40_CONTROL_UI={version:VERSION,active:true,features:['nova-oi-intencao-curva','edicao-intencao-curva','obras-a-planejar','exportacao-pmo','retorno-pmo-confirmacao-curva','transferencia-expandir','tipologias-dinamicas']};
+  window.HAP_V40_CONTROL_UI={version:VERSION,active:true,features:['nova-oi-intencao-curva','edicao-intencao-curva','obras-a-planejar','exportacao-pmo','retorno-pmo-confirmacao-curva','transferencia-expandir','tipologias-dinamicas','participacao-individual-pacote']};
 })();
