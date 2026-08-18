@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.27 — Participação na Curva: individual / pacote / não participa
+/* HAPCAPEX V40.0.28 — Participação na Curva: individual / pacote / não participa
    - Nova O.I.: decisão explícita se participa da Curva (Sim/Não).
    - Edição futura da decisão de participação na Curva.
    - Nova aba OBRAS A PLANEJAR: novas O.I.s + aportes pendentes em uma única fila.
@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '40.0.27';
+  const VERSION = '40.0.28';
   let planningRowsV4023 = [];
   let planningSearchV4023 = '';
   let planningOriginV4023 = '';
@@ -493,7 +493,7 @@
   }
 
   async function loadPlanningTabV4023() {
-    const {data,error}=await sb.rpc('obter_obras_a_planejar_v4027');
+    const {data,error}=await sb.rpc('obter_obras_a_planejar_v4028');
     if(error){app.innerHTML=`<div class="error-msg" style="margin:40px">Erro ao carregar Obras a Planejar: ${esc(error.message)}</div>`;return;}
     planningRowsV4023=Array.isArray(data)?data:[];renderPlanningTabV4023();
   }
