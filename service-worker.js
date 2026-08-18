@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-22-oi-planning-transfer-expand-20260817';
+const CACHE_NAME = 'hapcapex-v40-0-24-pmo-roundtrip-20260818';
 const APP_SHELL = [
   './',
   './index.html',
@@ -22,7 +22,7 @@ const APP_SHELL = [
   './v40-aporte-status.js?v=40.0.11',
   './v40-tipologia-governance.js?v=40.0.13',
   './v40-audit-performance.js?v=40.0.16',
-  './v40-control-ui.js?v=40.0.22',
+  './v40-control-ui.js?v=40.0.24',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
   './dashboard-core.js?v=29',
@@ -41,7 +41,7 @@ const MANAGERIAL_TAG = '<script src="./v40-managerial-kpis-sort.js?v=40.0.9"></s
 const APORTE_STATUS_TAG = '<script src="./v40-aporte-status.js?v=40.0.11"></script>';
 const TIPOLOGIA_TAG = '<script src="./v40-tipologia-governance.js?v=40.0.13"></script>';
 const AUDIT_PERF_TAG = '<script src="./v40-audit-performance.js?v=40.0.16"></script>';
-const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.22"></script>';
+const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.24"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
   Nome da obra
@@ -213,7 +213,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.22',
+    'x-hapcapex-functional': 'v40.0.24',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -295,7 +295,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.22'
+    'x-hapcapex-functional': 'v40.0.24'
   });
 }
 
