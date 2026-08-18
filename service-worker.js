@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-28-planning-queue-fix-20260818';
+const CACHE_NAME = 'hapcapex-v40-0-30-date-planning-reminder-20260818';
 const APP_SHELL = [
   './',
   './index.html',
@@ -145,6 +145,91 @@ const WORK_NAME_INLINE_SCRIPT = `<script>
 </script>`;
 
 
+
+const DATE_PLANNING_REMINDER_SCRIPT = `<script>
+(() => {
+  'use strict';
+  if (window.__HAP_V4030_DATE_REMINDER__) return;
+  window.__HAP_V4030_DATE_REMINDER__ = true;
+
+  const form = document.getElementById('workEditForm');
+  const start = document.getElementById('workEditStart');
+  const end = document.getElementById('workEditEnd');
+  const rule = document.getElementById('workEditRule');
+  if (!form || !start || !end || !rule) return;
+
+  const warning = document.createElement('div');
+  warning.id = 'v4030-date-planning-warning';
+  warning.hidden = true;
+  warning.style.cssText = 'margin:10px 0;padding:10px 12px;border:1px solid #e6b64b;background:#fff7df;color:#68480d;border-radius:9px;font-size:11px;line-height:1.45';
+  warning.innerHTML = '<strong>⚠ Datas alteradas — revise o planejamento</strong><br>O HAPCAPEX não mudará a regra financeira automaticamente. Se o fluxo mensal também precisar mudar, revise a <strong>Regra financeira</strong> antes ou depois de salvar.';
+  const impact = document.getElementById('workEditImpact');
+  if (impact?.parentNode) impact.parentNode.insertBefore(warning, impact);
+  else form.querySelector('.admin-actions')?.before(warning);
+
+  let snapshot = null;
+
+  function currentItem(){
+    const id=document.getElementById('workEditId')?.value;
+    return (window.HAP_STATE_ITEMS||[]).find(x=>x.id===id)||null;
+  }
+
+  function capture(){
+    const item=currentItem();
+    if(!item){ snapshot=null; warning.hidden=true; return; }
+    snapshot={
+      id:item.id,
+      inicio:item.inicio||'',
+      fim:item.fim||'',
+      rule:item.flow_rule||''
+    };
+    update();
+  }
+
+  function datesChanged(){
+    if(!snapshot) return false;
+    return String(start.value||'')!==String(snapshot.inicio||'') || String(end.value||'')!==String(snapshot.fim||'');
+  }
+
+  function ruleChanged(){
+    if(!snapshot) return false;
+    return String(rule.value||'')!==String(snapshot.rule||'');
+  }
+
+  function update(){
+    warning.hidden=!datesChanged();
+    if(!warning.hidden){
+      warning.style.borderColor = ruleChanged() ? '#9bc9aa' : '#e6b64b';
+      warning.style.background = ruleChanged() ? '#eefaf3' : '#fff7df';
+      warning.style.color = ruleChanged() ? '#17643a' : '#68480d';
+      warning.innerHTML = ruleChanged()
+        ? '<strong>✓ Datas e regra financeira foram revisadas</strong><br>Confira o impacto abaixo antes de salvar.'
+        : '<strong>⚠ Datas alteradas — planejamento ainda não revisado</strong><br>As novas datas serão salvas, mas o HAPCAPEX <strong>não trocará a regra financeira automaticamente</strong>. Se o fluxo mensal também precisar mudar, revise a <strong>Regra financeira</strong>.';
+    }
+  }
+
+  start.addEventListener('input',update);
+  end.addEventListener('input',update);
+  rule.addEventListener('change',update);
+
+  form.addEventListener('submit',e=>{
+    if(!datesChanged() || ruleChanged()) return;
+    const ok=window.confirm('Você alterou as datas da obra, mas não alterou o planejamento/regra financeira.\\n\\nAs novas datas serão salvas mantendo o planejamento atual.\\n\\nDeseja continuar?');
+    if(!ok){ e.preventDefault(); e.stopImmediatePropagation(); rule.focus(); }
+  },true);
+
+  const original=window.openWorkEditor;
+  if(typeof original==='function'&&!window.__HAP_V4030_EDITOR_CAPTURED__){
+    window.openWorkEditor=function(){
+      const r=original.apply(this,arguments);
+      setTimeout(capture,0);
+      return r;
+    };
+    window.__HAP_V4030_EDITOR_CAPTURED__=true;
+  }
+})();
+</script>`;
+
 const SRI = {
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js': 'sha384-AkNSQdptcXlJ0/NBZc4qGk86cDVXcCevwoWgEKIpHOEfbvlXGLlIkimQtONt8KNf',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js': 'sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g',
@@ -213,7 +298,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.28',
+    'x-hapcapex-functional': 'v40.0.30',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -288,14 +373,14 @@ async function decorateHtmlResponse(response, url) {
     let injection = '';
     if (!text.includes('v39-global-admin.js')) injection += GLOBAL_ADMIN_TAG;
     injection += LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG;
-    injection += WORK_NAME_INLINE_SCRIPT;
+    injection += WORK_NAME_INLINE_SCRIPT + DATE_PLANNING_REMINDER_SCRIPT;
     if (/<\/body>/i.test(text)) text = text.replace(/<\/body>/i, `${injection}</body>`);
     else text += injection;
   }
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.28'
+    'x-hapcapex-functional': 'v40.0.30'
   });
 }
 
