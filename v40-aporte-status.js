@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.35 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.37 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -120,37 +120,51 @@
     setTimeout(reconcileBadges, 400);
   }
 
-  function loadLinkedAporteV4032(){
-    if (window.__HAP_V4032_LOADER__ || document.querySelector('script[data-hap-v4032-linked-aporte]')) return;
-    window.__HAP_V4032_LOADER__ = true;
+  function loadScriptOnce(flag, selector, src, datasetName) {
+    if (window[flag] || document.querySelector(selector)) return;
+    window[flag] = true;
     const script = document.createElement('script');
-    script.src = './v40-linked-aporte.js?v=40.0.33';
+    script.src = src;
     script.async = false;
-    script.dataset.hapV4032LinkedAporte = '1';
-    script.onerror = () => { window.__HAP_V4032_LOADER__ = false; };
+    script.dataset[datasetName] = '1';
+    script.onerror = () => { window[flag] = false; };
     document.head.appendChild(script);
   }
 
-  function loadLinearFlowV4033(){
-    if (window.__HAP_V4033_LINEAR_LOADER__ || document.querySelector('script[data-hap-v4033-linear-flow]')) return;
-    window.__HAP_V4033_LINEAR_LOADER__ = true;
-    const script = document.createElement('script');
-    script.src = './v40-linear-flow.js?v=40.0.34';
-    script.async = false;
-    script.dataset.hapV4033LinearFlow = '1';
-    script.onerror = () => { window.__HAP_V4033_LINEAR_LOADER__ = false; };
-    document.head.appendChild(script);
+  function loadLinkedAporte(){
+    loadScriptOnce(
+      '__HAP_V4032_LOADER__',
+      'script[data-hap-v4032-linked-aporte]',
+      './v40-linked-aporte.js?v=40.0.33',
+      'hapV4032LinkedAporte'
+    );
   }
 
-  function loadTableTotalsV4035(){
-    if (window.__HAP_V4035_TOTALS_LOADER__ || document.querySelector('script[data-hap-v4035-table-totals]')) return;
-    window.__HAP_V4035_TOTALS_LOADER__ = true;
-    const script = document.createElement('script');
-    script.src = './v40-table-totals.js?v=40.0.35';
-    script.async = false;
-    script.dataset.hapV4035TableTotals = '1';
-    script.onerror = () => { window.__HAP_V4035_TOTALS_LOADER__ = false; };
-    document.head.appendChild(script);
+  function loadLinearFlow(){
+    loadScriptOnce(
+      '__HAP_V4033_LINEAR_LOADER__',
+      'script[data-hap-v4033-linear-flow]',
+      './v40-linear-flow.js?v=40.0.34',
+      'hapV4033LinearFlow'
+    );
+  }
+
+  function loadTableTotals(){
+    loadScriptOnce(
+      '__HAP_V4037_TOTALS_LOADER__',
+      'script[data-hap-v4037-table-totals]',
+      './v40-table-totals.js?v=40.0.37',
+      'hapV4037TableTotals'
+    );
+  }
+
+  function loadModalGuard(){
+    loadScriptOnce(
+      '__HAP_V4037_MODAL_GUARD_LOADER__',
+      'script[data-hap-v4037-modal-guard]',
+      './v40-modal-guard.js?v=40.0.37',
+      'hapV4037ModalGuard'
+    );
   }
 
   window.addEventListener('hapcapex:curve-ready', runSoon);
@@ -160,7 +174,9 @@
 
   setInterval(reconcileBadges, 900);
   setTimeout(reconcileBadges, 350);
-  loadLinkedAporteV4032();
-  loadLinearFlowV4033();
-  loadTableTotalsV4035();
+
+  loadLinkedAporte();
+  loadLinearFlow();
+  loadTableTotals();
+  loadModalGuard();
 })();
