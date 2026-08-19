@@ -1,20 +1,40 @@
-/* HAPCAPEX V40.0.33 — Regra financeira "Divisão Linear".
+/* HAPCAPEX V40.0.34 — Divisão Linear determinística + sincronização da Curva e painel lateral.
    Regra interna: linear_month_fraction
-   - Cada mês recebe peso = dias ativos da obra no mês / dias do mês.
-   - O CAPEX é distribuído proporcionalmente à soma desses pesos.
+
+   Princípios:
+   - A obra termina exatamente na data de término: não existe retenção pós-obra.
+   - Cada mês recebe peso = dias ativos da obra no mês / dias do respectivo mês.
    - Datas são inclusivas.
-   - A soma do fluxo fecha exatamente no CAPEX em centavos.
-   - A regra escolhida explicitamente tem prioridade inclusive para obras _OPER.
+   - A soma mensal fecha exatamente no CAPEX em centavos.
+   - A regra escolhida explicitamente prevalece inclusive para obras _OPER.
+   - Obras já carregadas antes deste addon são recalculadas e a UI é redesenhada.
 */
 (() => {
   'use strict';
-  if (window.__HAP_V4033_LINEAR_FLOW__) return;
-  window.__HAP_V4033_LINEAR_FLOW__ = true;
+  if (window.__HAP_V4034_LINEAR_FLOW__) return;
+  window.__HAP_V4034_LINEAR_FLOW__ = true;
 
-  const VERSION = '40.0.33';
+  const VERSION = '40.0.34';
   const RULE = 'linear_month_fraction';
   const EPS = 0.005;
   let installed = false;
+  let panelPatched = false;
+  let originalRaw = null;
+  let originalFlow = null;
+  let originalOpenPanel = null;
+
+  const FALLBACK_MONTHS = [
+    ['jan','JAN/26'],['fev','FEV/26'],['mar','MAR/26'],['abr','ABR/26'],
+    ['mai','MAI/26'],['jun','JUN/26'],['jul','JUL/26'],['ago','AGO/26'],
+    ['set','SET/26'],['out','OUT/26'],['nov','NOV/26'],['dez','DEZ/26'],
+    ['jan27','JAN/27'],['fev27','FEV/27'],['mar27','MAR/27'],['abr27','ABR/27'],
+    ['mai27','MAI/27'],['jun27','JUN/27'],['jul27','JUL/27']
+  ].map(([key,label]) => ({key,label}));
+
+  function months() {
+    try { if (typeof MONTHS !== 'undefined' && Array.isArray(MONTHS)) return MONTHS; } catch (_) {}
+    return FALLBACK_MONTHS;
+  }
 
   function parseDate(value) {
     const raw = String(value || '').trim();
@@ -26,14 +46,13 @@
     return null;
   }
 
-  function validDateParts(p) {
-    if (!p || !Number.isInteger(p.y) || !Number.isInteger(p.m) || !Number.isInteger(p.d)) return false;
-    if (p.m < 1 || p.m > 12 || p.d < 1) return false;
-    return p.d <= daysInMonth(p.y, p.m);
-  }
-
   function daysInMonth(year, month) {
     return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+
+  function validDateParts(p) {
+    return !!p && Number.isInteger(p.y) && Number.isInteger(p.m) && Number.isInteger(p.d)
+      && p.m >= 1 && p.m <= 12 && p.d >= 1 && p.d <= daysInMonth(p.y,p.m);
   }
 
   function serialDay(p) {
@@ -41,9 +60,9 @@
   }
 
   function monthKey(year, month) {
-    if (typeof MONTHS === 'undefined' || !Array.isArray(MONTHS)) return null;
+    const list = months();
     const index = (Number(year) - 2026) * 12 + (Number(month) - 1);
-    return index >= 0 && index < MONTHS.length ? MONTHS[index].key : null;
+    return index >= 0 && index < list.length ? list[index].key : null;
   }
 
   function nextMonth(year, month) {
@@ -55,7 +74,6 @@
     let cursor = { y:start.y, m:start.m };
     const endMonthSerial = end.y * 12 + end.m;
     let guard = 0;
-
     while (cursor.y * 12 + cursor.m <= endMonthSerial && guard++ < 120) {
       const dim = daysInMonth(cursor.y, cursor.m);
       const activeStart = (cursor.y === start.y && cursor.m === start.m) ? start.d : 1;
@@ -77,69 +95,55 @@
   }
 
   function allocateCents(totalCents, segments) {
-    const totalWeight = segments.reduce((sum, s) => sum + s.weight, 0);
-    if (!(totalCents > 0) || !(totalWeight > 0)) return segments.map(() => 0);
+    const totalWeight = segments.reduce((sum,s) => sum + Number(s.weight || 0), 0);
+    if (!(totalCents > 0) || !(totalWeight > 0) || !segments.length) return segments.map(() => 0);
 
-    const allocations = [];
-    let used = 0;
-    for (let i = 0; i < segments.length; i++) {
-      if (i === segments.length - 1) {
-        allocations.push(totalCents - used);
-        break;
-      }
-      const cents = Math.round(totalCents * segments[i].weight / totalWeight);
-      allocations.push(cents);
-      used += cents;
-    }
-
-    // Proteção para CAPEX extremamente pequeno dividido por muitos meses:
-    // se o arredondamento dos meses anteriores ultrapassar o total, usa método
-    // de maiores restos, que nunca produz parcela negativa e continua fechando em centavos.
-    if (allocations.some(v => v < 0)) {
-      const exact = segments.map(s => totalCents * s.weight / totalWeight);
-      const floor = exact.map(v => Math.floor(v));
-      let remainder = totalCents - floor.reduce((a,b) => a + b, 0);
-      const order = exact.map((v,i) => ({ i, frac:v - floor[i] }))
-        .sort((a,b) => b.frac - a.frac || a.i - b.i);
-      for (let i = 0; i < remainder; i++) floor[order[i % order.length].i] += 1;
-      return floor;
-    }
-    return allocations;
+    // Método dos maiores restos: sempre fecha em centavos e nunca cria parcela negativa.
+    const exact = segments.map(s => totalCents * s.weight / totalWeight);
+    const floor = exact.map(v => Math.floor(v));
+    let remainder = totalCents - floor.reduce((a,b) => a + b, 0);
+    const order = exact.map((v,i) => ({i, frac:v - floor[i]}))
+      .sort((a,b) => b.frac - a.frac || a.i - b.i);
+    for (let i=0; i<remainder; i++) floor[order[i % order.length].i] += 1;
+    return floor;
   }
 
-  function computeLinearFlow(obra, original) {
+  function emptyFlow() {
     const flow = {};
-    if (typeof MONTHS === 'undefined' || !Array.isArray(MONTHS)) return original(obra);
-    MONTHS.forEach(month => { flow[month.key] = 0; });
+    months().forEach(month => { flow[month.key] = 0; });
+    return flow;
+  }
 
+  function computeLinearFlow(obra, fallback) {
+    const flow = emptyFlow();
     const capex = Math.max(0, Number(obra?.capex || 0));
     if (capex <= EPS) return flow;
 
     const start = parseDate(obra?.inicio);
     const end = parseDate(obra?.fim);
     if (!validDateParts(start) || !validDateParts(end) || serialDay(end) < serialDay(start)) {
-      console.warn('[HAPCAPEX V40.0.33] Divisão Linear ignorada: datas inválidas.', obra?.nome, obra?.inicio, obra?.fim);
-      return original({ ...obra, _flowRule:'standard_15_75_10' });
+      console.error('[HAPCAPEX V40.0.34] Divisão Linear exige datas válidas.', obra?.nome, obra?.inicio, obra?.fim);
+      return typeof fallback === 'function' ? fallback(obra) : flow;
     }
 
-    const allSegments = buildSegments(start, end);
-    const unsupported = allSegments.filter(s => !s.key);
-    const segments = allSegments.filter(s => s.key);
+    const allSegments = buildSegments(start,end);
+    const unsupported = allSegments.filter(segment => !segment.key);
+    const segments = allSegments.filter(segment => segment.key);
     if (!segments.length || unsupported.length) {
-      console.warn('[HAPCAPEX V40.0.33] Divisão Linear fora do horizonte exibido pela Curva.', obra?.nome, obra?.inicio, obra?.fim);
-      return original({ ...obra, _flowRule:'standard_15_75_10' });
+      console.error('[HAPCAPEX V40.0.34] Datas da Divisão Linear ultrapassam o horizonte da Curva.', obra?.nome, obra?.inicio, obra?.fim);
+      return typeof fallback === 'function' ? fallback(obra) : flow;
     }
 
     const totalCents = Math.round(capex * 100);
-    const allocations = allocateCents(totalCents, segments);
-    segments.forEach((segment, index) => {
-      flow[segment.key] = allocations[index] / 100;
-    });
+    const allocations = allocateCents(totalCents,segments);
+    segments.forEach((segment,index) => { flow[segment.key] = allocations[index] / 100; });
 
     obra._linearMonthFraction = {
       version:VERSION,
-      totalWeight:segments.reduce((sum, s) => sum + s.weight, 0),
-      segments:segments.map((s, i) => ({
+      start:obra?.inicio || null,
+      end:obra?.fim || null,
+      totalWeight:segments.reduce((sum,s) => sum + s.weight,0),
+      segments:segments.map((s,i) => ({
         key:s.key,
         activeDays:s.activeDays,
         daysInMonth:s.daysInMonth,
@@ -150,55 +154,246 @@
     return flow;
   }
 
-
   function ensureRuleCatalog() {
     const rules = window.HAP_DATA?.flowRules;
     if (!Array.isArray(rules)) return false;
-    if (!rules.some(rule => String(rule?.code || '') === RULE)) {
+    const existing = rules.find(rule => String(rule?.code || '') === RULE);
+    if (existing) {
+      existing.name = 'Divisão Linear';
+      existing.description = 'Distribui o CAPEX proporcionalmente à fração de cada mês entre as datas de início e término. A obra encerra exatamente no mês de término, sem retenção posterior.';
+      existing.selectable = true;
+    } else {
       rules.push({
         code:RULE,
         name:'Divisão Linear',
-        description:'Distribui o CAPEX proporcionalmente à fração de cada mês entre as datas de início e término da obra.',
+        description:'Distribui o CAPEX proporcionalmente à fração de cada mês entre as datas de início e término. A obra encerra exatamente no mês de término, sem retenção posterior.',
         selectable:true,
         sort_order:115,
         default_params:{}
       });
-      rules.sort((a,b) => Number(a?.sort_order || 999) - Number(b?.sort_order || 999));
     }
+    rules.sort((a,b) => Number(a?.sort_order || 999) - Number(b?.sort_order || 999));
     return true;
   }
 
-  function install() {
+  function getRule(obra) {
+    return String(obra?._flowRule || obra?.flow_rule || '').trim();
+  }
+
+  function installFlowPatches() {
     ensureRuleCatalog();
     if (installed) return true;
-    let original = null;
-    try {
-      if (typeof computeFlowRaw === 'function') original = computeFlowRaw;
-    } catch (_) {}
-    if (!original && typeof window.computeFlowRaw === 'function') original = window.computeFlowRaw;
-    if (!original || original.__hapV4033LinearPatched) return !!original?.__hapV4033LinearPatched;
 
-    const patched = function(obra) {
-      if (String(obra?._flowRule || '') === RULE) return computeLinearFlow(obra, original);
-      return original(obra);
+    try { if (typeof computeFlowRaw === 'function') originalRaw = computeFlowRaw; } catch (_) {}
+    if (!originalRaw && typeof window.computeFlowRaw === 'function') originalRaw = window.computeFlowRaw;
+    try { if (typeof computeFlow === 'function') originalFlow = computeFlow; } catch (_) {}
+    if (!originalFlow && typeof window.computeFlow === 'function') originalFlow = window.computeFlow;
+
+    if (!originalRaw || !originalFlow) return false;
+    if (originalFlow.__hapV4034LinearPatched) { installed = true; return true; }
+
+    const patchedRaw = function(obra) {
+      if (getRule(obra) === RULE) return computeLinearFlow(obra, originalRaw);
+      return originalRaw(obra);
     };
-    patched.__hapV4033LinearPatched = true;
-    patched.__hapV4033Original = original;
+    patchedRaw.__hapV4034LinearPatched = true;
+    patchedRaw.__hapV4034Original = originalRaw;
 
-    try { computeFlowRaw = patched; } catch (_) {}
-    try { window.computeFlowRaw = patched; } catch (_) {}
+    const patchedFlow = function(obra) {
+      // Bypass completo das regras 15/75/10 e _OPER quando Divisão Linear foi escolhida.
+      if (getRule(obra) === RULE) return computeLinearFlow(obra, originalFlow);
+      return originalFlow(obra);
+    };
+    patchedFlow.__hapV4034LinearPatched = true;
+    patchedFlow.__hapV4034Original = originalFlow;
+
+    try { computeFlowRaw = patchedRaw; } catch (_) {}
+    try { window.computeFlowRaw = patchedRaw; } catch (_) {}
+    try { computeFlow = patchedFlow; } catch (_) {}
+    try { window.computeFlow = patchedFlow; } catch (_) {}
+
     installed = true;
-    window.HAP_V40_LINEAR_FLOW = {
-      version:VERSION,
-      rule:RULE,
-      buildSegments,
-      allocateCents,
-      computeLinearFlow,
-      ensureRuleCatalog
-    };
     return true;
   }
 
-  window.addEventListener('hapcapex:curve-ready', () => { install(); }, { once:false });
-  [0,50,150,400,1000,2500].forEach(ms => setTimeout(install, ms));
+  function relevantPanelKeys(obra) {
+    const list = months();
+    const used = list.filter(month => Math.abs(Number(obra?.flow?.[month.key] || 0)) > EPS
+      || Math.abs(Number(obra?.[month.key + '_real'] || 0)) > EPS);
+    if (used.length) return used.map(month => month.key);
+
+    const start = parseDate(obra?.inicio);
+    const end = parseDate(obra?.fim);
+    if (validDateParts(start) && validDateParts(end) && serialDay(end) >= serialDay(start)) {
+      return buildSegments(start,end).map(segment => segment.key).filter(Boolean);
+    }
+    return list.slice(0,12).map(month => month.key);
+  }
+
+  function formatMoney(value, compact=false) {
+    if (typeof window.fmt === 'function') return window.fmt(Number(value || 0),compact);
+    const n = Number(value || 0);
+    if (!n) return '-';
+    return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n);
+  }
+
+  function formatPct(value) {
+    try { if (typeof pct === 'function') return pct(value); } catch (_) {}
+    return `${Number(value || 0).toFixed(1).replace('.',',')}%`;
+  }
+
+  function refreshOpenPanel(idx) {
+    const works = Array.isArray(window.HAP_RUNTIME_OBRAS) ? window.HAP_RUNTIME_OBRAS : [];
+    const obra = works[Number(idx)];
+    if (!obra) return;
+
+    const keys = relevantPanelKeys(obra);
+    const list = months();
+    const labelByKey = new Map(list.map(month => [month.key,month.label]));
+    const labels = keys.map(key => labelByKey.get(key) || String(key).toUpperCase());
+    const prevVals = keys.map(key => Number(obra?.flow?.[key] || 0));
+    const realVals = keys.map(key => Number(obra?.[key + '_real'] || 0));
+
+    const canvas = document.getElementById('panel-chart');
+    if (canvas && window.Chart) {
+      try { window.Chart.getChart?.(canvas)?.destroy(); } catch (_) {}
+      try {
+        new window.Chart(canvas,{
+          type:'bar',
+          data:{
+            labels,
+            datasets:[
+              {label:'Previsto',data:prevVals,backgroundColor:'rgba(26,92,168,0.6)',borderRadius:4},
+              {label:'Realizado',data:realVals,backgroundColor:'rgba(224,112,32,0.8)',borderRadius:4}
+            ]
+          },
+          options:{
+            responsive:true,
+            maintainAspectRatio:false,
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${formatMoney(ctx.raw)}`}}},
+            scales:{y:{beginAtZero:true,ticks:{callback:value=>formatMoney(value,true)}}}
+          }
+        });
+      } catch (error) { console.warn('[HAPCAPEX V40.0.34] Falha ao redesenhar gráfico lateral',error); }
+    }
+
+    const strip = document.getElementById('panel-dev-strip');
+    if (strip) {
+      strip.innerHTML = '';
+      keys.forEach(key => {
+        const realized = Number(obra?.[key + '_real'] || 0);
+        const planned = Number(obra?.flow?.[key] || 0);
+        const deviation = planned > EPS ? ((realized-planned)/planned)*100 : 0;
+        const cls = (Math.abs(realized)<=EPS && Math.abs(planned)<=EPS) ? 'zero' : (deviation>=0?'pos':'neg');
+        strip.insertAdjacentHTML('beforeend',`<div class="dev-chip ${cls}">
+          <div class="dev-chip-mes">${String(labelByKey.get(key) || key).replace('/26','').replace('/27','')}</div>
+          <div class="dev-chip-pct">${(Math.abs(realized)<=EPS&&Math.abs(planned)<=EPS)?'—':formatPct(deviation)}</div>
+          <div class="dev-chip-vals">${formatMoney(realized,true)}<br>${formatMoney(planned,true)}</div>
+        </div>`);
+      });
+    }
+
+    const totalReal = Number(obra?.total_real || 0);
+    const totalPrev = keys.reduce((sum,key) => sum + Number(obra?.flow?.[key] || 0),0);
+    const totalDev = totalPrev > EPS ? ((totalReal-totalPrev)/totalPrev)*100 : 0;
+    const prevEl = document.getElementById('panel-total-prev');
+    const realEl = document.getElementById('panel-total-real');
+    const devEl = document.getElementById('panel-total-dev');
+    if (prevEl) prevEl.textContent = formatMoney(totalPrev) || '—';
+    if (realEl) realEl.textContent = formatMoney(totalReal) || '—';
+    if (devEl) {
+      devEl.textContent = totalPrev > EPS ? formatPct(totalDev) : '—';
+      devEl.className = 't-dev ' + (totalDev >= 0 ? 'pos' : 'neg');
+    }
+  }
+
+  function installPanelPatch() {
+    if (panelPatched) return true;
+    try { if (typeof openPanel === 'function') originalOpenPanel = openPanel; } catch (_) {}
+    if (!originalOpenPanel && typeof window.openPanel === 'function') originalOpenPanel = window.openPanel;
+    if (!originalOpenPanel) return false;
+    if (originalOpenPanel.__hapV4034PanelPatched) { panelPatched = true; return true; }
+
+    const patchedOpenPanel = function(idx) {
+      const result = originalOpenPanel(idx);
+      setTimeout(() => refreshOpenPanel(idx),0);
+      return result;
+    };
+    patchedOpenPanel.__hapV4034PanelPatched = true;
+    patchedOpenPanel.__hapV4034Original = originalOpenPanel;
+    try { openPanel = patchedOpenPanel; } catch (_) {}
+    try { window.openPanel = patchedOpenPanel; } catch (_) {}
+    panelPatched = true;
+    return true;
+  }
+
+  function fixGenericLabels() {
+    document.querySelectorAll('button,.tab-btn,.kpi-sub').forEach(el => {
+      const text = String(el.textContent || '').trim();
+      if (text === 'Fluxo Previsto (15/75/10)') el.textContent = 'Fluxo Previsto';
+      if (text.includes('Modelo 15/75/10 · obras planejadas')) {
+        el.textContent = text.replace('Modelo 15/75/10','Regras financeiras por obra');
+      }
+    });
+    try {
+      const instances = window.Chart?.instances ? Object.values(window.Chart.instances) : [];
+      instances.forEach(chart => {
+        let changed = false;
+        (chart?.data?.datasets || []).forEach(dataset => {
+          if (dataset?.label === 'Previsto (15/75/10)') { dataset.label = 'Previsto'; changed = true; }
+        });
+        if (changed) chart.update('none');
+      });
+    } catch (_) {}
+  }
+
+  function rerenderCurve() {
+    const works = Array.isArray(window.HAP_RUNTIME_OBRAS) ? window.HAP_RUNTIME_OBRAS : [];
+    const calculate = typeof window.computeFlow === 'function' ? window.computeFlow : null;
+    if (!calculate || !works.length) return false;
+
+    let changed = false;
+    works.forEach(obra => {
+      if (getRule(obra) !== RULE) return;
+      obra.flow = calculate(obra);
+      changed = true;
+    });
+    if (!changed) return true;
+
+    const renderers = ['renderTablePrev','renderTableReal','renderCharts','renderKPIs','renderRiskPanel','renderAnalysis'];
+    renderers.forEach(name => {
+      try { if (typeof window[name] === 'function') window[name](); } catch (error) {
+        console.warn(`[HAPCAPEX V40.0.34] ${name} não pôde ser redesenhado`,error);
+      }
+    });
+    fixGenericLabels();
+    return true;
+  }
+
+  function installAll() {
+    ensureRuleCatalog();
+    const flowReady = installFlowPatches();
+    const panelReady = installPanelPatch();
+    if (flowReady) rerenderCurve();
+    fixGenericLabels();
+    return flowReady && panelReady;
+  }
+
+  window.addEventListener('hapcapex:curve-ready',() => {
+    setTimeout(installAll,0);
+    setTimeout(installAll,120);
+  });
+  window.addEventListener('visibilitychange',() => { if (!document.hidden) setTimeout(installAll,0); });
+  [0,50,150,400,900,1600,2800].forEach(ms => setTimeout(installAll,ms));
+
+  window.HAP_V40_LINEAR_FLOW = {
+    version:VERSION,
+    rule:RULE,
+    buildSegments,
+    allocateCents,
+    computeLinearFlow,
+    rerenderCurve,
+    refreshOpenPanel,
+    installAll
+  };
 })();
