@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.28 — Participação na Curva: individual / pacote / não participa
+/* HAPCAPEX V40.0.31 — Participação na Curva: individual / pacote / não participa
    - Nova O.I.: decisão explícita se participa da Curva (Sim/Não).
    - Edição futura da decisão de participação na Curva.
    - Nova aba OBRAS A PLANEJAR: novas O.I.s + aportes pendentes em uma única fila.
@@ -9,7 +9,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '40.0.28';
+  const VERSION = '40.0.31';
   let planningRowsV4023 = [];
   let planningSearchV4023 = '';
   let planningOriginV4023 = '';
@@ -509,6 +509,75 @@
 
 
 
+  function installSapBridgePairingV4031(){
+    if(window.__HAP_V4031_BRIDGE_FETCH__)return;
+    const nativeFetch=window.fetch.bind(window);
+    const bridgeBase='http://127.0.0.1:17891';
+    const tokenKey='hapcapex.sapBridge.pairToken.v1';
+    let pairPromise=null;
+
+    const bridgeUrl=input=>{
+      try{
+        const raw=typeof input==='string'?input:(input&&input.url?input.url:'');
+        const url=new URL(raw,location.href);
+        return url.origin===bridgeBase?url:null;
+      }catch(_){return null;}
+    };
+    const publicPath=url=>url&&(url.pathname==='/api/health'||url.pathname==='/api/pair');
+    const clearToken=()=>{try{sessionStorage.removeItem(tokenKey);}catch(_){}};
+
+    async function pair(){
+      if(pairPromise)return pairPromise;
+      pairPromise=(async()=>{
+        if(typeof sb==='undefined'||!sb?.auth)throw new Error('Sessão HAPCAPEX indisponível para parear o SAP Bridge.');
+        const {data,error}=await sb.auth.getSession();
+        if(error)throw error;
+        const accessToken=data?.session?.access_token||'';
+        if(!accessToken)throw new Error('Entre novamente no HAPCAPEX para usar o SAP Bridge.');
+        const response=await nativeFetch(bridgeBase+'/api/pair',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','X-HAPCAPEX-Client':'web-v40.0.31'},
+          body:JSON.stringify({accessToken}),
+          cache:'no-store'
+        });
+        let payload={};
+        try{payload=await response.json();}catch(_){}
+        if(!response.ok||!payload?.token)throw new Error(payload?.error||'Não foi possível parear o SAP Bridge com sua sessão HAPCAPEX.');
+        try{sessionStorage.setItem(tokenKey,payload.token);}catch(_){}
+        return payload.token;
+      })();
+      try{return await pairPromise;}finally{pairPromise=null;}
+    }
+
+    function addToken(init,token){
+      const next={...(init||{})};
+      const headers=new Headers(next.headers||{});
+      headers.set('X-HAPCAPEX-Bridge-Token',token);
+      headers.set('X-HAPCAPEX-Client','web-v40.0.31');
+      next.headers=headers;
+      return next;
+    }
+
+    window.fetch=async function(input,init){
+      const url=bridgeUrl(input);
+      if(!url||publicPath(url))return nativeFetch(input,init);
+      let token='';
+      try{token=sessionStorage.getItem(tokenKey)||'';}catch(_){}
+      if(!token)token=await pair();
+      let response=await nativeFetch(input,addToken(init,token));
+      if(response.status===401){
+        clearToken();
+        token=await pair();
+        response=await nativeFetch(input,addToken(init,token));
+      }
+      return response;
+    };
+
+    try{sb?.auth?.onAuthStateChange?.(event=>{if(event==='SIGNED_OUT'||event==='USER_DELETED')clearToken();});}catch(_){}
+    window.__HAP_V4031_BRIDGE_FETCH__=true;
+  }
+
+  installSapBridgePairingV4031();
   injectStyles();
   window.openNovaOiModal=openNovaOiV4023;
   wrapTransferModalV4023();
