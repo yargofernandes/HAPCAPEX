@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.33 — Estado visual de Aporte Extra + loaders de Aporte Vinculado e Divisão Linear. */
+/* HAPCAPEX V40.0.35 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -131,15 +131,25 @@
     document.head.appendChild(script);
   }
 
-
   function loadLinearFlowV4033(){
     if (window.__HAP_V4033_LINEAR_LOADER__ || document.querySelector('script[data-hap-v4033-linear-flow]')) return;
     window.__HAP_V4033_LINEAR_LOADER__ = true;
     const script = document.createElement('script');
-    script.src = './v40-linear-flow.js?v=40.0.33';
+    script.src = './v40-linear-flow.js?v=40.0.34';
     script.async = false;
     script.dataset.hapV4033LinearFlow = '1';
     script.onerror = () => { window.__HAP_V4033_LINEAR_LOADER__ = false; };
+    document.head.appendChild(script);
+  }
+
+  function loadTableTotalsV4035(){
+    if (window.__HAP_V4035_TOTALS_LOADER__ || document.querySelector('script[data-hap-v4035-table-totals]')) return;
+    window.__HAP_V4035_TOTALS_LOADER__ = true;
+    const script = document.createElement('script');
+    script.src = './v40-table-totals.js?v=40.0.35';
+    script.async = false;
+    script.dataset.hapV4035TableTotals = '1';
+    script.onerror = () => { window.__HAP_V4035_TOTALS_LOADER__ = false; };
     document.head.appendChild(script);
   }
 
@@ -152,4 +162,5 @@
   setTimeout(reconcileBadges, 350);
   loadLinkedAporteV4032();
   loadLinearFlowV4033();
+  loadTableTotalsV4035();
 })();
