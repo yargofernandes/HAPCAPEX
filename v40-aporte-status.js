@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.37 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.39 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -48,7 +48,7 @@
 
   function statusForWork(work) {
     const aporte = activeAporteValue(work);
-    if (aporte <= EPS) return { type: 'none', aporte: 0 };
+    if (aporte <= EPS) return { type:'none', aporte:0 };
     const capex = Math.max(0, Number(work?.capex || 0));
     const total = capex > EPS && aporte >= capex - EPS;
     return { type: total ? 'total' : 'partial', aporte, capex };
@@ -108,19 +108,19 @@
         ? '💚 APORTE EXTRA PARCIAL'
         : '💚 APORTE EXTRA';
       badge.title = `Aporte extra ativo: ${
-        new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' }).format(status.aporte)
+        new Intl.NumberFormat('pt-BR', {style:'currency',currency:'BRL'}).format(status.aporte)
       }`;
       cell.append(' ', badge);
     });
   }
 
   function runSoon() {
-    setTimeout(reconcileBadges, 0);
-    setTimeout(reconcileBadges, 120);
-    setTimeout(reconcileBadges, 400);
+    setTimeout(reconcileBadges,0);
+    setTimeout(reconcileBadges,120);
+    setTimeout(reconcileBadges,400);
   }
 
-  function loadScriptOnce(flag, selector, src, datasetName) {
+  function loadScriptOnce(flag,selector,src,datasetName) {
     if (window[flag] || document.querySelector(selector)) return;
     window[flag] = true;
     const script = document.createElement('script');
@@ -132,51 +132,39 @@
   }
 
   function loadLinkedAporte(){
-    loadScriptOnce(
-      '__HAP_V4032_LOADER__',
-      'script[data-hap-v4032-linked-aporte]',
-      './v40-linked-aporte.js?v=40.0.33',
-      'hapV4032LinkedAporte'
-    );
+    loadScriptOnce('__HAP_V4032_LOADER__','script[data-hap-v4032-linked-aporte]',
+      './v40-linked-aporte.js?v=40.0.33','hapV4032LinkedAporte');
   }
 
   function loadLinearFlow(){
-    loadScriptOnce(
-      '__HAP_V4033_LINEAR_LOADER__',
-      'script[data-hap-v4033-linear-flow]',
-      './v40-linear-flow.js?v=40.0.34',
-      'hapV4033LinearFlow'
-    );
+    loadScriptOnce('__HAP_V4033_LINEAR_LOADER__','script[data-hap-v4033-linear-flow]',
+      './v40-linear-flow.js?v=40.0.34','hapV4033LinearFlow');
   }
 
   function loadTableTotals(){
-    loadScriptOnce(
-      '__HAP_V4037_TOTALS_LOADER__',
-      'script[data-hap-v4037-table-totals]',
-      './v40-table-totals.js?v=40.0.37',
-      'hapV4037TableTotals'
-    );
+    loadScriptOnce('__HAP_V4037_TOTALS_LOADER__','script[data-hap-v4037-table-totals]',
+      './v40-table-totals.js?v=40.0.37','hapV4037TableTotals');
   }
 
   function loadModalGuard(){
-    loadScriptOnce(
-      '__HAP_V4037_MODAL_GUARD_LOADER__',
-      'script[data-hap-v4037-modal-guard]',
-      './v40-modal-guard.js?v=40.0.37',
-      'hapV4037ModalGuard'
-    );
+    loadScriptOnce('__HAP_V4037_MODAL_GUARD_LOADER__','script[data-hap-v4037-modal-guard]',
+      './v40-modal-guard.js?v=40.0.37','hapV4037ModalGuard');
   }
 
-  window.addEventListener('hapcapex:curve-ready', runSoon);
-  window.addEventListener('visibilitychange', () => {
-    if (!document.hidden) runSoon();
-  });
+  function loadDateBoundedFlow(){
+    loadScriptOnce('__HAP_V4039_STANDARD_DATE_LOADER__','script[data-hap-v4039-date-bounded-flow]',
+      './v40-date-bounded-flow.js?v=40.0.39','hapV4039DateBoundedFlow');
+  }
 
-  setInterval(reconcileBadges, 900);
-  setTimeout(reconcileBadges, 350);
+  window.addEventListener('hapcapex:curve-ready',runSoon);
+  window.addEventListener('visibilitychange',()=>{ if(!document.hidden) runSoon(); });
+
+  setInterval(reconcileBadges,900);
+  setTimeout(reconcileBadges,350);
 
   loadLinkedAporte();
   loadLinearFlow();
   loadTableTotals();
   loadModalGuard();
+  loadDateBoundedFlow();
 })();
