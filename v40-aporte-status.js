@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.11 — Estado visual robusto de Aporte Extra ativo/parcial. */
+/* HAPCAPEX V40.0.33 — Estado visual de Aporte Extra + loaders de Aporte Vinculado e Divisão Linear. */
 (() => {
   'use strict';
 
@@ -93,11 +93,8 @@
 
     document.querySelectorAll('.obra-row td:first-child').forEach(cell => {
       const work = findWorkByCell(cell);
-
-      // Sempre remove qualquer selo antigo antes de decidir o estado atual.
       cell.querySelectorAll('.badge-aporte,.v4010-aporte-badge,.v4011-aporte-badge')
         .forEach(el => el.remove());
-
       if (!work) return;
 
       const status = statusForWork(work);
@@ -123,14 +120,36 @@
     setTimeout(reconcileBadges, 400);
   }
 
+  function loadLinkedAporteV4032(){
+    if (window.__HAP_V4032_LOADER__ || document.querySelector('script[data-hap-v4032-linked-aporte]')) return;
+    window.__HAP_V4032_LOADER__ = true;
+    const script = document.createElement('script');
+    script.src = './v40-linked-aporte.js?v=40.0.33';
+    script.async = false;
+    script.dataset.hapV4032LinkedAporte = '1';
+    script.onerror = () => { window.__HAP_V4032_LOADER__ = false; };
+    document.head.appendChild(script);
+  }
+
+
+  function loadLinearFlowV4033(){
+    if (window.__HAP_V4033_LINEAR_LOADER__ || document.querySelector('script[data-hap-v4033-linear-flow]')) return;
+    window.__HAP_V4033_LINEAR_LOADER__ = true;
+    const script = document.createElement('script');
+    script.src = './v40-linear-flow.js?v=40.0.33';
+    script.async = false;
+    script.dataset.hapV4033LinearFlow = '1';
+    script.onerror = () => { window.__HAP_V4033_LINEAR_LOADER__ = false; };
+    document.head.appendChild(script);
+  }
+
   window.addEventListener('hapcapex:curve-ready', runSoon);
   window.addEventListener('visibilitychange', () => {
     if (!document.hidden) runSoon();
   });
 
-  // Intencionalmente sem assinatura/cache: o dashboard principal pode redesenhar a
-  // mesma tabela com os mesmos dados e reintroduzir o badge legado.
-  // Reconciliar ~100 linhas por segundo é leve e garante consistência visual.
   setInterval(reconcileBadges, 900);
   setTimeout(reconcileBadges, 350);
+  loadLinkedAporteV4032();
+  loadLinearFlowV4033();
 })();
