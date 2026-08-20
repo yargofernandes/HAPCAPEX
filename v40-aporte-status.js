@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.42 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.43 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -171,6 +171,11 @@
       './v40-sap-bridge-resilience.js?v=40.0.42','hapV4042SapResilience');
   }
 
+  function loadLinkedOiMode(){
+    loadScriptOnce('__HAP_V4043_LINKED_OI_LOADER__','script[data-hap-v4043-linked-oi-mode]',
+      './v40-linked-oi-mode.js?v=40.0.43','hapV4043LinkedOiMode');
+  }
+
   window.addEventListener('hapcapex:curve-ready',runSoon);
   window.addEventListener('visibilitychange',()=>{ if(!document.hidden) runSoon(); });
 
@@ -185,4 +190,5 @@
   loadMaintenanceMode();
   loadTransferFilters();
   loadSapBridgeResilience();
+  loadLinkedOiMode();
 })();
