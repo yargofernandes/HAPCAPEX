@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.39 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.40 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -156,6 +156,11 @@
       './v40-date-bounded-flow.js?v=40.0.39','hapV4039DateBoundedFlow');
   }
 
+  function loadMaintenanceMode(){
+    loadScriptOnce('__HAP_V4040_MAINTENANCE_LOADER__','script[data-hap-v4040-maintenance-mode]',
+      './v40-maintenance-mode.js?v=40.0.40','hapV4040MaintenanceMode');
+  }
+
   window.addEventListener('hapcapex:curve-ready',runSoon);
   window.addEventListener('visibilitychange',()=>{ if(!document.hidden) runSoon(); });
 
@@ -167,4 +172,5 @@
   loadTableTotals();
   loadModalGuard();
   loadDateBoundedFlow();
+  loadMaintenanceMode();
 })();
