@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.40 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.41 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -161,6 +161,11 @@
       './v40-maintenance-mode.js?v=40.0.40','hapV4040MaintenanceMode');
   }
 
+  function loadTransferFilters(){
+    loadScriptOnce('__HAP_V4041_TRANSFER_FILTERS_LOADER__','script[data-hap-v4041-transfer-filters]',
+      './v40-transfer-filters.js?v=40.0.41','hapV4041TransferFilters');
+  }
+
   window.addEventListener('hapcapex:curve-ready',runSoon);
   window.addEventListener('visibilitychange',()=>{ if(!document.hidden) runSoon(); });
 
@@ -173,4 +178,5 @@
   loadModalGuard();
   loadDateBoundedFlow();
   loadMaintenanceMode();
+  loadTransferFilters();
 })();
