@@ -1,15 +1,11 @@
 {
-  "product": "HAPCAPEX SAP Bridge",
-  "version": "1.1.6-alpha",
-  "distribution": "corporate",
-  "distributionVersion": "1.0.8",
-  "releasedAt": "2026-08-20T11:46:00-03:00",
-  "packageUrl": "https://yargofernandes.github.io/HAPCAPEX/sap-bridge/HAPCAPEX-SAP-Bridge-CORPORATIVO.zip",
+  "version": "1.1.7-alpha",
+  "distributionVersion": "1.0.10",
+  "minimumFrontend": "40.0.44",
   "downloadPath": "./sap-bridge/HAPCAPEX-SAP-Bridge-CORPORATIVO.zip",
-  "sha256": "be84c526f755369c1a3e0f9ad011df53649cc82aa65a63de51acb50d0c7cb888",
-  "port": 17891,
-  "minimumFrontend": "40.0.42",
-  "installScope": "CurrentUser",
+  "sha256": "d538d7d9fa2b23ef98d0f56caf8bd95adbb5c1798fb3dd67af176cf01a2349b2",
+  "size": 40347,
   "autoStart": true,
-  "security": "supabase-paired-session-v1"
+  "securityProfile": "supabase-paired-session-v1",
+  "notes": "Bridge 1.1.7-alpha: reparo robusto do protocolo hapcapex-sap://, autostart redundante e instalador com validação por etapas."
 }
