@@ -1,5 +1,47 @@
 window.CAPEX_CONFIG={supabaseUrl:'https://kuvwfyuhrnfsubkapeek.supabase.co',supabasePublishableKey:'sb_publishable_-MtsnK_nyG5ZryuLDynTdg_R8hT1s66',sessionIdleMinutes:30};
 
+// V40.0.47 — branding HAPCAPEX + carregamento global determinístico.
+// config.js é carregado nativamente pelo index.html antes do bootstrap, portanto
+// esta correção não depende do service worker já estar controlando a página.
+(() => {
+  'use strict';
+
+  function normalizeBranding(){
+    const loginTitle=document.querySelector('#loginForm h2');
+    if(loginTitle && loginTitle.textContent.trim()!=='🔐 HAPCAPEX'){
+      loginTitle.textContent='🔐 HAPCAPEX';
+    }
+
+    const toolbarBrand=document.querySelector('#adminToolbar > strong');
+    if(toolbarBrand && toolbarBrand.textContent.trim()!=='HAPCAPEX'){
+      toolbarBrand.textContent='HAPCAPEX';
+    }
+  }
+
+  function loadGlobalAdmin(){
+    if(window.__HAP_GLOBAL_ADMIN_V40047__ || document.querySelector('script[data-hap-global-admin-direct]')) return;
+    const script=document.createElement('script');
+    script.src='./v39-global-admin.js?v=40.0.47';
+    script.async=false;
+    script.dataset.hapGlobalAdminDirect='1';
+    document.head.appendChild(script);
+  }
+
+  normalizeBranding();
+  loadGlobalAdmin();
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',()=>{
+      normalizeBranding();
+      loadGlobalAdmin();
+    },{once:true});
+  }
+
+  const observer=new MutationObserver(()=>normalizeBranding());
+  observer.observe(document.documentElement,{childList:true,subtree:true});
+  setTimeout(()=>observer.disconnect(),120000);
+})();
+
 // V31 — O registro OBRAS NÃO PLANEJADAS do Supabase passa a ser a fonte autoritativa,
 // inclusive quando um mês é exatamente zero. O baseline histórico continua preservado
 // para as demais regras, mas deixa de preencher silenciosamente zeros do Não Planejado.

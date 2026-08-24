@@ -6,7 +6,9 @@
 */
 (() => {
   'use strict';
-  const VERSION='40.0.46';
+  if (window.__HAP_GLOBAL_ADMIN_V40047__) return;
+  window.__HAP_GLOBAL_ADMIN_V40047__ = true;
+  const VERSION='40.0.47';
   let patchedManagers=false;
   let auditLoadPromise=null;
 
@@ -164,7 +166,7 @@
       }
 
       const script=document.createElement('script');
-      script.src='./v40-global-audit.js?v=40.0.46';
+      script.src='./v40-global-audit.js?v=40.0.47';
       script.async=false;
       script.dataset.v40046GlobalAudit='1';
 
