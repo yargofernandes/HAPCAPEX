@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.41 — Filtros por coluna e totais dinâmicos em Transferências.
+/* HAPCAPEX V40.0.48 — Filtros, totais dinâmicos e colagem de valores SAP em Transferências.
    Atua apenas na aba Transferências e não altera dados no backend.
    O total considera exclusivamente as linhas visíveis após TODOS os filtros.
 */
@@ -7,7 +7,7 @@
   if (window.__HAP_V4041_TRANSFER_FILTERS__) return;
   window.__HAP_V4041_TRANSFER_FILTERS__ = true;
 
-  const VERSION = '40.0.41';
+  const VERSION = '40.0.48';
   const filters = {
     documento: '',
     origem: '',
@@ -58,6 +58,165 @@
       .replace(/[^0-9.-]/g, '');
     const n = Number(raw);
     return Number.isFinite(n) ? n : 0;
+  }
+
+
+  // V40.0.48 — reconhece o formato monetário brasileiro copiado do SAP:
+  // 61.345,34 -> 61345.34
+  // O campo visual permanece sem separador de milhar: 61345,34.
+  function parseSapTransferValue(value) {
+    let raw = String(value ?? '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/R\$/gi, '')
+      .trim();
+
+    if (!raw) return null;
+
+    let negative = false;
+    if (/^\(.*\)$/.test(raw)) {
+      negative = true;
+      raw = raw.slice(1, -1);
+    }
+
+    raw = raw
+      .replace(/\s+/g, '')
+      .replace(/[^\d,.\-]/g, '');
+
+    if (!raw || raw === '-' || raw === ',' || raw === '.') return null;
+
+    // Padrão SAP / pt-BR: ponto = milhar, vírgula = decimal.
+    if (raw.includes(',')) {
+      raw = raw.replace(/\./g, '').replace(',', '.');
+    } else {
+      const dots = (raw.match(/\./g) || []).length;
+
+      // Um único ponto com 1–2 casas finais é tratado como decimal
+      // (permite também colar 61345.34).
+      if (dots === 1 && /\.\d{1,2}$/.test(raw)) {
+        // já está no formato numérico JS
+      } else if (dots > 0) {
+        // Demais pontos são tratados como separadores de milhar.
+        raw = raw.replace(/\./g, '');
+      }
+    }
+
+    raw = raw.replace(/(?!^)-/g, '');
+    let n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    if (negative) n = -Math.abs(n);
+    return n;
+  }
+
+  function formatSapTransferField(value) {
+    const n = typeof value === 'number' ? value : parseSapTransferValue(value);
+    if (!Number.isFinite(n)) return '';
+    return n.toFixed(2).replace('.', ',');
+  }
+
+  function isTransferValueInput(el) {
+    return !!(
+      el &&
+      el.matches &&
+      el.matches('.linha-transf input[id^="t-valor-"]')
+    );
+  }
+
+  function prepareTransferValueInput(input) {
+    if (!isTransferValueInput(input)) return;
+    if (input.dataset.v4048SapValue === '1') return;
+
+    input.dataset.v4048SapValue = '1';
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.autocomplete = 'off';
+    input.placeholder = '0,00';
+    input.title = 'Aceita colagem direta do SAP, por exemplo: 61.345,34';
+
+    input.addEventListener('blur', () => {
+      const formatted = formatSapTransferField(input.value);
+      if (formatted) input.value = formatted;
+    });
+  }
+
+  function prepareTransferValueInputs(root = document) {
+    root.querySelectorAll?.('.linha-transf input[id^="t-valor-"]')
+      .forEach(prepareTransferValueInput);
+  }
+
+  function installSapTransferPasteSupport() {
+    if (window.__HAP_V4048_SAP_TRANSFER_VALUE__) return;
+    window.__HAP_V4048_SAP_TRANSFER_VALUE__ = true;
+
+    // Garante que novas linhas do modal deixem de ser type=number.
+    const observer = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes || []) {
+          if (!(node instanceof Element)) continue;
+          if (isTransferValueInput(node)) prepareTransferValueInput(node);
+          prepareTransferValueInputs(node);
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Segurança para o primeiro foco, mesmo antes do MutationObserver executar.
+    document.addEventListener('focusin', event => {
+      if (isTransferValueInput(event.target)) {
+        prepareTransferValueInput(event.target);
+      }
+    }, true);
+
+    // Colagem direta do SAP.
+    document.addEventListener('paste', event => {
+      const input = event.target;
+      if (!isTransferValueInput(input)) return;
+
+      prepareTransferValueInput(input);
+
+      const pasted = event.clipboardData?.getData('text') ?? '';
+      const parsed = parseSapTransferValue(pasted);
+
+      if (!Number.isFinite(parsed)) return;
+
+      event.preventDefault();
+      input.value = formatSapTransferField(parsed);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, true);
+
+    // Antes do onclick original do botão, converte 61.345,34 / 61345,34
+    // para 61345.34. O código existente continua usando Number(...) sem alteração.
+    document.addEventListener('click', event => {
+      const save = event.target?.closest?.('#modal-save');
+      if (!save) return;
+
+      const inputs = [
+        ...document.querySelectorAll('.linha-transf input[id^="t-valor-"]')
+      ];
+
+      const restore = [];
+
+      for (const input of inputs) {
+        prepareTransferValueInput(input);
+
+        const parsed = parseSapTransferValue(input.value);
+        if (!Number.isFinite(parsed)) continue;
+
+        restore.push([input, formatSapTransferField(parsed)]);
+        input.value = parsed.toFixed(2);
+      }
+
+      // A rotina original lê Number(input.value) de forma síncrona antes do
+      // primeiro await. Se o modal continuar aberto por validação/erro,
+      // devolvemos imediatamente o formato brasileiro ao usuário.
+      setTimeout(() => {
+        for (const [input, formatted] of restore) {
+          if (input?.isConnected) input.value = formatted;
+        }
+      }, 0);
+    }, true);
+
+    prepareTransferValueInputs();
   }
 
   function isoToBr(value) {
@@ -313,6 +472,7 @@
 
   function boot() {
     ensureStyle();
+    installSapTransferPasteSupport();
     schedule();
 
     const target = document.getElementById('app') || document.body;
