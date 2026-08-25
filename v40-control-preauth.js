@@ -1,14 +1,15 @@
-/* HAPCAPEX V40.0.50 — Pre-auth guard do Controle de Capex
+/* HAPCAPEX V40.0.51 — Pre-auth guard do Controle de Capex
    Impede qualquer carga financeira antes da troca obrigatoria da senha temporaria.
    Deve executar DEPOIS do v37-control-governance.js e ANTES de init().
    V40.0.49: carrega diretamente o tratamento de valores SAP em Transferências.
    V40.0.50: carrega diretamente os filtros por coluna da aba CAPEX.
+   V40.0.51: carrega diretamente os totais CAPEX alinhados aos KPIs.
 */
 (() => {
   'use strict';
   if (window.HAP_CONTROL_PREAUTH_V40?.bootstrapped) return;
 
-  const VERSION = '40.0.50';
+  const VERSION = '40.0.51';
 
   function loadTransferSapValuesV40049() {
     if (window.__HAP_V40049_TRANSFER_SAP_LOADER__) return;
@@ -55,6 +56,34 @@
   }
 
   loadCapexColumnFiltersV40050();
+
+  function loadTableTotalsV40051() {
+    if (window.__HAP_V40051_TABLE_TOTALS_LOADER__) return;
+    window.__HAP_V40051_TABLE_TOTALS_LOADER__ = true;
+
+    const old = [...document.querySelectorAll('script[src]')]
+      .find(script => String(script.getAttribute('src') || '').includes('v40-table-totals.js'));
+
+    if (old) {
+      // O service worker/loader antigo pode já ter inserido ?v=40.0.37.
+      // Removemos apenas a tag; a nova versão possui uma flag própria e substitui o footer.
+      old.remove();
+    }
+
+    const script = document.createElement('script');
+    script.src = './v40-table-totals.js?v=40.0.51';
+    script.async = false;
+    script.dataset.hapV40051TableTotals = '1';
+
+    script.onerror = () => {
+      window.__HAP_V40051_TABLE_TOTALS_LOADER__ = false;
+      console.error('[HAPCAPEX V40.0.51] Falha ao carregar totais alinhados aos KPIs.');
+    };
+
+    document.head.appendChild(script);
+  }
+
+  loadTableTotalsV40051();
 
   const original = window.loadRoleAndData;
 
