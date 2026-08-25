@@ -1,15 +1,16 @@
-/* HAPCAPEX V40.0.51 — Pre-auth guard do Controle de Capex
+/* HAPCAPEX V40.0.52 — Pre-auth guard do Controle de Capex
    Impede qualquer carga financeira antes da troca obrigatoria da senha temporaria.
    Deve executar DEPOIS do v37-control-governance.js e ANTES de init().
    V40.0.49: carrega diretamente o tratamento de valores SAP em Transferências.
    V40.0.50: carrega diretamente os filtros por coluna da aba CAPEX.
    V40.0.51: carrega diretamente os totais CAPEX alinhados aos KPIs.
+   V40.0.52: opção segura de registrar aporte consolidado em pacote no KPI.
 */
 (() => {
   'use strict';
   if (window.HAP_CONTROL_PREAUTH_V40?.bootstrapped) return;
 
-  const VERSION = '40.0.51';
+  const VERSION = '40.0.52';
 
   function loadTransferSapValuesV40049() {
     if (window.__HAP_V40049_TRANSFER_SAP_LOADER__) return;
@@ -85,10 +86,34 @@
 
   loadTableTotalsV40051();
 
+  function loadPackageAporteKpiV40052() {
+    if (window.__HAP_V40052_PACKAGE_KPI_LOADER__) return;
+    window.__HAP_V40052_PACKAGE_KPI_LOADER__ = true;
+
+    const existing = [...document.querySelectorAll('script[src]')]
+      .find(script => String(script.getAttribute('src') || '').includes('v40-package-aporte-kpi.js'));
+
+    if (existing) return;
+
+    const script = document.createElement('script');
+    script.src = './v40-package-aporte-kpi.js?v=40.0.52';
+    script.async = false;
+    script.dataset.hapV40052PackageKpi = '1';
+
+    script.onerror = () => {
+      window.__HAP_V40052_PACKAGE_KPI_LOADER__ = false;
+      console.error('[HAPCAPEX V40.0.52] Falha ao carregar aporte de pacote para KPI.');
+    };
+
+    document.head.appendChild(script);
+  }
+
+  loadPackageAporteKpiV40052();
+
   const original = window.loadRoleAndData;
 
   if (typeof original !== 'function') {
-    console.error('[HAPCAPEX V40.0.49] loadRoleAndData indisponivel para o pre-auth guard.');
+    console.error('[HAPCAPEX V40.0.52] loadRoleAndData indisponivel para o pre-auth guard.');
     window.HAP_CONTROL_PREAUTH_V40 = {
       version: VERSION,
       bootstrapped: false,
@@ -147,7 +172,7 @@
 
       return original.apply(this, args);
     } catch (error) {
-      console.error('[HAPCAPEX V40.0.49] Falha no pre-auth guard', error);
+      console.error('[HAPCAPEX V40.0.52] Falha no pre-auth guard', error);
 
       if (typeof renderLogin === 'function') {
         renderLogin('Nao foi possivel validar o acesso com seguranca. Atualize a pagina e tente novamente.');
@@ -158,7 +183,7 @@
     }
   };
 
-  guarded.__hapV40049PreAuth = true;
+  guarded.__hapV40052PreAuth = true;
   guarded.__hapOriginal = original;
 
   loadRoleAndData = window.loadRoleAndData = guarded;
