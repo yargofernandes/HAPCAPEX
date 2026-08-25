@@ -1,16 +1,17 @@
-/* HAPCAPEX V40.0.52 — Pre-auth guard do Controle de Capex
+/* HAPCAPEX V40.0.53 — Pre-auth guard do Controle de Capex
    Impede qualquer carga financeira antes da troca obrigatoria da senha temporaria.
    Deve executar DEPOIS do v37-control-governance.js e ANTES de init().
    V40.0.49: carrega diretamente o tratamento de valores SAP em Transferências.
    V40.0.50: carrega diretamente os filtros por coluna da aba CAPEX.
    V40.0.51: carrega diretamente os totais CAPEX alinhados aos KPIs.
    V40.0.52: opção segura de registrar aporte consolidado em pacote no KPI.
+   V40.0.53: opção Registrar só no KPI para aporte sem planejamento.
 */
 (() => {
   'use strict';
   if (window.HAP_CONTROL_PREAUTH_V40?.bootstrapped) return;
 
-  const VERSION = '40.0.52';
+  const VERSION = '40.0.53';
 
   function loadTransferSapValuesV40049() {
     if (window.__HAP_V40049_TRANSFER_SAP_LOADER__) return;
@@ -110,6 +111,30 @@
 
   loadPackageAporteKpiV40052();
 
+  function loadKpiOnlyNoPlanV40053() {
+    if (window.__HAP_V40053_KPI_ONLY_LOADER__) return;
+    window.__HAP_V40053_KPI_ONLY_LOADER__ = true;
+
+    const existing = [...document.querySelectorAll('script[src]')]
+      .find(script => String(script.getAttribute('src') || '').includes('v40-aporte-kpi-only.js'));
+
+    if (existing) return;
+
+    const script = document.createElement('script');
+    script.src = './v40-aporte-kpi-only.js?v=40.0.53';
+    script.async = false;
+    script.dataset.hapV40053KpiOnly = '1';
+
+    script.onerror = () => {
+      window.__HAP_V40053_KPI_ONLY_LOADER__ = false;
+      console.error('[HAPCAPEX V40.0.53] Falha ao carregar KPI sem planejamento.');
+    };
+
+    document.head.appendChild(script);
+  }
+
+  loadKpiOnlyNoPlanV40053();
+
   const original = window.loadRoleAndData;
 
   if (typeof original !== 'function') {
@@ -183,7 +208,7 @@
     }
   };
 
-  guarded.__hapV40052PreAuth = true;
+  guarded.__hapV40053PreAuth = true;
   guarded.__hapOriginal = original;
 
   loadRoleAndData = window.loadRoleAndData = guarded;
