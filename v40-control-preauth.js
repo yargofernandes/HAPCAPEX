@@ -1,13 +1,14 @@
-/* HAPCAPEX V40.0.49 — Pre-auth guard do Controle de Capex
+/* HAPCAPEX V40.0.50 — Pre-auth guard do Controle de Capex
    Impede qualquer carga financeira antes da troca obrigatoria da senha temporaria.
    Deve executar DEPOIS do v37-control-governance.js e ANTES de init().
    V40.0.49: carrega diretamente o tratamento de valores SAP em Transferências.
+   V40.0.50: carrega diretamente os filtros por coluna da aba CAPEX.
 */
 (() => {
   'use strict';
   if (window.HAP_CONTROL_PREAUTH_V40?.bootstrapped) return;
 
-  const VERSION = '40.0.49';
+  const VERSION = '40.0.50';
 
   function loadTransferSapValuesV40049() {
     if (window.__HAP_V40049_TRANSFER_SAP_LOADER__) return;
@@ -32,6 +33,28 @@
   // Carrega independentemente de autenticação financeira.
   // O módulo atua apenas nos campos do modal de Transferências.
   loadTransferSapValuesV40049();
+
+  function loadCapexColumnFiltersV40050() {
+    if (window.__HAP_V40050_CAPEX_FILTERS_LOADER__) return;
+    window.__HAP_V40050_CAPEX_FILTERS_LOADER__ = true;
+
+    const existing = [...document.querySelectorAll('script[src]')]
+      .find(script => String(script.getAttribute('src') || '').includes('v40-capex-column-filters.js'));
+
+    if (existing) return;
+
+    const script = document.createElement('script');
+    script.src = './v40-capex-column-filters.js?v=40.0.50';
+    script.async = false;
+    script.dataset.hapV40050CapexFilters = '1';
+    script.onerror = () => {
+      window.__HAP_V40050_CAPEX_FILTERS_LOADER__ = false;
+      console.error('[HAPCAPEX V40.0.50] Falha ao carregar filtros por coluna do CAPEX.');
+    };
+    document.head.appendChild(script);
+  }
+
+  loadCapexColumnFiltersV40050();
 
   const original = window.loadRoleAndData;
 
