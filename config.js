@@ -94,3 +94,102 @@ window.CAPEX_CONFIG={supabaseUrl:'https://kuvwfyuhrnfsubkapeek.supabase.co',supa
   script.dataset.hapV40057CurvePanel='1';
   document.head.appendChild(script);
 })();
+
+
+// V40.0.58 — contingenciamento parcial linear sem retenção.
+// Preserva o realizado até o mês de referência e consome todo o saldo residual
+// linearmente apenas nos meses futuros compreendidos entre início e fim da obra.
+(() => {
+  'use strict';
+  const RULE='contingency_partial_linear';
+  const MONTHS=[
+    'jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez',
+    'jan27','fev27','mar27','abr27','mai27','jun27','jul27'
+  ];
+  const YM_TO_KEY={
+    '2026-01':'jan','2026-02':'fev','2026-03':'mar','2026-04':'abr','2026-05':'mai','2026-06':'jun',
+    '2026-07':'jul','2026-08':'ago','2026-09':'set','2026-10':'out','2026-11':'nov','2026-12':'dez',
+    '2027-01':'jan27','2027-02':'fev27','2027-03':'mar27','2027-04':'abr27','2027-05':'mai27','2027-06':'jun27','2027-07':'jul27'
+  };
+  const KEY_TO_INDEX=Object.fromEntries(MONTHS.map((key,index)=>[key,index]));
+
+  function dateToYM(value){
+    const match=String(value||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return match ? `${match[3]}-${match[2]}` : null;
+  }
+  function linearPartialFlow(item,data){
+    const flow=Object.fromEntries(MONTHS.map(key=>[key,0]));
+    const reportingKey=String(data?.reportingMonthKey||'jan');
+    const reportingIndex=KEY_TO_INDEX[reportingKey] ?? 0;
+
+    for(const key of MONTHS.slice(0,reportingIndex+1)){
+      flow[key]=Number(item?.[key+'_real']||0);
+    }
+
+    const capex=Math.max(0,Number(item?.capex||0));
+    const realized=MONTHS.reduce((sum,key)=>sum+Number(flow[key]||0),0);
+    const residual=Math.max(0,capex-realized);
+    if(residual<=0.005) return flow;
+
+    const startKey=YM_TO_KEY[dateToYM(item?.inicio)]||null;
+    const endKey=YM_TO_KEY[dateToYM(item?.fim)]||null;
+    const startIndex=startKey ? KEY_TO_INDEX[startKey] : reportingIndex+1;
+    const endIndex=endKey ? KEY_TO_INDEX[endKey] : startIndex;
+    const firstFuture=Math.max(reportingIndex+1,startIndex);
+    const activeKeys=MONTHS.slice(firstFuture,endIndex+1);
+    const allocationKeys=activeKeys.length ? activeKeys : [MONTHS[Math.min(reportingIndex,MONTHS.length-1)]];
+
+    const cents=Math.round(residual*100);
+    const base=Math.floor(cents/allocationKeys.length);
+    const remainder=cents-base*allocationKeys.length;
+    allocationKeys.forEach((key,index)=>{
+      flow[key]+=(base+(index<remainder?1:0))/100;
+    });
+
+    return flow;
+  }
+
+  function flagName(item){
+    if(!item || typeof item!=='object') return;
+    if(String(item._flowRule||'')===RULE && !/CONTING\.\s*PARCIAL/i.test(String(item.nome||''))){
+      item.nome=String(item.nome||'').replace(/\s*-\s*CONTIN?G[^-]*$/i,'').trim()+' - CONTING. PARCIAL';
+    }
+  }
+
+  function adapt(data){
+    if(!data || !Array.isArray(data.obrasRaw)) return data;
+
+    data.obrasRaw.forEach(item=>{
+      if(String(item?._flowRule||'')!==RULE) return;
+
+      flagName(item);
+      const customFlow=linearPartialFlow(item,data);
+
+      // O Supabase continua guardando a regra gerencial nova.
+      // Para o motor legado, entregamos o fluxo calculado como baseline técnico,
+      // evitando qualquer retenção ou aplicação acidental do 15/75/10.
+      item._persistedFlowRule=RULE;
+      item._flowRuleAdapter='v40.0.58';
+      item._flowRule='historical_baseline';
+      item._baselineFlow=customFlow;
+      item._baselineCapex=Number(item.capex||0);
+      item._isOriginalBaseline=true;
+    });
+
+    return data;
+  }
+
+  let stored=window.HAP_DATA;
+  if(stored) stored=adapt(stored);
+
+  try{
+    Object.defineProperty(window,'HAP_DATA',{
+      configurable:true,
+      enumerable:true,
+      get(){ return stored; },
+      set(value){ stored=adapt(value); }
+    });
+  }catch(_err){
+    if(window.HAP_DATA) adapt(window.HAP_DATA);
+  }
+})();
