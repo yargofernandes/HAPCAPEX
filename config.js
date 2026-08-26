@@ -96,7 +96,7 @@ window.CAPEX_CONFIG={supabaseUrl:'https://kuvwfyuhrnfsubkapeek.supabase.co',supa
 })();
 
 
-// V40.0.58 — contingenciamento parcial linear sem retenção.
+// V40.0.59 — contingenciamento parcial linear + respeito às datas de replanejamento.
 // Preserva o realizado até o mês de referência e consome todo o saldo residual
 // linearmente apenas nos meses futuros compreendidos entre início e fim da obra.
 (() => {
@@ -160,6 +160,17 @@ window.CAPEX_CONFIG={supabaseUrl:'https://kuvwfyuhrnfsubkapeek.supabase.co',supa
     if(!data || !Array.isArray(data.obrasRaw)) return data;
 
     data.obrasRaw.forEach(item=>{
+      // V40.0.59 — obras replanejadas manualmente devem respeitar as datas
+      // aprovadas no Supabase. Não permitir que o motor legado empurre o início
+      // para o último mês com algum realizado (ex.: AGO/26).
+      const overrides=item?._manualOverrides && typeof item._manualOverrides==='object'
+        ? item._manualOverrides : {};
+      const manualReplan=Object.keys(overrides).some(key=>/replanejamento/i.test(key));
+      if(manualReplan && String(item?._flowRule||'')==='standard_15_75_10'){
+        item._isOriginalBaseline=true;
+        item._replanRespectApprovedDates=true;
+      }
+
       if(String(item?._flowRule||'')!==RULE) return;
 
       flagName(item);
