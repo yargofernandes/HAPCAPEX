@@ -84,3 +84,13 @@ window.CAPEX_CONFIG={supabaseUrl:'https://kuvwfyuhrnfsubkapeek.supabase.co',supa
   script.async=false;
   document.head.appendChild(script);
 })();
+
+// V40.0.57 — correção do ciclo abrir/fechar/reabrir do painel lateral da Curva.
+(() => {
+  if (document.querySelector('script[data-hap-v40057-curve-panel]')) return;
+  const script=document.createElement('script');
+  script.src='./v40-curve-panel-fix.js?v=40.0.57';
+  script.async=false;
+  script.dataset.hapV40057CurvePanel='1';
+  document.head.appendChild(script);
+})();
