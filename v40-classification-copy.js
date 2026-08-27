@@ -1,10 +1,10 @@
-/* HAPCAPEX V40.0.63 — Copiar classificações de OI existente na criação de nova OI */
+/* HAPCAPEX V40.0.64 — Copiar classificações de OI existente na criação de nova OI */
 (() => {
   'use strict';
   if (window.__HAP_V40060_CLASS_COPY__) return;
   window.__HAP_V40060_CLASS_COPY__ = true;
 
-  const VERSION = '40.0.63';
+  const VERSION = '40.0.64';
 
   function esc(v){
     return String(v ?? '').replace(/[&<>"']/g, c => ({
@@ -395,7 +395,7 @@
       await loadLinkedOiMapV4062(force);
       decorateLinkedOiBadgesV4062();
     }catch(err){
-      console.warn('[HAPCAPEX V40.0.63] Falha ao atualizar contagem de OIs vinculadas:', err);
+      console.warn('[HAPCAPEX V40.0.64] Falha ao atualizar contagem de OIs vinculadas:', err);
     }
   }
 
@@ -430,5 +430,77 @@
   // Fallback leve para vínculos feitos por rotinas que não chamem refreshCurrent.
   setInterval(() => { void refreshLinkedOiBadgesV4062(true); }, 15000);
 
-  window.HAP_V40060_CLASS_COPY = { version:VERSION, active:true, features:['classification-copy','linked-oi-count','linked-oi-panel'] };
+
+  // V40.0.64 — clique delegado universal para badges legados e novos.
+  // Não depende do elemento ser span/div/button: identifica qualquer alvo visual
+  // cujo texto contenha "N OIs" dentro da primeira célula da linha.
+  function findOiBadgeTargetV4064(target){
+    if (!(target instanceof Element)) return null;
+    const row = target.closest('tr');
+    if (!row || !row.cells?.length) return null;
+    const firstCell = row.cells[0];
+    if (!firstCell || !firstCell.contains(target)) return null;
+
+    let node = target;
+    while (node && node !== firstCell.parentElement){
+      const txt = String(node.textContent || '').replace(/\s+/g,' ').trim();
+      if (/\b\d+\s*OIs?\b/i.test(txt)) return { node, row, firstCell };
+      if (node === firstCell) break;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function groupFromRowV4064(row){
+    const oi = rowOiV4062(row);
+    return oi ? linkedOiMapV4062.get(oi) : null;
+  }
+
+  document.addEventListener('click', e => {
+    const hit = findOiBadgeTargetV4064(e.target);
+    if (!hit) return;
+    const group = groupFromRowV4064(hit.row);
+    if (!group || group.qtd < 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void openLinkedOiPanelV4063(group);
+  }, true);
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const hit = findOiBadgeTargetV4064(e.target);
+    if (!hit) return;
+    const group = groupFromRowV4064(hit.row);
+    if (!group || group.qtd < 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void openLinkedOiPanelV4063(group);
+  }, true);
+
+  function decorateAllVisibleOiBadgesV4064(){
+    for (const row of document.querySelectorAll('.table-card tbody tr')){
+      const oi = rowOiV4062(row);
+      const group = oi ? linkedOiMapV4062.get(oi) : null;
+      if (!group || group.qtd < 2) continue;
+      const firstCell = row.cells?.[0];
+      if (!firstCell) continue;
+
+      // Qualquer descendente cujo texto seja exatamente/majoritariamente "N OIs"
+      // recebe affordance de clique. O listener delegado é quem efetivamente abre.
+      for (const el of firstCell.querySelectorAll('*')){
+        const txt = String(el.textContent || '').replace(/\s+/g,' ').trim();
+        if (/^(?:🔗\s*)?\d+\s*OIs?$/i.test(txt)){
+          el.style.cursor = 'pointer';
+          el.setAttribute('role','button');
+          el.setAttribute('tabindex','0');
+          el.title = `Clique para ver a composição\n${group.ois.join(' ; ')}`;
+          el.dataset.v4064MultiOiClickable = '1';
+        }
+      }
+    }
+  }
+
+  setInterval(decorateAllVisibleOiBadgesV4064, 800);
+
+  window.HAP_V40060_CLASS_COPY = { version:VERSION, active:true, features:['classification-copy','linked-oi-count','linked-oi-panel','delegated-click'] };
 })();
