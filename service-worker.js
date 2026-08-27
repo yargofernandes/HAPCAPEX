@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-31-sap-bridge-pairing-20260819';
+const CACHE_NAME = 'hapcapex-v40-0-60-classification-copy-20260827';
 const APP_SHELL = [
   './',
   './index.html',
@@ -23,6 +23,7 @@ const APP_SHELL = [
   './v40-tipologia-governance.js?v=40.0.26',
   './v40-audit-performance.js?v=40.0.16',
   './v40-control-ui.js?v=40.0.31',
+  './v40-classification-copy.js?v=40.0.60',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
   './dashboard-core.js?v=29',
@@ -42,6 +43,7 @@ const APORTE_STATUS_TAG = '<script src="./v40-aporte-status.js?v=40.0.11"></scri
 const TIPOLOGIA_TAG = '<script src="./v40-tipologia-governance.js?v=40.0.26"></script>';
 const AUDIT_PERF_TAG = '<script src="./v40-audit-performance.js?v=40.0.16"></script>';
 const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
+const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
   Nome da obra
@@ -143,8 +145,6 @@ const WORK_NAME_INLINE_SCRIPT = `<script>
   setTimeout(preencher,0);
 })();
 </script>`;
-
-
 
 const DATE_PLANNING_REMINDER_SCRIPT = `<script>
 (() => {
@@ -288,7 +288,6 @@ async function decorateBootstrapResponse(response) {
   ${authGateLine}`);
     }
   }
-  // V40.0.9 — sinal determinístico de que dashboard-core + v36-curve-addon terminaram.
   if (!text.includes('HAP_V409_CURVE_READY_EVENT')) {
     text = text.replace(
       'v36CurveAddon.onload = finishCurveBoot;\n    v36CurveAddon.onerror = finishCurveBoot;',
@@ -298,7 +297,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.31',
+    'x-hapcapex-functional': 'v40.0.60',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -328,10 +327,9 @@ async function decorateHtmlResponse(response, url) {
     text = removeVersionedScript(text, 'v40-horizontal-lock.js');
     text = removeVersionedScript(text, 'v40-stable-header.js');
     text = removeVersionedScript(text, 'v40-control-ui.js');
-    text = removeVersionedScript(text, 'v40-stable-header.js');
-    text = removeVersionedScript(text, 'v40-control-ui.js');
     text = removeVersionedScript(text, 'v40-work-name-sync.js');
     text = removeVersionedScript(text, 'v40-tipologia-integrity.js');
+    text = removeVersionedScript(text, 'v40-classification-copy.js');
 
     const governancePatterns = [
       '<script src="v37-control-governance.js?v=37.0"></script>',
@@ -341,16 +339,15 @@ async function decorateHtmlResponse(response, url) {
     ];
     const marker = governancePatterns.find(tag => text.includes(tag));
     if (marker) {
-      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}`);
+      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}`);
     } else {
       const initTag = '<script>init();</script>';
-      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG;
+      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG + CLASSIFICATION_COPY_TAG;
       if (text.includes(initTag)) text = text.replace(initTag, `${fallbackInjection}${initTag}`);
       else if (/<\/body>/i.test(text)) text = text.replace(/<\/body>/i, `${fallbackInjection}</body>`);
       else text += fallbackInjection;
     }
   } else if (index) {
-    // V40.0.15 — campo Nome da obra nativo no modal Editar obra.
     if (!text.includes('id="v4015-work-name-field"')) {
       text = text.replace(
         '<div class="work-edit-grid">',
@@ -366,8 +363,6 @@ async function decorateHtmlResponse(response, url) {
     text = removeVersionedScript(text, 'v40-horizontal-lock.js');
     text = removeVersionedScript(text, 'v40-stable-header.js');
     text = removeVersionedScript(text, 'v40-control-ui.js');
-    text = removeVersionedScript(text, 'v40-stable-header.js');
-    text = removeVersionedScript(text, 'v40-control-ui.js');
     text = removeVersionedScript(text, 'v40-work-name-sync.js');
     text = removeVersionedScript(text, 'v40-tipologia-integrity.js');
     let injection = '';
@@ -380,7 +375,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.31'
+    'x-hapcapex-functional': 'v40.0.60'
   });
 }
 
