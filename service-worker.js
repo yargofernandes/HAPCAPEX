@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-60-classification-copy-20260827';
+const CACHE_NAME = 'hapcapex-v40-0-61-classification-copy-reload-20260827';
 const APP_SHELL = [
   './',
   './index.html',
@@ -388,7 +388,22 @@ self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    await caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))));
+    await self.clients.claim();
+
+    // V40.0.61 — uma única navegação das abas já abertas garante que o HTML
+    // passe pelo service worker recém-ativado e receba os módulos novos.
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    await Promise.all(clients.map(async client => {
+      try {
+        const url = new URL(client.url);
+        if (url.origin !== self.location.origin) return;
+        if (!/\/(?:controle-capex\.html)?(?:$|[?#])/.test(url.pathname + url.search + url.hash)) return;
+        await client.navigate(client.url);
+      } catch (_) {}
+    }));
+  })());
 });
 self.addEventListener('fetch', event => {
   const request = event.request;
