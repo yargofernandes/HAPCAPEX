@@ -1,10 +1,10 @@
-/* HAPCAPEX V40.0.62 — Copiar classificações de OI existente na criação de nova OI */
+/* HAPCAPEX V40.0.63 — Copiar classificações de OI existente na criação de nova OI */
 (() => {
   'use strict';
   if (window.__HAP_V40060_CLASS_COPY__) return;
   window.__HAP_V40060_CLASS_COPY__ = true;
 
-  const VERSION = '40.0.62';
+  const VERSION = '40.0.63';
 
   function esc(v){
     return String(v ?? '').replace(/[&<>"']/g, c => ({
@@ -173,7 +173,7 @@
       if (typeof sb === 'undefined') return linkedOiMapV4062;
       const { data, error } = await sb
         .from('capex_items')
-        .select('id,nome,ordem')
+        .select('id,nome,ordem,inicio,fim,capex,flow_rule')
         .eq('categoria','obra')
         .is('deleted_at', null);
 
@@ -186,6 +186,10 @@
         const group = {
           curva_item_id: item.id,
           nome: item.nome || '',
+          inicio: item.inicio || null,
+          fim: item.fim || null,
+          capex: Number(item.capex || 0),
+          flow_rule: item.flow_rule || '',
           ois,
           qtd: ois.length
         };
@@ -225,6 +229,132 @@
     return match[0];
   }
 
+
+  function moneyV4063(value){
+    try{
+      if (typeof brl !== 'undefined' && brl?.format) return brl.format(Number(value || 0));
+    }catch(_){}
+    return Number(value || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  }
+
+  function dateV4063(value){
+    if (!value) return '—';
+    const m=String(value).slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(value);
+  }
+
+  async function openLinkedOiPanelV4063(group){
+    if (!group || !Array.isArray(group.ois) || group.ois.length < 2) return;
+
+    const old=document.querySelector('[data-v4063-linked-panel]');
+    old?.remove();
+
+    const backdrop=document.createElement('div');
+    backdrop.className='modal-backdrop';
+    backdrop.dataset.v4063LinkedPanel='1';
+    backdrop.innerHTML=`
+      <div class="modal-box modal-wide" style="width:min(820px,96vw)">
+        <h2>Composição da obra — ${esc(group.qtd)} OIs</h2>
+        <p class="sub">${esc(group.nome || 'Obra consolidada')}</p>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px">
+          <div style="background:var(--cinza-bg);border-radius:9px;padding:9px 10px">
+            <span style="display:block;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--texto-suave)">CAPEX da Curva</span>
+            <strong style="display:block;margin-top:4px;color:var(--azul);font-size:13px">${moneyV4063(group.capex)}</strong>
+          </div>
+          <div style="background:var(--cinza-bg);border-radius:9px;padding:9px 10px">
+            <span style="display:block;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--texto-suave)">Início</span>
+            <strong style="display:block;margin-top:4px;color:var(--azul);font-size:13px">${dateV4063(group.inicio)}</strong>
+          </div>
+          <div style="background:var(--cinza-bg);border-radius:9px;padding:9px 10px">
+            <span style="display:block;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--texto-suave)">Fim</span>
+            <strong style="display:block;margin-top:4px;color:var(--azul);font-size:13px">${dateV4063(group.fim)}</strong>
+          </div>
+        </div>
+        <div data-v4063-panel-body>
+          <div style="padding:24px;text-align:center;color:var(--texto-suave)">Carregando OIs...</div>
+        </div>
+        <div class="modal-actions"><button class="btn btn-secondary" data-v4063-close>Fechar</button></div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    const close=()=>backdrop.remove();
+    backdrop.querySelector('[data-v4063-close]').onclick=close;
+    backdrop.addEventListener('click',e=>{if(e.target===backdrop)close();});
+
+    const body=backdrop.querySelector('[data-v4063-panel-body]');
+    try{
+      const {data,error}=await sb
+        .from('vw_controle_capex_admin')
+        .select('ordem_interna,obra,montante_atribuido,valor_compromissado,saldo_disponivel,data_inicio,data_fim')
+        .in('ordem_interna',group.ois);
+      if(error) throw error;
+      if(!backdrop.isConnected)return;
+
+      const rowMap=new Map((data||[]).map(r=>[String(r.ordem_interna),r]));
+
+      const rowsHtml=group.ois.map((oi,index)=>{
+        const row=rowMap.get(String(oi));
+        const historical=!row;
+        const participation=historical
+          ? 'Histórica / sem cadastro operacional'
+          : index===0
+            ? 'OI principal da composição'
+            : 'OI vinculada à obra';
+        return `
+          <tr>
+            <td style="font-weight:800;color:var(--azul)">${esc(oi)}${index===0?' <span style="font-size:9px;color:var(--texto-suave)">(principal)</span>':''}</td>
+            <td>${historical?'<span style="color:var(--texto-suave)">—</span>':esc(row.obra||'—')}</td>
+            <td>${esc(participation)}</td>
+            <td style="text-align:right">${historical?'—':moneyV4063(row.montante_atribuido)}</td>
+            <td style="text-align:right">${historical?'—':moneyV4063(row.valor_compromissado)}</td>
+            <td style="text-align:right">${historical?'—':moneyV4063(row.saldo_disponivel)}</td>
+            <td>${historical?'—':dateV4063(row.data_inicio)}</td>
+            <td>${historical?'—':dateV4063(row.data_fim)}</td>
+          </tr>`;
+      }).join('');
+
+      body.innerHTML=`
+        <div style="font-size:10px;color:var(--texto-suave);margin-bottom:8px;line-height:1.4">
+          Composição oficial da Curva: <strong>${esc(group.ois.join(' ; '))}</strong>
+        </div>
+        <div style="overflow:auto;border:1px solid var(--cinza-borda);border-radius:9px">
+          <table style="width:100%;min-width:920px;border-collapse:collapse;font-size:10px">
+            <thead><tr>
+              <th>OI</th><th>Obra no Controle</th><th>Participação</th>
+              <th style="text-align:right">Montante</th><th style="text-align:right">Compromissado</th>
+              <th style="text-align:right">Saldo</th><th>Início</th><th>Fim</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+    }catch(err){
+      if(!backdrop.isConnected)return;
+      body.innerHTML=`<div class="error-msg">Não foi possível carregar a composição: ${esc(err?.message||String(err))}</div>`;
+    }
+  }
+
+  function makeBadgeInteractiveV4063(badge,group){
+    if(!badge || !group || group.qtd<2)return;
+    badge.style.cursor='pointer';
+    badge.setAttribute('role','button');
+    badge.setAttribute('tabindex','0');
+    badge.title=`Clique para ver a composição\n${group.ois.join(' ; ')}`;
+    if(badge.dataset.v4063Interactive==='1')return;
+    badge.dataset.v4063Interactive='1';
+    badge.addEventListener('click',e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      void openLinkedOiPanelV4063(group);
+    });
+    badge.addEventListener('keydown',e=>{
+      if(e.key==='Enter'||e.key===' '){
+        e.preventDefault();
+        e.stopPropagation();
+        void openLinkedOiPanelV4063(group);
+      }
+    });
+  }
+
   function decorateLinkedOiBadgesV4062(){
     ensureLinkedOiStylesV4062();
 
@@ -247,6 +377,7 @@
       }
       if (legacyBadge){
         ours?.remove();
+        makeBadgeInteractiveV4063(legacyBadge,group);
         continue;
       }
 
@@ -264,7 +395,7 @@
       await loadLinkedOiMapV4062(force);
       decorateLinkedOiBadgesV4062();
     }catch(err){
-      console.warn('[HAPCAPEX V40.0.62] Falha ao atualizar contagem de OIs vinculadas:', err);
+      console.warn('[HAPCAPEX V40.0.63] Falha ao atualizar contagem de OIs vinculadas:', err);
     }
   }
 
@@ -299,5 +430,5 @@
   // Fallback leve para vínculos feitos por rotinas que não chamem refreshCurrent.
   setInterval(() => { void refreshLinkedOiBadgesV4062(true); }, 15000);
 
-  window.HAP_V40060_CLASS_COPY = { version:VERSION, active:true, features:['classification-copy','linked-oi-count'] };
+  window.HAP_V40060_CLASS_COPY = { version:VERSION, active:true, features:['classification-copy','linked-oi-count','linked-oi-panel'] };
 })();
