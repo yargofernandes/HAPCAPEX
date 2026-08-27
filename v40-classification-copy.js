@@ -1,10 +1,10 @@
-/* HAPCAPEX V40.0.64 — Copiar classificações de OI existente na criação de nova OI */
+/* HAPCAPEX V40.0.65 — Copiar classificações de OI existente na criação de nova OI */
 (() => {
   'use strict';
-  if (window.__HAP_V40060_CLASS_COPY__) return;
-  window.__HAP_V40060_CLASS_COPY__ = true;
+  if (window.__HAP_V40065_CLASS_COPY__) return;
+  window.__HAP_V40065_CLASS_COPY__ = true;
 
-  const VERSION = '40.0.64';
+  const VERSION = '40.0.65';
 
   function esc(v){
     return String(v ?? '').replace(/[&<>"']/g, c => ({
@@ -150,357 +150,104 @@
   }, 700);
 
 
-  // V40.0.62 — engrenagem de OIs vinculadas:
-  // a composição oficial da Curva (capex_items.ordem) é a fonte única da contagem visual.
-  let linkedOiMapV4062 = new Map();
-  let linkedOiRefreshPromiseV4062 = null;
-  let linkedOiDecorateTimerV4062 = null;
+  // V40.0.65 — integração com o painel histórico ORIGINAL V35.
+  // Não cria badge nem painel paralelos. Apenas atualiza o contexto V35
+  // antes do redraw para que o próprio v35-control-addon.js gere
+  // .v35-link-badge e chame openWorkIdentityPanel().
+  async function syncLegacyV35ContextV4065(){
+    const V35 = window.HAP_V35;
+    if (!V35 || typeof sb === 'undefined') return;
 
-  function splitOisV4062(value){
-    return [...new Set(
-      String(value || '')
-        .split(';')
-        .map(v => v.trim())
-        .filter(v => /^\d{5,}$/.test(v))
-    )];
-  }
+    const { data: payload, error } = await sb.rpc('get_controle_v35_contexto');
+    if (error) throw error;
+    if (!payload || typeof payload !== 'object') throw new Error('Contexto V35 vazio.');
 
-  async function loadLinkedOiMapV4062(force=false){
-    if (!force && linkedOiMapV4062.size) return linkedOiMapV4062;
-    if (linkedOiRefreshPromiseV4062) return linkedOiRefreshPromiseV4062;
+    const cfg = payload.config || {};
+    const exercises = Array.isArray(payload.exercicios) ? payload.exercicios : [];
+    const workLinks = Array.isArray(payload.vinculos) ? payload.vinculos : [];
+    const currentWorks = Array.isArray(payload.obras_atuais) ? payload.obras_atuais : [];
+    const movements = Array.isArray(payload.movimentos) ? payload.movimentos : [];
+    const historyOis = Array.isArray(payload.historico_ois) ? payload.historico_ois : [];
 
-    linkedOiRefreshPromiseV4062 = (async () => {
-      if (typeof sb === 'undefined') return linkedOiMapV4062;
-      const { data, error } = await sb
-        .from('capex_items')
-        .select('id,nome,ordem,inicio,fim,capex,flow_rule')
-        .eq('categoria','obra')
-        .is('deleted_at', null);
+    V35.config = { ...(V35.config || {}), ...cfg };
+    V35.exercise = Number(cfg.exercicio_atual || V35.exercise || new Date().getFullYear());
+    V35.exercises = exercises;
+    V35.workLinks = workLinks;
+    V35.workLinkByOi = new Map(
+      workLinks
+        .filter(x => x?.ordem_interna)
+        .map(x => [String(x.ordem_interna), x])
+    );
+    V35.currentNameByOi = new Map(
+      currentWorks
+        .filter(x => x?.ordem_interna && x?.obra)
+        .map(x => [String(x.ordem_interna), String(x.obra)])
+    );
+    V35.historyOiSet = new Set(historyOis.map(x => String(x)));
 
-      if (error) throw error;
-
-      const next = new Map();
-      for (const item of (data || [])){
-        const ois = splitOisV4062(item.ordem);
-        if (ois.length < 2) continue;
-        const group = {
-          curva_item_id: item.id,
-          nome: item.nome || '',
-          inicio: item.inicio || null,
-          fim: item.fim || null,
-          capex: Number(item.capex || 0),
-          flow_rule: item.flow_rule || '',
-          ois,
-          qtd: ois.length
-        };
-        for (const oi of ois) next.set(oi, group);
+    const grouped = new Map();
+    workLinks.forEach(x => {
+      if (!x?.obra_id || !x?.ordem_interna) return;
+      if (!grouped.has(x.obra_id)) {
+        grouped.set(x.obra_id, {
+          obra_id: x.obra_id,
+          nome_oficial: x.nome_oficial,
+          codigo_obra: x.codigo_obra,
+          ois: []
+        });
       }
-      linkedOiMapV4062 = next;
-      return linkedOiMapV4062;
-    })();
-
-    try { return await linkedOiRefreshPromiseV4062; }
-    finally { linkedOiRefreshPromiseV4062 = null; }
-  }
-
-  function ensureLinkedOiStylesV4062(){
-    if (document.getElementById('hap-v4062-linked-oi-styles')) return;
-    const style = document.createElement('style');
-    style.id = 'hap-v4062-linked-oi-styles';
-    style.textContent = `
-      .v4062-oi-badge{
-        display:inline-flex;align-items:center;gap:4px;margin-left:6px;
-        padding:2px 7px;border-radius:999px;border:1px solid #d8c7f1;
-        background:#f3eafd;color:#6b3fa0;font-size:9px;font-weight:800;
-        line-height:1.2;vertical-align:middle;white-space:nowrap;cursor:default
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  function rowOiV4062(row){
-    const cell = row?.cells?.[0];
-    if (!cell) return '';
-    const own = cell.dataset?.v4062Oi;
-    if (own) return own;
-    const match = String(cell.textContent || '').match(/\b\d{5,}\b/);
-    if (!match) return '';
-    cell.dataset.v4062Oi = match[0];
-    return match[0];
-  }
-
-
-  function moneyV4063(value){
-    try{
-      if (typeof brl !== 'undefined' && brl?.format) return brl.format(Number(value || 0));
-    }catch(_){}
-    return Number(value || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  }
-
-  function dateV4063(value){
-    if (!value) return '—';
-    const m=String(value).slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(value);
-  }
-
-  async function openLinkedOiPanelV4063(group){
-    if (!group || !Array.isArray(group.ois) || group.ois.length < 2) return;
-
-    const old=document.querySelector('[data-v4063-linked-panel]');
-    old?.remove();
-
-    const backdrop=document.createElement('div');
-    backdrop.className='modal-backdrop';
-    backdrop.dataset.v4063LinkedPanel='1';
-    backdrop.innerHTML=`
-      <div class="modal-box modal-wide" style="width:min(820px,96vw)">
-        <h2>Composição da obra — ${esc(group.qtd)} OIs</h2>
-        <p class="sub">${esc(group.nome || 'Obra consolidada')}</p>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px">
-          <div style="background:var(--cinza-bg);border-radius:9px;padding:9px 10px">
-            <span style="display:block;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--texto-suave)">CAPEX da Curva</span>
-            <strong style="display:block;margin-top:4px;color:var(--azul);font-size:13px">${moneyV4063(group.capex)}</strong>
-          </div>
-          <div style="background:var(--cinza-bg);border-radius:9px;padding:9px 10px">
-            <span style="display:block;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--texto-suave)">Início</span>
-            <strong style="display:block;margin-top:4px;color:var(--azul);font-size:13px">${dateV4063(group.inicio)}</strong>
-          </div>
-          <div style="background:var(--cinza-bg);border-radius:9px;padding:9px 10px">
-            <span style="display:block;font-size:9px;font-weight:800;text-transform:uppercase;color:var(--texto-suave)">Fim</span>
-            <strong style="display:block;margin-top:4px;color:var(--azul);font-size:13px">${dateV4063(group.fim)}</strong>
-          </div>
-        </div>
-        <div data-v4063-panel-body>
-          <div style="padding:24px;text-align:center;color:var(--texto-suave)">Carregando OIs...</div>
-        </div>
-        <div class="modal-actions"><button class="btn btn-secondary" data-v4063-close>Fechar</button></div>
-      </div>`;
-    document.body.appendChild(backdrop);
-
-    const close=()=>backdrop.remove();
-    backdrop.querySelector('[data-v4063-close]').onclick=close;
-    backdrop.addEventListener('click',e=>{if(e.target===backdrop)close();});
-
-    const body=backdrop.querySelector('[data-v4063-panel-body]');
-    try{
-      const {data,error}=await sb
-        .from('vw_controle_capex_admin')
-        .select('ordem_interna,obra,montante_atribuido,valor_compromissado,saldo_disponivel,data_inicio,data_fim')
-        .in('ordem_interna',group.ois);
-      if(error) throw error;
-      if(!backdrop.isConnected)return;
-
-      const rowMap=new Map((data||[]).map(r=>[String(r.ordem_interna),r]));
-
-      const rowsHtml=group.ois.map((oi,index)=>{
-        const row=rowMap.get(String(oi));
-        const historical=!row;
-        const participation=historical
-          ? 'Histórica / sem cadastro operacional'
-          : index===0
-            ? 'OI principal da composição'
-            : 'OI vinculada à obra';
-        return `
-          <tr>
-            <td style="font-weight:800;color:var(--azul)">${esc(oi)}${index===0?' <span style="font-size:9px;color:var(--texto-suave)">(principal)</span>':''}</td>
-            <td>${historical?'<span style="color:var(--texto-suave)">—</span>':esc(row.obra||'—')}</td>
-            <td>${esc(participation)}</td>
-            <td style="text-align:right">${historical?'—':moneyV4063(row.montante_atribuido)}</td>
-            <td style="text-align:right">${historical?'—':moneyV4063(row.valor_compromissado)}</td>
-            <td style="text-align:right">${historical?'—':moneyV4063(row.saldo_disponivel)}</td>
-            <td>${historical?'—':dateV4063(row.data_inicio)}</td>
-            <td>${historical?'—':dateV4063(row.data_fim)}</td>
-          </tr>`;
-      }).join('');
-
-      body.innerHTML=`
-        <div style="font-size:10px;color:var(--texto-suave);margin-bottom:8px;line-height:1.4">
-          Composição oficial da Curva: <strong>${esc(group.ois.join(' ; '))}</strong>
-        </div>
-        <div style="overflow:auto;border:1px solid var(--cinza-borda);border-radius:9px">
-          <table style="width:100%;min-width:920px;border-collapse:collapse;font-size:10px">
-            <thead><tr>
-              <th>OI</th><th>Obra no Controle</th><th>Participação</th>
-              <th style="text-align:right">Montante</th><th style="text-align:right">Compromissado</th>
-              <th style="text-align:right">Saldo</th><th>Início</th><th>Fim</th>
-            </tr></thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-        </div>`;
-    }catch(err){
-      if(!backdrop.isConnected)return;
-      body.innerHTML=`<div class="error-msg">Não foi possível carregar a composição: ${esc(err?.message||String(err))}</div>`;
-    }
-  }
-
-  function makeBadgeInteractiveV4063(badge,group){
-    if(!badge || !group || group.qtd<2)return;
-    badge.style.cursor='pointer';
-    badge.setAttribute('role','button');
-    badge.setAttribute('tabindex','0');
-    badge.title=`Clique para ver a composição\n${group.ois.join(' ; ')}`;
-    if(badge.dataset.v4063Interactive==='1')return;
-    badge.dataset.v4063Interactive='1';
-    badge.addEventListener('click',e=>{
-      e.preventDefault();
-      e.stopPropagation();
-      void openLinkedOiPanelV4063(group);
+      grouped.get(x.obra_id).ois.push(String(x.ordem_interna));
     });
-    badge.addEventListener('keydown',e=>{
-      if(e.key==='Enter'||e.key===' '){
-        e.preventDefault();
-        e.stopPropagation();
-        void openLinkedOiPanelV4063(group);
-      }
+
+    V35.workGroups = [...grouped.values()].map(group => {
+      group.ois = [...new Set(group.ois)].sort();
+      const currentName = group.ois
+        .map(oi => V35.currentNameByOi.get(oi))
+        .find(Boolean);
+      group.display_name = currentName || group.nome_oficial;
+      return group;
     });
+
+    const active = exercises.find(x => Number(x.exercicio) === Number(V35.exercise));
+    V35.exerciseStatus = active?.status || 'aberto';
+    V35.movements = movements;
+    V35.ready = true;
   }
 
-  function decorateLinkedOiBadgesV4062(){
-    ensureLinkedOiStylesV4062();
-
-    for (const row of document.querySelectorAll('.table-card tbody tr')){
-      const cell = row.cells?.[0];
-      if (!cell) continue;
-      const oi = rowOiV4062(row);
-      if (!oi) continue;
-
-      const group = linkedOiMapV4062.get(oi);
-      const ours = cell.querySelector('[data-v4062-oi-badge]');
-
-      // Se outro módulo legado já renderizou corretamente "N OIs", não duplica.
-      const legacyBadge = [...cell.querySelectorAll('span')]
-        .find(el => !el.hasAttribute('data-v4062-oi-badge') && /\b\d+\s*OIs?\b/i.test(el.textContent || ''));
-
-      if (!group || group.qtd < 2){
-        ours?.remove();
-        continue;
-      }
-      if (legacyBadge){
-        ours?.remove();
-        makeBadgeInteractiveV4063(legacyBadge,group);
-        continue;
-      }
-
-      const badge = ours || document.createElement('span');
-      badge.className = 'v4062-oi-badge';
-      badge.dataset.v4062OiBadge = '1';
-      badge.textContent = `🔗 ${group.qtd} OIs`;
-      badge.title = `${group.nome}\nOIs: ${group.ois.join(' ; ')}`;
-      if (!ours) cell.appendChild(badge);
-    }
+  function removeParallelMultiOiUiV4065(){
+    // Segurança ao migrar da V40.0.63/64: o painel paralelo deixa de existir.
+    document.querySelectorAll('[data-v4063-linked-panel]').forEach(el => el.remove());
+    document.querySelectorAll('[data-v4062-oi-badge]').forEach(el => el.remove());
+    document.getElementById('hap-v4062-linked-oi-styles')?.remove();
   }
 
-  async function refreshLinkedOiBadgesV4062(force=false){
-    try{
-      await loadLinkedOiMapV4062(force);
-      decorateLinkedOiBadgesV4062();
-    }catch(err){
-      console.warn('[HAPCAPEX V40.0.64] Falha ao atualizar contagem de OIs vinculadas:', err);
-    }
-  }
-
-  function scheduleLinkedOiDecorateV4062(){
-    clearTimeout(linkedOiDecorateTimerV4062);
-    linkedOiDecorateTimerV4062 = setTimeout(() => {
-      decorateLinkedOiBadgesV4062();
-    }, 60);
-  }
-
-  // Recalcula após qualquer atualização real do Controle.
   setTimeout(() => {
+    removeParallelMultiOiUiV4065();
+
     const currentRefresh = window.refreshCurrent;
-    if (typeof currentRefresh === 'function' && !currentRefresh.__hapV4062LinkedOi){
+    if (typeof currentRefresh === 'function' && !currentRefresh.__hapV4065V35Sync) {
       const wrapped = async function(){
-        const result = await currentRefresh.apply(this, arguments);
-        linkedOiMapV4062 = new Map();
-        await refreshLinkedOiBadgesV4062(true);
-        return result;
+        try {
+          await syncLegacyV35ContextV4065();
+        } catch (err) {
+          console.warn('[HAPCAPEX V40.0.65] Não foi possível atualizar o contexto histórico V35 antes do redraw:', err);
+        }
+        return currentRefresh.apply(this, arguments);
       };
-      wrapped.__hapV4062LinkedOi = true;
-      wrapped.__hapV4062Original = currentRefresh;
-      window.refreshCurrent = refreshCurrent = wrapped;
+      wrapped.__hapV4065V35Sync = true;
+      wrapped.__hapV4065Original = currentRefresh;
+
+      window.refreshCurrent = wrapped;
+      try { refreshCurrent = wrapped; } catch (_) {}
     }
-    void refreshLinkedOiBadgesV4062(true);
   }, 0);
 
-  // Garante decoração quando filtros/tabelas forem redesenhados sem round-trip.
-  const linkedObserverV4062 = new MutationObserver(scheduleLinkedOiDecorateV4062);
-  linkedObserverV4062.observe(document.documentElement, { childList:true, subtree:true });
+  window.HAP_V40065 = {
+    version: VERSION,
+    classificationCopy: true,
+    multiOiPanel: 'legacy-v35',
+    refreshV35BeforeRedraw: true
+  };
 
-  // Fallback leve para vínculos feitos por rotinas que não chamem refreshCurrent.
-  setInterval(() => { void refreshLinkedOiBadgesV4062(true); }, 15000);
-
-
-  // V40.0.64 — clique delegado universal para badges legados e novos.
-  // Não depende do elemento ser span/div/button: identifica qualquer alvo visual
-  // cujo texto contenha "N OIs" dentro da primeira célula da linha.
-  function findOiBadgeTargetV4064(target){
-    if (!(target instanceof Element)) return null;
-    const row = target.closest('tr');
-    if (!row || !row.cells?.length) return null;
-    const firstCell = row.cells[0];
-    if (!firstCell || !firstCell.contains(target)) return null;
-
-    let node = target;
-    while (node && node !== firstCell.parentElement){
-      const txt = String(node.textContent || '').replace(/\s+/g,' ').trim();
-      if (/\b\d+\s*OIs?\b/i.test(txt)) return { node, row, firstCell };
-      if (node === firstCell) break;
-      node = node.parentElement;
-    }
-    return null;
-  }
-
-  function groupFromRowV4064(row){
-    const oi = rowOiV4062(row);
-    return oi ? linkedOiMapV4062.get(oi) : null;
-  }
-
-  document.addEventListener('click', e => {
-    const hit = findOiBadgeTargetV4064(e.target);
-    if (!hit) return;
-    const group = groupFromRowV4064(hit.row);
-    if (!group || group.qtd < 2) return;
-    e.preventDefault();
-    e.stopPropagation();
-    void openLinkedOiPanelV4063(group);
-  }, true);
-
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    const hit = findOiBadgeTargetV4064(e.target);
-    if (!hit) return;
-    const group = groupFromRowV4064(hit.row);
-    if (!group || group.qtd < 2) return;
-    e.preventDefault();
-    e.stopPropagation();
-    void openLinkedOiPanelV4063(group);
-  }, true);
-
-  function decorateAllVisibleOiBadgesV4064(){
-    for (const row of document.querySelectorAll('.table-card tbody tr')){
-      const oi = rowOiV4062(row);
-      const group = oi ? linkedOiMapV4062.get(oi) : null;
-      if (!group || group.qtd < 2) continue;
-      const firstCell = row.cells?.[0];
-      if (!firstCell) continue;
-
-      // Qualquer descendente cujo texto seja exatamente/majoritariamente "N OIs"
-      // recebe affordance de clique. O listener delegado é quem efetivamente abre.
-      for (const el of firstCell.querySelectorAll('*')){
-        const txt = String(el.textContent || '').replace(/\s+/g,' ').trim();
-        if (/^(?:🔗\s*)?\d+\s*OIs?$/i.test(txt)){
-          el.style.cursor = 'pointer';
-          el.setAttribute('role','button');
-          el.setAttribute('tabindex','0');
-          el.title = `Clique para ver a composição\n${group.ois.join(' ; ')}`;
-          el.dataset.v4064MultiOiClickable = '1';
-        }
-      }
-    }
-  }
-
-  setInterval(decorateAllVisibleOiBadgesV4064, 800);
-
-  window.HAP_V40060_CLASS_COPY = { version:VERSION, active:true, features:['classification-copy','linked-oi-count','linked-oi-panel','delegated-click'] };
+  window.HAP_V40060_CLASS_COPY = { version:VERSION, active:true };
 })();
