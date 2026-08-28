@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.66 — Aporte operacional nos KPIs sem criar obra/fluxo na Curva
+/* HAPCAPEX V40.0.67 — Aporte operacional nos KPIs sem criar obra/fluxo na Curva
    - Terceira opção no aporte operacional: Controle + KPI da Curva, sem planejamento.
    - Nome da obra preenchido automaticamente a partir da O.I.
    - Pendências V36 podem ser encerradas individualmente como KPI sem Curva.
@@ -9,7 +9,7 @@
   if (window.__HAP_V4066_APORTE_KPI_ONLY__) return;
   window.__HAP_V4066_APORTE_KPI_ONLY__ = true;
 
-  const VERSION = '40.0.66';
+  const VERSION = '40.0.67';
   const oiCache = new Map();
   const timers = new WeakMap();
 
@@ -29,14 +29,19 @@
   }
 
   function isAdmin() {
+    // Controle de Capex usa `state.role`; a Curva usa `currentProfile`/HAP_DATA.
+    // Precisamos reconhecer os dois shells do HAPCAPEX.
+    try {
+      if (typeof state !== 'undefined' && state?.role) return state.role === 'admin';
+    } catch (_) {}
     try {
       if (typeof currentProfile !== 'undefined' && currentProfile) return currentProfile.role === 'admin';
     } catch (_) {}
     try {
-      return window.HAP_DATA?.currentProfile?.role === 'admin' || window.HAP_V35?.profile?.role === 'admin';
-    } catch (_) {
-      return false;
-    }
+      if (window.HAP_DATA?.currentProfile?.role) return window.HAP_DATA.currentProfile.role === 'admin';
+      if (window.HAP_V35?.profile?.role) return window.HAP_V35.profile.role === 'admin';
+    } catch (_) {}
+    return false;
   }
 
   function operationalModal(backdrop) {
@@ -120,7 +125,7 @@
       if (oldTimer) clearTimeout(oldTimer);
       if (!/^\d{8}$/.test(oi)) return;
       timers.set(oiInput, setTimeout(() => {
-        void autofillWorkName(box).catch(err => console.warn('[HAPCAPEX V40.0.66] Falha no preenchimento automático do nome', err));
+        void autofillWorkName(box).catch(err => console.warn('[HAPCAPEX V40.0.67] Falha no preenchimento automático do nome', err));
       }, 180));
     });
 
@@ -175,7 +180,7 @@
   }
 
   async function registerOperationalKpiOnly(backdrop, box, button) {
-    if (!isAdmin()) return;
+    // Não bloqueia silenciosamente pelo estado local: a própria RPC é protegida como admin.
     setError(box, '');
 
     let aporte = readForm(box);
@@ -222,7 +227,7 @@
         `O Controle e os KPIs foram atualizados sem criar planejamento na Curva.`
       );
     } catch (err) {
-      console.error('[HAPCAPEX V40.0.66] Falha ao registrar aporte nos KPIs sem Curva', err);
+      console.error('[HAPCAPEX V40.0.67] Falha ao registrar aporte nos KPIs sem Curva', err);
       setOperationalBusy(box, false, button);
       setError(box, err?.message || String(err));
     }
@@ -304,7 +309,7 @@
       await refreshAfterChange();
       window.alert(`Pendência encerrada no KPI sem Curva.\n\nO.I.: ${data?.ordem_interna || '—'}\nValor: ${money(data?.valor_kpi || 0)}`);
     } catch (err) {
-      console.error('[HAPCAPEX V40.0.66] Falha ao encerrar pendência no KPI', err);
+      console.error('[HAPCAPEX V40.0.67] Falha ao encerrar pendência no KPI', err);
       button.disabled = false;
       button.textContent = old;
       window.alert('Não foi possível registrar esta pendência somente nos KPIs.\n\n' + (err?.message || String(err)));
@@ -352,7 +357,6 @@
   }
 
   function decorate(root=document) {
-    if (!isAdmin()) return;
     injectStyles();
     const backdrops = root.matches?.('.modal-backdrop') ? [root] : [...root.querySelectorAll?.('.modal-backdrop') || []];
     backdrops.forEach(backdrop => {
