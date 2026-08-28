@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.45 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.66 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -181,6 +181,11 @@
       './v40-global-audit.js?v=40.0.45','hapV40045GlobalAudit');
   }
 
+  function loadAporteKpiOnly(){
+    loadScriptOnce('__HAP_V4066_APORTE_KPI_ONLY_LOADER__','script[data-hap-v4066-aporte-kpi-only]',
+      './v40-aporte-kpi-only.js?v=40.0.66','hapV4066AporteKpiOnly');
+  }
+
   window.addEventListener('hapcapex:curve-ready',runSoon);
   window.addEventListener('visibilitychange',()=>{ if(!document.hidden) runSoon(); });
 
@@ -197,4 +202,5 @@
   loadSapBridgeResilience();
   loadLinkedOiMode();
   loadGlobalAudit();
+  loadAporteKpiOnly();
 })();
