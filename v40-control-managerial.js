@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.77 — Controle de Capex: exclusões gerenciais + limpeza de alertas.
+/* HAPCAPEX V40.0.78 — Controle de Capex: tabelas gerenciais filtráveis + rotas líquidas.
    - Gerencial com filtros globais, KPIs, tabelas e gráficos integrados.
    - Saldo líquido de transferências, concentração CAPEX, Realizado mensal,
      aportes/contingenciamentos, comprometido x saldo livre, Top OIs e pendências.
@@ -12,7 +12,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.77';
+  const VERSION = '40.0.78';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -34,7 +34,8 @@
     charts: {},
     chartReady: false,
     chartSeq: 0,
-    loading: false
+    loading: false,
+    tableStates: {}
   };
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -50,6 +51,85 @@
     const raw = String(value || '').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
     const normalized = raw.replace(/[|\-]/g,' ').replace(/\s+/g,' ').toUpperCase();
     return /CARRY\s*OVER/.test(normalized) ? 'Carry Over' : (raw || 'Sem classificação');
+  }
+
+  function getTableState(id) {
+    if(!mgr.tableStates[id]) mgr.tableStates[id]={filters:{},sortKey:'',sortDir:0};
+    return mgr.tableStates[id];
+  }
+  function resetTableStates(){ mgr.tableStates={}; }
+
+  function parseLocaleNumber(value) {
+    let s=String(value??'').trim().replace(/\s+/g,'').replace(/^R\$/i,'').replace(/%$/,'');
+    if(!s) return null;
+    if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
+    else if(s.includes(',')) s=s.replace(',','.');
+    else if(/^-?\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,'');
+    s=s.replace(/[^\d+\-.]/g,'');
+    const v=Number(s);
+    return Number.isFinite(v)?v:null;
+  }
+  function numericFilterMatch(value,query) {
+    const q=String(query||'').trim();
+    if(!q) return true;
+    const current=n(value);
+    const range=q.match(/^\s*(.+?)\s*\.\.\s*(.+?)\s*$/);
+    if(range){
+      const a=parseLocaleNumber(range[1]), b=parseLocaleNumber(range[2]);
+      return a!==null && b!==null && current>=Math.min(a,b) && current<=Math.max(a,b);
+    }
+    const op=q.match(/^(>=|<=|>|<|=)\s*(.+)$/);
+    if(op){
+      const target=parseLocaleNumber(op[2]); if(target===null)return false;
+      if(op[1]==='>=')return current>=target;
+      if(op[1]==='<=')return current<=target;
+      if(op[1]==='>')return current>target;
+      if(op[1]==='<')return current<target;
+      return Math.abs(current-target)<0.005;
+    }
+    const qn=norm(q);
+    const candidates=[String(current),current.toLocaleString('pt-BR',{maximumFractionDigits:2}),money(current),numFmt.format(current)];
+    return candidates.some(x=>norm(x).includes(qn));
+  }
+  function columnFilterMatch(row,col,query) {
+    if(!String(query||'').trim()) return true;
+    const value=typeof col.value==='function'?col.value(row):row?.[col.key];
+    return col.type==='number' ? numericFilterMatch(value,query) : norm(value).includes(norm(query));
+  }
+  function compareColumnValues(a,b,col) {
+    const av=typeof col.value==='function'?col.value(a):a?.[col.key];
+    const bv=typeof col.value==='function'?col.value(b):b?.[col.key];
+    if(col.type==='number') return n(av)-n(bv);
+    return String(av??'').localeCompare(String(bv??''),'pt-BR',{numeric:true,sensitivity:'base'});
+  }
+  function tableView(id,rows,columns) {
+    const st=getTableState(id);
+    let out=rows.filter(row=>columns.every(col=>columnFilterMatch(row,col,st.filters[col.key])));
+    const col=columns.find(c=>c.key===st.sortKey);
+    if(col && st.sortDir) out=[...out].sort((a,b)=>compareColumnValues(a,b,col)*st.sortDir);
+    return out;
+  }
+  function tableSortIndicator(id,key) {
+    const st=getTableState(id);
+    if(st.sortKey!==key || !st.sortDir) return '↕';
+    return st.sortDir===-1?'↓':'↑';
+  }
+  function tableHasState(id) {
+    const st=getTableState(id);
+    return !!(st.sortDir || Object.values(st.filters).some(v=>String(v||'').trim()));
+  }
+  function renderManagerialTable({id,title,description,rows,columns,empty='Sem dados.'}) {
+    const st=getTableState(id);
+    const visible=tableView(id,rows,columns);
+    const head=columns.map(col=>`<th class="${col.num?'num ':''}v4078-sortable" data-v4078-sort-table="${esc(id)}" data-v4078-sort-key="${esc(col.key)}" title="Clique: maior→menor; novamente: menor→maior; terceiro clique: padrão">${esc(col.label)}<span class="v4078-sort-ind">${tableSortIndicator(id,col.key)}</span></th>`).join('');
+    const filters=columns.map(col=>`<th><input class="v4078-col-filter" data-v4078-filter-table="${esc(id)}" data-v4078-filter-key="${esc(col.key)}" value="${esc(st.filters[col.key]||'')}" placeholder="${col.type==='number'?'≥, ≤ ou valor':'Filtrar...'}" title="${col.type==='number'?'Aceita >, <, >=, <= e intervalo 100..200':'Filtro por texto'}"></th>`).join('');
+    const body=visible.map((row,idx)=>`<tr>${columns.map(col=>{
+      const cls=typeof col.className==='function'?col.className(row,idx):(col.className||'');
+      const cell=typeof col.render==='function'?col.render(row,idx):esc(typeof col.value==='function'?col.value(row):row?.[col.key]);
+      return `<td class="${col.num?'num ':''}${cls}">${cell}</td>`;
+    }).join('')}</tr>`).join('');
+    const actions=`<div class="v4078-table-actions"><span class="v4078-table-count">${intFmt.format(visible.length)} de ${intFmt.format(rows.length)} linha(s)</span>${tableHasState(id)?`<button class="v4078-table-clear" data-v4078-table-clear="${esc(id)}">Limpar filtros/ordenação</button>`:''}</div>`;
+    return `<section class="v4071-section" id="v4078-table-${esc(id)}"><div class="v4071-section-head"><div><strong>${esc(title)}</strong><small>${esc(description)}</small></div>${actions}</div><div class="v4071-table-wrap"><table class="v4071-table"><thead><tr>${head}</tr><tr class="v4078-filter-row">${filters}</tr></thead><tbody>${body||`<tr><td colspan="${columns.length}" class="empty-state">${esc(empty)}</td></tr>`}</tbody></table></div></section>`;
   }
 
   function ensureStyle() {
@@ -73,6 +153,9 @@
       .v4071-carry-info{background:#e1f5ee;border:1px solid #8fd2b3;color:#17643a;border-radius:8px;padding:5px 7px;font-size:10px;font-weight:650;line-height:1.35}
       .v4071-duration-help{display:block;margin-top:4px;color:var(--texto-suave);font-size:9px;line-height:1.3;text-transform:none;font-weight:400}
       .v4071-positive{color:var(--verde)!important}.v4071-negative{color:var(--vermelho)!important}.v4071-neutral{color:var(--texto-suave)!important}
+      .v4078-sortable{cursor:pointer;user-select:none;white-space:nowrap}.v4078-sortable:hover{background:#edf3fb}.v4078-sort-ind{display:inline-block;min-width:12px;margin-left:4px;color:#55708f;font-size:9px}
+      .v4078-filter-row th{background:#f7f9fc;padding:4px 5px!important;position:sticky;top:27px;z-index:2}.v4078-col-filter{width:100%;min-width:58px;box-sizing:border-box;border:1px solid #d4deea;border-radius:6px;background:#fff;padding:4px 5px;font:inherit;font-size:8.5px;color:var(--texto)}.v4078-col-filter::placeholder{color:#94a3b8}
+      .v4078-table-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.v4078-table-count{font-size:9px;color:var(--texto-suave);white-space:nowrap}.v4078-table-clear{border:1px solid #c7d3e3;background:#fff;color:#47627f;border-radius:7px;padding:5px 7px;font-size:8.5px;font-weight:800;cursor:pointer}.v4078-table-clear:hover{background:#eef4fc}
       @media(max-width:1100px){.v4071-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.v4071-filter-grid>label:first-child{grid-column:1/-1}}
       @media(max-width:800px){.v4071-grid-2{grid-template-columns:1fr}.v4071-filter-grid{grid-template-columns:1fr 1fr}.v4071-filter-grid>label:first-child{grid-column:1/-1}.v4071-chart-wrap{height:300px}.v4071-duration-grid{grid-template-columns:1fr!important}.v4071-section-head{flex-direction:column}}
       @media(max-width:520px){.v4071-filter-grid{grid-template-columns:1fr}.v4071-filter-grid>label:first-child{grid-column:auto}.v4071-filter-row{display:grid;grid-template-columns:1fr 1fr}.v4071-filter-row .spacer{display:none}.v4071-btn{width:100%}.v4071-pending-row{align-items:flex-start;flex-direction:column}.v4071-edit{width:100%}}
@@ -339,11 +422,30 @@
   function aggregateRoutes(rows) {
     const map=new Map();
     rows.forEach(t=>{
-      const k=`${t.pacote_origem}|||${t.pacote_destino}|||${t.exige_autorizacao?'1':'0'}`;
-      if(!map.has(k)) map.set(k,{origem:t.pacote_origem,destino:t.pacote_destino,exige_autorizacao:!!t.exige_autorizacao,qtd:0,total:0});
-      const x=map.get(k); x.qtd++; x.total+=n(t.valor);
+      const origem=String(t.pacote_origem||'Sem classificação'), destino=String(t.pacote_destino||'Sem classificação');
+      if(origem===destino) return;
+      const ordered=[origem,destino].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+      const a=ordered[0], b=ordered[1], key=`${a}|||${b}`;
+      if(!map.has(key)) map.set(key,{a,b,ab:0,ba:0,qtd_ab:0,qtd_ba:0});
+      const x=map.get(key), valor=n(t.valor);
+      if(origem===a){x.ab+=valor;x.qtd_ab++;}else{x.ba+=valor;x.qtd_ba++;}
     });
-    return [...map.values()].sort((a,b)=>b.total-a.total);
+    return [...map.values()].map(x=>{
+      const saldo=x.ab-x.ba;
+      if(Math.abs(saldo)<0.005) return null;
+      const direto=saldo>0;
+      return {
+        origem:direto?x.a:x.b,
+        destino:direto?x.b:x.a,
+        total:Math.abs(saldo),
+        qtd:x.qtd_ab+x.qtd_ba,
+        qtd_sentido:direto?x.qtd_ab:x.qtd_ba,
+        qtd_contrario:direto?x.qtd_ba:x.qtd_ab,
+        bruto_sentido:direto?x.ab:x.ba,
+        bruto_contrario:direto?x.ba:x.ab,
+        compensado:Math.min(x.ab,x.ba)
+      };
+    }).filter(Boolean).sort((a,b)=>b.total-a.total);
   }
 
   function aggregateMovements(rows) {
@@ -472,34 +574,124 @@
     </div>`;
   }
 
-  function packageTableHtml(s) {
+  function packageTableRows(s) {
     const netMap=new Map(s.nets.map(x=>[x.pacote,x]));
     const movMap=new Map(s.moves.map(x=>[x.pacote,x]));
-    const rows=s.packages.map(x=>{
+    return s.packages.map(x=>{
       const tr=netMap.get(x.key)||{recebido:0,doado:0,liquido:0}; const mv=movMap.get(x.key)||{aporte:0,conting:0};
-      return `<tr><td class="main">${esc(x.label)}</td><td class="num">${intFmt.format(x.qtd_ois)}</td><td class="num">${money(x.atribuido)}</td><td class="num">${pct(x.pct_capex)}</td><td class="num">${money(x.compromissado)}</td><td class="num">${money(x.realizado)}</td><td class="num ${x.saldo<0?'v4071-negative':'v4071-positive'}">${money(x.saldo)}</td><td class="num">${money(tr.recebido)}</td><td class="num">${money(tr.doado)}</td><td class="num ${tr.liquido>0?'v4071-positive':tr.liquido<0?'v4071-negative':'v4071-neutral'}">${money(tr.liquido)}</td><td class="num v4071-positive">${money(mv.aporte)}</td><td class="num v4071-negative">${money(mv.conting)}</td></tr>`;
-    }).join('');
-    return `<section class="v4071-section"><div class="v4071-section-head"><div><strong>Pacotes CAPEX · visão integrada</strong><small>Atribuído, concentração, consumo, saldo, transferências e ajustes financeiros. Carry Over fica consolidado em um único pacote.</small></div><small>${s.packages.length} pacote(s)</small></div><div class="v4071-table-wrap"><table class="v4071-table"><thead><tr><th>Pacote</th><th class="num">OIs</th><th class="num">Atribuído</th><th class="num">% CAPEX</th><th class="num">Compromissado</th><th class="num">Realizado</th><th class="num">Saldo livre</th><th class="num">Recebido</th><th class="num">Doado</th><th class="num">Líquido transf.</th><th class="num">Aportes</th><th class="num">Conting.</th></tr></thead><tbody>${rows||'<tr><td colspan="12" class="empty-state">Sem dados.</td></tr>'}</tbody></table></div></section>`;
+      return {...x,recebido:tr.recebido,doado:tr.doado,liquido_transf:tr.liquido,aporte_mov:mv.aporte,conting_mov:mv.conting};
+    });
+  }
+  function packageTableHtml(s) {
+    const rows=packageTableRows(s);
+    const cols=[
+      {key:'label',label:'Pacote',value:r=>r.label,render:r=>`<strong class="main">${esc(r.label)}</strong>`},
+      {key:'qtd_ois',label:'OIs',type:'number',num:true,value:r=>r.qtd_ois,render:r=>intFmt.format(r.qtd_ois)},
+      {key:'atribuido',label:'Atribuído',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
+      {key:'pct_capex',label:'% CAPEX',type:'number',num:true,value:r=>r.pct_capex,render:r=>pct(r.pct_capex)},
+      {key:'compromissado',label:'Compromissado',type:'number',num:true,value:r=>r.compromissado,render:r=>money(r.compromissado)},
+      {key:'realizado',label:'Realizado',type:'number',num:true,value:r=>r.realizado,render:r=>money(r.realizado)},
+      {key:'saldo',label:'Saldo livre',type:'number',num:true,value:r=>r.saldo,className:r=>r.saldo<0?'v4071-negative':'v4071-positive',render:r=>money(r.saldo)},
+      {key:'recebido',label:'Recebido',type:'number',num:true,value:r=>r.recebido,render:r=>money(r.recebido)},
+      {key:'doado',label:'Doado',type:'number',num:true,value:r=>r.doado,render:r=>money(r.doado)},
+      {key:'liquido_transf',label:'Líquido transf.',type:'number',num:true,value:r=>r.liquido_transf,className:r=>r.liquido_transf>0?'v4071-positive':r.liquido_transf<0?'v4071-negative':'v4071-neutral',render:r=>money(r.liquido_transf)},
+      {key:'aporte_mov',label:'Aportes',type:'number',num:true,value:r=>r.aporte_mov,className:'v4071-positive',render:r=>money(r.aporte_mov)},
+      {key:'conting_mov',label:'Conting.',type:'number',num:true,value:r=>r.conting_mov,className:'v4071-negative',render:r=>money(r.conting_mov)}
+    ];
+    return renderManagerialTable({id:'packages',title:'Pacotes CAPEX · visão integrada',description:'Atribuído, concentração, consumo, saldo, transferências e ajustes financeiros. Carry Over fica consolidado em um único pacote.',rows,columns:cols});
   }
 
   function headTableHtml(s) {
-    const rows=s.heads.map(x=>`<tr><td class="main">${esc(x.label)}</td><td class="num">${intFmt.format(x.qtd_ois)}</td><td class="num">${money(x.atribuido)}</td><td class="num">${pct(x.pct_capex)}</td><td class="num">${money(x.compromissado)}</td><td class="num">${money(x.realizado)}</td><td class="num ${x.saldo<0?'v4071-negative':'v4071-positive'}">${money(x.saldo)}</td><td class="num">${pct(x.pct_compromissado)}</td><td class="num">${pct(x.pct_realizado)}</td></tr>`).join('');
-    return `<section class="v4071-section"><div class="v4071-section-head"><div><strong>HEAD Operação</strong><small>Distribuição financeira e concentração dentro do universo filtrado.</small></div><small>${s.heads.length} HEAD(s)</small></div><div class="v4071-table-wrap"><table class="v4071-table"><thead><tr><th>HEAD</th><th class="num">OIs</th><th class="num">Atribuído</th><th class="num">% CAPEX</th><th class="num">Compromissado</th><th class="num">Realizado</th><th class="num">Saldo</th><th class="num">% Comp.</th><th class="num">% Real.</th></tr></thead><tbody>${rows||'<tr><td colspan="9" class="empty-state">Sem dados.</td></tr>'}</tbody></table></div></section>`;
+    const cols=[
+      {key:'label',label:'HEAD',value:r=>r.label,render:r=>`<strong class="main">${esc(r.label)}</strong>`},
+      {key:'qtd_ois',label:'OIs',type:'number',num:true,value:r=>r.qtd_ois,render:r=>intFmt.format(r.qtd_ois)},
+      {key:'atribuido',label:'Atribuído',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
+      {key:'pct_capex',label:'% CAPEX',type:'number',num:true,value:r=>r.pct_capex,render:r=>pct(r.pct_capex)},
+      {key:'compromissado',label:'Compromissado',type:'number',num:true,value:r=>r.compromissado,render:r=>money(r.compromissado)},
+      {key:'realizado',label:'Realizado',type:'number',num:true,value:r=>r.realizado,render:r=>money(r.realizado)},
+      {key:'saldo',label:'Saldo',type:'number',num:true,value:r=>r.saldo,className:r=>r.saldo<0?'v4071-negative':'v4071-positive',render:r=>money(r.saldo)},
+      {key:'pct_compromissado',label:'% Comp.',type:'number',num:true,value:r=>r.pct_compromissado,render:r=>pct(r.pct_compromissado)},
+      {key:'pct_realizado',label:'% Real.',type:'number',num:true,value:r=>r.pct_realizado,render:r=>pct(r.pct_realizado)}
+    ];
+    return renderManagerialTable({id:'heads',title:'HEAD Operação',description:'Distribuição financeira e concentração dentro do universo filtrado.',rows:s.heads,columns:cols});
   }
 
   function transferNetTableHtml(s) {
-    const rows=s.nets.map(x=>`<tr><td class="main">${esc(x.pacote)}</td><td class="num">${money(x.recebido)}</td><td class="num">${money(x.doado)}</td><td class="num ${x.liquido>0?'v4071-positive':x.liquido<0?'v4071-negative':'v4071-neutral'}">${money(x.liquido)}</td><td class="num">${intFmt.format(x.qtd_entrada)}</td><td class="num">${intFmt.format(x.qtd_saida)}</td></tr>`).join('');
-    return `<section class="v4071-section"><div class="v4071-section-head"><div><strong>Saldo líquido de transferências por pacote</strong><small>Recebido − Doado. Transferências internas do mesmo pacote gerencial são neutras e não entram no fluxo líquido.</small></div><small>${periodLabel()}</small></div><div class="v4071-table-wrap"><table class="v4071-table"><thead><tr><th>Pacote</th><th class="num">Recebido</th><th class="num">Doado</th><th class="num">Líquido</th><th class="num">Entradas</th><th class="num">Saídas</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="empty-state">Sem transferências externas entre pacotes no período.</td></tr>'}</tbody></table></div></section>`;
+    const cols=[
+      {key:'pacote',label:'Pacote',value:r=>r.pacote,render:r=>`<strong class="main">${esc(r.pacote)}</strong>`},
+      {key:'recebido',label:'Recebido',type:'number',num:true,value:r=>r.recebido,render:r=>money(r.recebido)},
+      {key:'doado',label:'Doado',type:'number',num:true,value:r=>r.doado,render:r=>money(r.doado)},
+      {key:'liquido',label:'Líquido',type:'number',num:true,value:r=>r.liquido,className:r=>r.liquido>0?'v4071-positive':r.liquido<0?'v4071-negative':'v4071-neutral',render:r=>money(r.liquido)},
+      {key:'qtd_entrada',label:'Entradas',type:'number',num:true,value:r=>r.qtd_entrada,render:r=>intFmt.format(r.qtd_entrada)},
+      {key:'qtd_saida',label:'Saídas',type:'number',num:true,value:r=>r.qtd_saida,render:r=>intFmt.format(r.qtd_saida)}
+    ];
+    return renderManagerialTable({id:'net',title:'Saldo líquido de transferências por pacote',description:`Recebido − Doado. Transferências internas do mesmo pacote gerencial são neutras. ${periodLabel()}.`,rows:s.nets,columns:cols,empty:'Sem transferências externas entre pacotes no período.'});
   }
 
   function topOisTableHtml(s) {
-    const rows=s.top.map((o,i)=>`<tr><td class="num">${i+1}</td><td class="main">${esc(o.oi)}<small>${esc(o.nome||'')}</small></td><td>${esc(o.pacote)}</td><td>${esc(o.head)}</td><td class="num">${money(o.atribuido)}</td><td class="num">${money(o.compromissado)}</td><td class="num v4071-positive" style="font-weight:850">${money(o.saldo)}</td><td class="num">${money(realizedPeriod(o))}</td></tr>`).join('');
-    return `<section class="v4071-section"><div class="v4071-section-head"><div><strong>Top OIs com maior saldo disponível</strong><small>Prioriza oportunidades de redistribuição de verba dentro dos filtros atuais.</small></div><small>Top ${mgr.topN}</small></div><div class="v4071-table-wrap"><table class="v4071-table"><thead><tr><th class="num">#</th><th>OI / Obra</th><th>Pacote</th><th>HEAD</th><th class="num">Atribuído</th><th class="num">Compromissado</th><th class="num">Saldo</th><th class="num">Realizado período</th></tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty-state">Sem OIs no filtro.</td></tr>'}</tbody></table></div></section>`;
+    const rows=s.top.map((o,i)=>({...o,__rank:i+1}));
+    const cols=[
+      {key:'__rank',label:'#',type:'number',num:true,value:r=>r.__rank,render:r=>intFmt.format(r.__rank)},
+      {key:'oi_obra',label:'OI / Obra',value:r=>`${r.oi} ${r.nome||''}`,render:r=>`<strong class="main">${esc(r.oi)}</strong><small>${esc(r.nome||'')}</small>`},
+      {key:'pacote',label:'Pacote',value:r=>r.pacote,render:r=>esc(r.pacote)},
+      {key:'head',label:'HEAD',value:r=>r.head,render:r=>esc(r.head)},
+      {key:'atribuido',label:'Atribuído',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
+      {key:'compromissado',label:'Compromissado',type:'number',num:true,value:r=>r.compromissado,render:r=>money(r.compromissado)},
+      {key:'saldo',label:'Saldo',type:'number',num:true,value:r=>r.saldo,className:'v4071-positive',render:r=>`<strong>${money(r.saldo)}</strong>`},
+      {key:'realizado',label:'Realizado período',type:'number',num:true,value:r=>realizedPeriod(r),render:r=>money(realizedPeriod(r))}
+    ];
+    return renderManagerialTable({id:'top',title:'Top OIs com maior saldo disponível',description:`Prioriza oportunidades de redistribuição de verba dentro dos filtros atuais. Top ${mgr.topN}.`,rows,columns:cols,empty:'Sem OIs no filtro.'});
   }
 
   function routesTableHtml(s) {
-    const rows=s.routes.map(r=>`<tr><td class="main">${esc(r.origem)}</td><td class="main">${esc(r.destino)}</td><td class="num">${intFmt.format(r.qtd)}</td><td class="num">${money(r.total)}</td><td>${r.exige_autorizacao?'<span class="v4071-tag director">Diretoria</span>':'<span class="v4071-tag internal">Interna</span>'}</td></tr>`).join('');
-    return `<section class="v4071-section"><div class="v4071-section-head"><div><strong>Rotas de transferência entre pacotes</strong><small>Consolidação Origem → Destino dentro do período e filtros selecionados.</small></div><small>${intFmt.format(s.transfers.length)} transferência(s)</small></div><div class="v4071-table-wrap"><table class="v4071-table"><thead><tr><th>Origem</th><th>Destino</th><th class="num">Qtde</th><th class="num">Valor</th><th>Regra</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty-state">Sem transferências no período.</td></tr>'}</tbody></table></div></section>`;
+    const cols=[
+      {key:'origem',label:'Origem líquida',value:r=>r.origem,render:r=>`<strong class="main">${esc(r.origem)}</strong>`},
+      {key:'destino',label:'Destino líquido',value:r=>r.destino,render:r=>`<strong class="main">${esc(r.destino)}</strong>`},
+      {key:'qtd',label:'Movs.',type:'number',num:true,value:r=>r.qtd,render:r=>`<span title="${r.qtd_sentido} no sentido líquido e ${r.qtd_contrario} no sentido contrário">${intFmt.format(r.qtd)}</span>`},
+      {key:'total',label:'Saldo transferido',type:'number',num:true,value:r=>r.total,render:r=>`<strong>${money(r.total)}</strong>`}
+    ];
+    return renderManagerialTable({id:'routes',title:'Rotas líquidas de transferência entre pacotes',description:'Cada par de pacotes é compensado nos dois sentidos. Ex.: 100 de A→B e 20 de B→A resulta em apenas 80 de A→B.',rows:s.routes,columns:cols,empty:'Sem saldo líquido entre pacotes no período.'});
+  }
+
+  function managerialTableHtmlById(id,s=summaryData()) {
+    if(id==='packages') return packageTableHtml(s);
+    if(id==='heads') return headTableHtml(s);
+    if(id==='net') return transferNetTableHtml(s);
+    if(id==='top') return topOisTableHtml(s);
+    if(id==='routes') return routesTableHtml(s);
+    return '';
+  }
+  function refreshManagerialTable(id,focusKey='',caret=null) {
+    const current=document.getElementById(`v4078-table-${id}`); if(!current)return;
+    const holder=document.createElement('div'); holder.innerHTML=managerialTableHtmlById(id).trim();
+    const next=holder.firstElementChild; if(!next)return;
+    current.replaceWith(next);
+    bindManagerialTableControls(next);
+    if(focusKey){
+      const input=next.querySelector(`[data-v4078-filter-key="${CSS.escape(focusKey)}"]`);
+      if(input){ input.focus(); if(Number.isInteger(caret)) try{input.setSelectionRange(caret,caret);}catch(_){} }
+    }
+  }
+  function bindManagerialTableControls(scope=document) {
+    scope.querySelectorAll('[data-v4078-sort-table]').forEach(th=>th.addEventListener('click',()=>{
+      const id=th.getAttribute('data-v4078-sort-table'), key=th.getAttribute('data-v4078-sort-key'); if(!id||!key)return;
+      const st=getTableState(id);
+      if(st.sortKey!==key){st.sortKey=key;st.sortDir=-1;}
+      else if(st.sortDir===-1)st.sortDir=1;
+      else if(st.sortDir===1){st.sortKey='';st.sortDir=0;}
+      else st.sortDir=-1;
+      refreshManagerialTable(id);
+    }));
+    scope.querySelectorAll('[data-v4078-filter-table]').forEach(input=>input.addEventListener('input',e=>{
+      const id=input.getAttribute('data-v4078-filter-table'), key=input.getAttribute('data-v4078-filter-key'); if(!id||!key)return;
+      getTableState(id).filters[key]=e.target.value||'';
+      refreshManagerialTable(id,key,e.target.selectionStart);
+    }));
+    scope.querySelectorAll('[data-v4078-table-clear]').forEach(btn=>btn.addEventListener('click',()=>{
+      const id=btn.getAttribute('data-v4078-table-clear'); if(!id)return;
+      mgr.tableStates[id]={filters:{},sortKey:'',sortDir:0};
+      refreshManagerialTable(id);
+    }));
   }
 
   function pendingHtml(s) {
@@ -519,6 +711,7 @@
   }
 
   function bindContentActions() {
+    bindManagerialTableControls(document);
     document.querySelectorAll('[data-v4071-edit-oi]').forEach(btn=>btn.addEventListener('click',()=>{
       const id=btn.getAttribute('data-v4071-edit-oi');
       if(typeof editarOi==='function' && id) void editarOi(id);
@@ -540,7 +733,7 @@
     bind('v4071-filter-package','pacote');bind('v4071-filter-head','head');bind('v4071-filter-saldo','saldo');bind('v4071-filter-transfer','transferRule');
     bind('v4071-month-start','monthStart',Number);bind('v4071-month-end','monthEnd',Number);bind('v4071-top-n','topN',Number);
     document.getElementById('v4071-clear')?.addEventListener('click',()=>{
-      mgr.pacote='';mgr.head='';mgr.query='';mgr.monthStart=1;mgr.monthEnd=12;mgr.saldo='all';mgr.transferRule='all';mgr.topN=10;syncFilterControls();renderContent();
+      mgr.pacote='';mgr.head='';mgr.query='';mgr.monthStart=1;mgr.monthEnd=12;mgr.saldo='all';mgr.transferRule='all';mgr.topN=10;resetTableStates();syncFilterControls();renderContent();
     });
     document.getElementById('v4071-export-xlsx')?.addEventListener('click',()=>void exportExcel());
     document.getElementById('v4071-export-pdf')?.addEventListener('click',()=>void exportPdf());
