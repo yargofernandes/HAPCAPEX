@@ -1,0 +1,35 @@
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+
+# Chaves e certificados
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Dados corporativos / exportações
+*.xlsx
+*.xls
+*.csv
+*.dump
+*.sql.gz
+
+# Backups e logs
+*.bak
+*.backup
+*.log
+backups/
+exports/
+data/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Dependências / temporários
+node_modules/
+tmp/
+temp/
