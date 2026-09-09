@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.75 — Controle de Capex: Gerencial auditado + Carry Over + duração de obra.
+/* HAPCAPEX V40.0.76 — Controle de Capex: Gerencial auditado + segurança + correção do Realizado.
    - Gerencial com filtros globais, KPIs, tabelas e gráficos integrados.
    - Saldo líquido de transferências, concentração CAPEX, Realizado mensal,
      aportes/contingenciamentos, comprometido x saldo livre, Top OIs e pendências.
@@ -12,7 +12,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.75';
+  const VERSION = '40.0.76';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -55,7 +55,6 @@
     const style = document.createElement('style');
     style.id = 'hap-v4071-managerial-style';
     style.textContent = `
-      .v4071-note{background:#eef6ff;border:1px solid #cbdcf0;border-radius:10px;padding:10px 12px;margin:0 0 12px;color:#304b69;font-size:11px;line-height:1.45}
       .v4071-toolbar{background:#fff;border:1px solid var(--cinza-borda);border-radius:12px;padding:10px;margin-bottom:12px;box-shadow:0 2px 7px rgba(0,0,0,.035)}
       .v4071-filter-grid{display:grid;grid-template-columns:minmax(220px,2fr) repeat(4,minmax(145px,1fr));gap:8px;align-items:end}
       .v4071-filter-grid label,.v4071-filter-row label{display:flex;flex-direction:column;gap:4px;font-size:9px;font-weight:800;color:var(--texto-suave);text-transform:uppercase;letter-spacing:.035em}
@@ -551,7 +550,6 @@
     mgr.raw=data||{};
     let fullName='';try{fullName=state?.fullName||'';}catch(_){}
     appEl.innerHTML=`<header class="topbar"><div><div class="brand-eyebrow">Controle de Capex</div><div class="brand-title">Gerencial</div></div>${navHtml(true)}<div class="user-chip">${esc(fullName)} <span class="role-badge">Admin</span><button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button><button class="btn btn-secondary" id="logout-btn">Sair</button></div></header>
-      <div class="v4071-note"><strong>Regra gerencial Carry Over:</strong> ${esc(mgr.raw.regra_carry_over||'')}<br><span>Exercício ${esc(mgr.raw.exercicio)} · Consumido/Realizado: ${esc(mgr.raw.fonte_consumido||'Base Consumo')}${mgr.raw.base_consumo?.arquivo?` · Última base: ${esc(mgr.raw.base_consumo.arquivo)}`:''}</span></div>
       ${filterToolbarHtml()}<div id="v4071-content"></div>`;
     document.getElementById('logout-btn')?.addEventListener('click',()=>sb.auth.signOut());
     bindFilterControls(); renderContent();
@@ -577,14 +575,14 @@
 
   function destroyCharts(){mgr.chartSeq++;Object.values(mgr.charts).forEach(c=>{try{c?.destroy();}catch(_){}});mgr.charts={};}
   const palette=['#1a4b8c','#2e6bbf','#1e8a4a','#e07020','#7857a4','#0f7c87','#c65850','#70839a','#8f6d2d','#4c8e64','#9a5f7d','#4f65a8','#768b3c','#ad6b34'];
-  function chartBaseOptions(extra={}){return {responsive:true,maintainAspectRatio:false,animation:{duration:260},plugins:{legend:{labels:{boxWidth:10,font:{size:9}}},tooltip:{callbacks:{label:ctx=>{const v=ctx.parsed?.x??ctx.parsed?.y??ctx.raw;return `${ctx.dataset.label||''}: ${money(v)}`;}}}},scales:{x:{ticks:{font:{size:8}},grid:{color:'rgba(80,100,130,.08)'}},y:{ticks:{font:{size:8}},grid:{color:'rgba(80,100,130,.08)'}}},...extra};}
+  function chartBaseOptions(extra={}){return {responsive:true,maintainAspectRatio:false,animation:{duration:260},plugins:{legend:{labels:{boxWidth:10,font:{size:9}}},tooltip:{callbacks:{label:ctx=>{const raw=ctx.raw;const v=(typeof raw==='number'&&Number.isFinite(raw))?raw:(Number.isFinite(Number(ctx.parsed?.y))?Number(ctx.parsed.y):Number(ctx.parsed?.x||0));return `${ctx.dataset.label||''}: ${money(v)}`;}}}},scales:{x:{ticks:{font:{size:8}},grid:{color:'rgba(80,100,130,.08)'}},y:{ticks:{font:{size:8}},grid:{color:'rgba(80,100,130,.08)'}}},...extra};}
 
   function applyPackageFilter(label){mgr.pacote=String(label||'');syncFilterControls();renderContent();}
   function applyHeadFilter(label){mgr.head=String(label||'');syncFilterControls();renderContent();}
 
   async function renderCharts(s) {
     const seq=++mgr.chartSeq;
-    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.72] Chart.js indisponível',err);return;}
+    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.76] Chart.js indisponível',err);return;}
     if(seq!==mgr.chartSeq) return;
     Object.values(mgr.charts).forEach(c=>{try{c?.destroy();}catch(_){}});mgr.charts={};
     if(typeof state!=='undefined' && state?.tab!=='gerencial') return;
@@ -597,7 +595,7 @@
     const h=s.heads.slice(0,14);
     make('v4071-chart-head',{type:'bar',data:{labels:h.map(x=>x.label),datasets:[{label:'% do CAPEX',data:h.map(x=>x.pct_capex),backgroundColor:h.map((_,i)=>palette[(i+3)%palette.length]),borderWidth:0}]},options:{...chartBaseOptions(),indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${numFmt.format(ctx.raw)}% · ${money(h[ctx.dataIndex]?.atribuido)}`}}},scales:{x:{beginAtZero:true,ticks:{callback:v=>`${v}%`,font:{size:8}}},y:{ticks:{font:{size:8}}}},onClick:(evt,elements)=>{if(elements.length)applyHeadFilter(h[elements[0].index]?.label);}}});
 
-    make('v4071-chart-realized',{type:'bar',data:{labels:s.monthly.map(x=>x.label),datasets:[{type:'bar',label:'Realizado mensal',data:s.monthly.map(x=>x.valor),backgroundColor:'#e07020',borderWidth:0,yAxisID:'y'},{type:'line',label:'Acumulado no período',data:s.monthly.map(x=>x.acumulado),borderColor:'#1a4b8c',backgroundColor:'#1a4b8c',pointRadius:3,tension:.2,yAxisID:'y'}]},options:chartBaseOptions({scales:{x:{ticks:{font:{size:8}}},y:{beginAtZero:true,ticks:{callback:v=>compactMoney(v),font:{size:8}}}}})});
+    make('v4071-chart-realized',{type:'bar',data:{labels:s.monthly.map(x=>x.label),datasets:[{type:'bar',label:'Realizado mensal',data:s.monthly.map(x=>x.valor),backgroundColor:'#e07020',borderWidth:0,yAxisID:'y'},{type:'line',label:'Acumulado no período',data:s.monthly.map(x=>x.acumulado),borderColor:'#1a4b8c',backgroundColor:'#1a4b8c',pointRadius:3,tension:.2,yAxisID:'y'}]},options:chartBaseOptions({plugins:{legend:{labels:{boxWidth:10,font:{size:9}}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label||''}: ${money(Number(ctx.raw||0))}`}}},scales:{x:{ticks:{font:{size:8}}},y:{beginAtZero:true,ticks:{callback:v=>compactMoney(v),font:{size:8}}}}})});
 
     const net=s.nets.slice(0,14);
     make('v4071-chart-transfer',{type:'bar',data:{labels:net.map(x=>x.pacote),datasets:[{label:'Saldo líquido',data:net.map(x=>x.liquido),backgroundColor:net.map(x=>x.liquido>=0?'#1e8a4a':'#c0392b'),borderWidth:0}]},options:{...chartBaseOptions(),indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`Líquido: ${money(ctx.raw)} · Recebido ${money(net[ctx.dataIndex]?.recebido)} · Doado ${money(net[ctx.dataIndex]?.doado)}`}}},scales:{x:{ticks:{callback:v=>compactMoney(v),font:{size:8}}},y:{ticks:{font:{size:8}}}},onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(net[elements[0].index]?.pacote);}}});
