@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.76 — Controle de Capex: Gerencial auditado + segurança + correção do Realizado.
+/* HAPCAPEX V40.0.77 — Controle de Capex: exclusões gerenciais + limpeza de alertas.
    - Gerencial com filtros globais, KPIs, tabelas e gráficos integrados.
    - Saldo líquido de transferências, concentração CAPEX, Realizado mensal,
      aportes/contingenciamentos, comprometido x saldo livre, Top OIs e pendências.
@@ -12,7 +12,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.76';
+  const VERSION = '40.0.77';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -43,6 +43,8 @@
   const pct = value => `${n(value).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})}%`;
   const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
   const uniq = arr => [...new Set(arr.filter(v => v !== null && v !== undefined && String(v).trim() !== ''))];
+  const EXCLUDED_MANAGERIAL_PACKAGES = new Set(['COMPENSACAO DE ADIANTAMENTO']);
+  const isExcludedManagerialPackage = value => EXCLUDED_MANAGERIAL_PACKAGES.has(norm(value));
 
   function canonicalPackage(value) {
     const raw = String(value || '').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
@@ -219,9 +221,18 @@
     return m>=start && m<=end;
   }
 
-  function allOis() { return Array.isArray(mgr.raw?.ois) ? mgr.raw.ois : []; }
-  function allTransfers() { return Array.isArray(mgr.raw?.transferencias) ? mgr.raw.transferencias : []; }
-  function allMovements() { return Array.isArray(mgr.raw?.movimentos) ? mgr.raw.movimentos : []; }
+  function allOis() {
+    const rows=Array.isArray(mgr.raw?.ois) ? mgr.raw.ois : [];
+    return rows.filter(o=>!isExcludedManagerialPackage(o?.pacote) && !isExcludedManagerialPackage(o?.pacote_original));
+  }
+  function allTransfers() {
+    const rows=Array.isArray(mgr.raw?.transferencias) ? mgr.raw.transferencias : [];
+    return rows.filter(t=>!isExcludedManagerialPackage(t?.pacote_origem) && !isExcludedManagerialPackage(t?.pacote_destino) && !isExcludedManagerialPackage(t?.pacote_origem_original) && !isExcludedManagerialPackage(t?.pacote_destino_original));
+  }
+  function allMovements() {
+    const rows=Array.isArray(mgr.raw?.movimentos) ? mgr.raw.movimentos : [];
+    return rows.filter(m=>!isExcludedManagerialPackage(m?.pacote));
+  }
 
   function saldoMatches(oi) {
     const s=n(oi?.saldo);
@@ -386,9 +397,7 @@
     const aporte=movements.filter(m=>m.tipo==='aporte').reduce((s,m)=>s+n(m.valor),0);
     const conting=movements.filter(m=>m.tipo==='contingenciamento').reduce((s,m)=>s+n(m.valor),0);
     const unresolvedTransferTotal=unresolvedTransfers.reduce((s,t)=>s+n(t.valor),0);
-    const negativeOis=ois.filter(o=>n(o.saldo)<-0.005);
-    const negativeSaldo=negativeOis.reduce((s,o)=>s+n(o.saldo),0);
-    return {ois,transfers,unresolvedTransfers,movements,packages,heads,nets,routes,moves,monthly,top,pending,totalAttr,totalComp,totalSaldo,totalReal,transferTotal,transferDirector,transferInternal,aporte,conting,unresolvedTransferTotal,negativeOis,negativeSaldo};
+    return {ois,transfers,unresolvedTransfers,movements,packages,heads,nets,routes,moves,monthly,top,pending,totalAttr,totalComp,totalSaldo,totalReal,transferTotal,transferDirector,transferInternal,aporte,conting,unresolvedTransferTotal};
   }
 
   function optionHtml(value,label,current) {
@@ -497,7 +506,6 @@
     let html='';
     if(s.pending.length) html+=`<section class="v4071-section v4071-pending" id="v4071-pending-section"><div class="v4071-section-head"><div><strong>⚠ OIs com classificação incompleta</strong><small>Essas OIs também são geradas como notificação administrativa até serem corrigidas.</small></div><span class="v4071-tag warning">${s.pending.length} pendência(s)</span></div><div class="v4071-pending-list">${s.pending.map(o=>`<div class="v4071-pending-row"><div><strong>OI ${esc(o.oi)} · ${esc(o.nome||'Sem nome')}</strong><small>${o.pacote_faltante?'Sem Pacote CAPEX':''}${o.pacote_faltante&&o.head_faltante?' · ':''}${o.head_faltante?'Sem HEAD Operação':''}</small></div><button class="v4071-edit" data-v4071-edit-oi="${esc(o.id)}">Corrigir classificação</button></div>`).join('')}</div></section>`;
     if(s.unresolvedTransfers.length) html+=`<section class="v4071-section v4071-pending"><div class="v4071-section-head"><div><strong>⚠ Transferências históricas sem pacote identificável</strong><small>Esses registros permanecem no histórico, mas são excluídos dos KPIs de transferência entre pacotes e da regra de autorização porque não é possível determinar o pacote de uma das pontas.</small></div><span class="v4071-tag warning">${s.unresolvedTransfers.length} · ${money(s.unresolvedTransferTotal)}</span></div></section>`;
-    if(s.negativeOis.length) html+=`<section class="v4071-section v4071-pending"><div class="v4071-section-head"><div><strong>⚠ Saldo financeiro negativo</strong><small>${s.negativeOis.map(o=>`OI ${esc(o.oi)} · ${esc(o.nome)}: ${money(o.saldo)}`).join(' · ')}</small></div><span class="v4071-tag warning">${money(s.negativeSaldo)}</span></div></section>`;
     return html;
   }
 
@@ -544,7 +552,7 @@
     const appEl=document.getElementById('app'); if(!appEl)return;
     mgr.loading=true;
     appEl.innerHTML='<div class="session-loading"><div class="session-loading-card"><strong>Gerencial</strong><span>Consolidando dados e indicadores...</span></div></div>';
-    const {data,error}=await sb.rpc('obter_gerencial_controle_v4074',{p_exercicio:null});
+    const {data,error}=await sb.rpc('obter_gerencial_controle_v4077',{p_exercicio:null});
     mgr.loading=false;
     if(error){appEl.innerHTML=`<div class="error-msg">Não foi possível carregar o Gerencial: ${esc(error.message||error)}</div>`;return;}
     mgr.raw=data||{};
@@ -582,7 +590,7 @@
 
   async function renderCharts(s) {
     const seq=++mgr.chartSeq;
-    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.76] Chart.js indisponível',err);return;}
+    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.77] Chart.js indisponível',err);return;}
     if(seq!==mgr.chartSeq) return;
     Object.values(mgr.charts).forEach(c=>{try{c?.destroy();}catch(_){}});mgr.charts={};
     if(typeof state!=='undefined' && state?.tab!=='gerencial') return;
@@ -620,7 +628,7 @@
     if(typeof XLSX==='undefined'){alert('Biblioteca Excel indisponível.');return;}
     const s=summaryData(); const wb=XLSX.utils.book_new();
     const resumo=[...Object.entries(exportFiltersObject()).map(([Indicador,Valor])=>({Indicador,Valor})),
-      {Indicador:'Valor atribuído',Valor:s.totalAttr},{Indicador:'Compromissado',Valor:s.totalComp},{Indicador:'Realizado no período',Valor:s.totalReal},{Indicador:'Saldo livre',Valor:s.totalSaldo},{Indicador:'OIs',Valor:s.ois.length},{Indicador:'Transferido no período',Valor:s.transferTotal},{Indicador:'Aportes no período',Valor:s.aporte},{Indicador:'Contingenciamentos no período',Valor:s.conting},{Indicador:'Pendências de classificação',Valor:s.pending.length},{Indicador:'Transferências históricas sem pacote',Valor:s.unresolvedTransfers.length},{Indicador:'Valor histórico sem pacote',Valor:s.unresolvedTransferTotal},{Indicador:'OIs com saldo negativo',Valor:s.negativeOis.length},{Indicador:'Saldo negativo total',Valor:s.negativeSaldo}];
+      {Indicador:'Valor atribuído',Valor:s.totalAttr},{Indicador:'Compromissado',Valor:s.totalComp},{Indicador:'Realizado no período',Valor:s.totalReal},{Indicador:'Saldo livre',Valor:s.totalSaldo},{Indicador:'OIs',Valor:s.ois.length},{Indicador:'Transferido no período',Valor:s.transferTotal},{Indicador:'Aportes no período',Valor:s.aporte},{Indicador:'Contingenciamentos no período',Valor:s.conting},{Indicador:'Pendências de classificação',Valor:s.pending.length},{Indicador:'Transferências históricas sem pacote',Valor:s.unresolvedTransfers.length},{Indicador:'Valor histórico sem pacote',Valor:s.unresolvedTransferTotal}];
     XLSX.utils.book_append_sheet(wb,workbookSheet(resumo,[28,32]),'Resumo');
     XLSX.utils.book_append_sheet(wb,workbookSheet(s.packages.map(x=>({Pacote:x.label,OIs:x.qtd_ois,Atribuido:x.atribuido,Pct_CAPEX:x.pct_capex,Compromissado:x.compromissado,Realizado_Periodo:x.realizado,Saldo:x.saldo,Aporte_Atual:x.aporte,Conting_Atual:x.conting})),[36,10,18,12,18,18,18,18,18]),'Pacotes');
     XLSX.utils.book_append_sheet(wb,workbookSheet(s.heads.map(x=>({HEAD:x.label,OIs:x.qtd_ois,Atribuido:x.atribuido,Pct_CAPEX:x.pct_capex,Compromissado:x.compromissado,Realizado_Periodo:x.realizado,Saldo:x.saldo})),[36,10,18,12,18,18,18]),'HEAD');
@@ -687,7 +695,7 @@
     },250);
     patchDynamicUi();
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
-    window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,canonicalPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData};
+    window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,canonicalPackage,isExcludedManagerialPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData};
   }
 
   if(document.body)boot();else document.addEventListener('DOMContentLoaded',boot,{once:true});
