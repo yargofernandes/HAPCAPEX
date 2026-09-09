@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-61-classification-copy-reload-20260827';
+const CACHE_NAME = 'hapcapex-v40-0-75-gerencial-nav-date-20260909';
 const APP_SHELL = [
   './',
   './index.html',
@@ -19,11 +19,13 @@ const APP_SHELL = [
   './v40-control-preauth.js?v=40.0.3',
   './v40-logout-fix.js?v=40.0.6',
   './v40-managerial-kpis-sort.js?v=40.0.9',
-  './v40-aporte-status.js?v=40.0.11',
+  './v40-aporte-status.js?v=40.0.75',
   './v40-tipologia-governance.js?v=40.0.26',
   './v40-audit-performance.js?v=40.0.16',
   './v40-control-ui.js?v=40.0.31',
   './v40-classification-copy.js?v=40.0.60',
+  './v40-control-managerial.js?v=40.0.75',
+  './v40-date-local-policy.js?v=40.0.75',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
   './dashboard-core.js?v=29',
@@ -39,11 +41,13 @@ const CONTROL_SECURITY_TAG = '<script src="./v40-control-security.js?v=40.0.1"><
 const CONTROL_PREAUTH_TAG = '<script src="./v40-control-preauth.js?v=40.0.3"></script>';
 const LOGOUT_TAG = '<script src="./v40-logout-fix.js?v=40.0.6"></script>';
 const MANAGERIAL_TAG = '<script src="./v40-managerial-kpis-sort.js?v=40.0.9"></script>';
-const APORTE_STATUS_TAG = '<script src="./v40-aporte-status.js?v=40.0.11"></script>';
+const APORTE_STATUS_TAG = '<script src="./v40-aporte-status.js?v=40.0.75"></script>';
 const TIPOLOGIA_TAG = '<script src="./v40-tipologia-governance.js?v=40.0.26"></script>';
 const AUDIT_PERF_TAG = '<script src="./v40-audit-performance.js?v=40.0.16"></script>';
 const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
 const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
+const CONTROL_MANAGERIAL_TAG = '<script src="./v40-control-managerial.js?v=40.0.75"></script>';
+const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.75"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
   Nome da obra
@@ -59,7 +63,7 @@ const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-colu
 const WORK_NAME_INLINE_SCRIPT = `<script>
 (() => {
   'use strict';
-  const strip = v => String(v || '').replace(/\\\\s*-\\\\s*CONTIN.*$/i,'').trim();
+  const strip = v => String(v || '').replace(/\\s*-\\s*CONTIN.*$/i,'').trim();
 
   function itemAtual(){
     const id=document.getElementById('workEditId')?.value;
@@ -297,7 +301,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.60',
+    'x-hapcapex-functional': 'v40.0.75',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -330,6 +334,8 @@ async function decorateHtmlResponse(response, url) {
     text = removeVersionedScript(text, 'v40-work-name-sync.js');
     text = removeVersionedScript(text, 'v40-tipologia-integrity.js');
     text = removeVersionedScript(text, 'v40-classification-copy.js');
+    text = removeVersionedScript(text, 'v40-control-managerial.js');
+    text = removeVersionedScript(text, 'v40-date-local-policy.js');
 
     const governancePatterns = [
       '<script src="v37-control-governance.js?v=37.0"></script>',
@@ -339,10 +345,10 @@ async function decorateHtmlResponse(response, url) {
     ];
     const marker = governancePatterns.find(tag => text.includes(tag));
     if (marker) {
-      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}`);
+      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}${CONTROL_MANAGERIAL_TAG}${DATE_LOCAL_POLICY_TAG}`);
     } else {
       const initTag = '<script>init();</script>';
-      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG + CLASSIFICATION_COPY_TAG;
+      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG + CLASSIFICATION_COPY_TAG + CONTROL_MANAGERIAL_TAG + DATE_LOCAL_POLICY_TAG;
       if (text.includes(initTag)) text = text.replace(initTag, `${fallbackInjection}${initTag}`);
       else if (/<\/body>/i.test(text)) text = text.replace(/<\/body>/i, `${fallbackInjection}</body>`);
       else text += fallbackInjection;
@@ -375,7 +381,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.60'
+    'x-hapcapex-functional': 'v40.0.75'
   });
 }
 
@@ -392,8 +398,8 @@ self.addEventListener('activate', event => {
     await caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))));
     await self.clients.claim();
 
-    // V40.0.61 — uma única navegação das abas já abertas garante que o HTML
-    // passe pelo service worker recém-ativado e receba os módulos novos.
+    // V40.0.75 — força uma navegação das abas abertas para que o novo service worker
+    // injete Gerencial e política de datas após os demais módulos do Controle.
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     await Promise.all(clients.map(async client => {
       try {

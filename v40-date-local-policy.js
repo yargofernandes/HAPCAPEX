@@ -1,12 +1,12 @@
-/* HAPCAPEX V40.0.74 — Política de datas de calendário no Controle de Capex.
+/* HAPCAPEX V40.0.75 — Política de datas de calendário no Controle de Capex.
    Corrige o deslocamento de -1 dia causado por new Date('YYYY-MM-DD') em fusos UTC negativos.
    Escopo: exibição de Transferências e Base Consumo + data padrão de nova transferência.
    Não altera datas armazenadas no banco.
 */
 (() => {
   'use strict';
-  if (window.__HAP_V4074_DATE_LOCAL_POLICY__) return;
-  window.__HAP_V4074_DATE_LOCAL_POLICY__ = true;
+  if (window.__HAP_V4075_DATE_LOCAL_POLICY__) return;
+  window.__HAP_V4075_DATE_LOCAL_POLICY__ = true;
 
   function pad2(v) { return String(v).padStart(2, '0'); }
 
@@ -46,11 +46,11 @@
 
   function wrapRender(name) {
     const original = window[name];
-    if (typeof original !== 'function' || original.__hapV4074DateWrapped) return false;
+    if (typeof original !== 'function' || original.__hapV4075DateWrapped) return false;
     const wrapped = function(...args) {
       return runWithCalendarDateLocale(() => original.apply(this, args));
     };
-    wrapped.__hapV4074DateWrapped = true;
+    wrapped.__hapV4075DateWrapped = true;
     wrapped.__hapV4074DateOriginal = original;
     window[name] = wrapped;
     return true;
@@ -58,14 +58,14 @@
 
   function wrapNewTransferModal() {
     const original = window.openNovaTransferenciaModal;
-    if (typeof original !== 'function' || original.__hapV4074DateWrapped) return false;
+    if (typeof original !== 'function' || original.__hapV4075DateWrapped) return false;
     const wrapped = function(...args) {
       const result = original.apply(this, args);
       const input = document.getElementById('t-data');
       if (input) input.value = localTodayISO();
       return result;
     };
-    wrapped.__hapV4074DateWrapped = true;
+    wrapped.__hapV4075DateWrapped = true;
     wrapped.__hapV4074DateOriginal = original;
     window.openNovaTransferenciaModal = wrapped;
     return true;
@@ -73,14 +73,14 @@
 
   function wrapParaDataISO() {
     const original = window.paraDataISO;
-    if (typeof original !== 'function' || original.__hapV4074DateWrapped) return false;
+    if (typeof original !== 'function' || original.__hapV4075DateWrapped) return false;
     const wrapped = function(value) {
       // Quando o XLSX entrega um Date real, preservar o dia civil local em vez
       // de convertê-lo para UTC com toISOString(), que pode deslocar a data.
       if (value instanceof Date && !Number.isNaN(value.getTime())) return localTodayISO(value);
       return original.apply(this, arguments);
     };
-    wrapped.__hapV4074DateWrapped = true;
+    wrapped.__hapV4075DateWrapped = true;
     wrapped.__hapV4074DateOriginal = original;
     window.paraDataISO = wrapped;
     return true;
@@ -102,10 +102,10 @@
     patch();
     tries += 1;
     if (tries >= 30 || (
-      typeof window.renderTransferenciasTab === 'function' && window.renderTransferenciasTab.__hapV4074DateWrapped &&
-      typeof window.renderBaseConsumoTab === 'function' && window.renderBaseConsumoTab.__hapV4074DateWrapped &&
-      typeof window.openNovaTransferenciaModal === 'function' && window.openNovaTransferenciaModal.__hapV4074DateWrapped &&
-      typeof window.paraDataISO === 'function' && window.paraDataISO.__hapV4074DateWrapped
+      typeof window.renderTransferenciasTab === 'function' && window.renderTransferenciasTab.__hapV4075DateWrapped &&
+      typeof window.renderBaseConsumoTab === 'function' && window.renderBaseConsumoTab.__hapV4075DateWrapped &&
+      typeof window.openNovaTransferenciaModal === 'function' && window.openNovaTransferenciaModal.__hapV4075DateWrapped &&
+      typeof window.paraDataISO === 'function' && window.paraDataISO.__hapV4075DateWrapped
     )) clearInterval(timer);
   }, 200);
 

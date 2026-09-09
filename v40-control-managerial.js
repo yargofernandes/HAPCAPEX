@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.74 — Controle de Capex: Gerencial auditado + Carry Over + duração de obra.
+/* HAPCAPEX V40.0.75 — Controle de Capex: Gerencial auditado + Carry Over + duração de obra.
    - Gerencial com filtros globais, KPIs, tabelas e gráficos integrados.
    - Saldo líquido de transferências, concentração CAPEX, Realizado mensal,
      aportes/contingenciamentos, comprometido x saldo livre, Top OIs e pendências.
@@ -12,7 +12,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.74';
+  const VERSION = '40.0.75';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -86,16 +86,24 @@
   }
 
   function patchNavigation() {
-    if (window.__HAP_V4071_NAV_PATCHED__) return true;
     if (typeof navHtml !== 'function' || typeof refreshCurrent !== 'function') return false;
+    if (window.navHtml?.__hapV4075ManagerialWrapped && window.refreshCurrent?.__hapV4075ManagerialWrapped) {
+      window.__HAP_V4071_NAV_PATCHED__ = true;
+      return true;
+    }
+
     const originalNav = navHtml;
-    navHtml = function(isAdmin) {
+    const wrappedNav = function(isAdmin) {
       const html = originalNav.apply(this, arguments);
       if (!isAdmin || !html || html.includes("switchTab('gerencial')")) return html;
       return html.replace(/<\/div>\s*$/, `${managerialNavPill()}</div>`);
     };
+    wrappedNav.__hapV4075ManagerialWrapped = true;
+    wrappedNav.__hapV4075Original = originalNav;
+    navHtml = window.navHtml = wrappedNav;
+
     const originalRefresh = refreshCurrent;
-    refreshCurrent = async function() {
+    const wrappedRefresh = async function() {
       try {
         if (typeof state !== 'undefined' && state?.tab === 'gerencial') {
           await loadManagerialTab();
@@ -105,6 +113,10 @@
       destroyCharts();
       return originalRefresh.apply(this, arguments);
     };
+    wrappedRefresh.__hapV4075ManagerialWrapped = true;
+    wrappedRefresh.__hapV4075Original = originalRefresh;
+    refreshCurrent = window.refreshCurrent = wrappedRefresh;
+
     window.__HAP_V4071_NAV_PATCHED__ = true;
     return true;
   }
@@ -663,13 +675,18 @@
   function boot() {
     ensureStyle();
     let tries=0;
+    let renderedOnce=false;
     const timer=setInterval(()=>{
       tries++;
-      if(patchNavigation() || tries>100){
-        clearInterval(timer);
-        if(window.__HAP_V4071_NAV_PATCHED__){try{if(typeof state!=='undefined' && state?.role==='admin')void refreshCurrent();}catch(_){}}
+      const ok=patchNavigation();
+      if(ok && !renderedOnce){
+        renderedOnce=true;
+        try{if(typeof state!=='undefined' && state?.role==='admin')void refreshCurrent();}catch(_){}
       }
-    },100);
+      // Mantém uma janela de proteção contra módulos que ainda estejam carregando e
+      // possam embrulhar/redefinir navHtml depois deste módulo.
+      if(tries>=120) clearInterval(timer);
+    },250);
     patchDynamicUi();
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
     window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,canonicalPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData};

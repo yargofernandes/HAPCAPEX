@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.74 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.75 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -166,15 +166,7 @@
       './v40-maintenance-realized-policy.js?v=40.0.69','hapV4068MaintRealized');
   }
 
-  function loadControlManagerial(){
-    loadScriptOnce('__HAP_V4074_CONTROL_MANAGERIAL_LOADER__','script[data-hap-v4074-control-managerial]',
-      './v40-control-managerial.js?v=40.0.74','hapV4074ControlManagerial');
-  }
 
-  function loadDateLocalPolicy(){
-    loadScriptOnce('__HAP_V4074_DATE_LOCAL_POLICY_LOADER__','script[data-hap-v4074-date-local-policy]',
-      './v40-date-local-policy.js?v=40.0.74','hapV4074DateLocalPolicy');
-  }
 
   function loadTransferFilters(){
     loadScriptOnce('__HAP_V4041_TRANSFER_FILTERS_LOADER__','script[data-hap-v4041-transfer-filters]',
@@ -214,8 +206,6 @@
   loadDateBoundedFlow();
   loadMaintenanceMode();
   loadMaintenanceRealizedPolicy();
-  loadControlManagerial();
-  loadDateLocalPolicy();
   loadTransferFilters();
   loadSapBridgeResilience();
   loadLinkedOiMode();
