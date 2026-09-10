@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.78 — Controle de Capex: tabelas gerenciais filtráveis + rotas líquidas.
+/* HAPCAPEX V40.0.79 — Controle de Capex: comparação CAPEX inicial x atual + organização gerencial.
    - Gerencial com filtros globais, KPIs, tabelas e gráficos integrados.
    - Saldo líquido de transferências, concentração CAPEX, Realizado mensal,
      aportes/contingenciamentos, comprometido x saldo livre, Top OIs e pendências.
@@ -12,7 +12,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.78';
+  const VERSION = '40.0.79';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -317,6 +317,39 @@
     return rows.filter(m=>!isExcludedManagerialPackage(m?.pacote));
   }
 
+  function allInitialPackages() {
+    const rows=Array.isArray(mgr.raw?.capex_inicial_pacotes) ? mgr.raw.capex_inicial_pacotes : [];
+    return rows.filter(r=>!isExcludedManagerialPackage(r?.pacote));
+  }
+
+  function capexComparisonRows() {
+    // Comparação estrutural do exercício: o baseline existe por pacote, portanto
+    // HEAD/OI/saldo/período não reduzem o CAPEX inicial. O filtro global de Pacote
+    // pode restringir a visualização sem distorcer a comparação.
+    const initial=allInitialPackages();
+    const current=aggregateFinance(allOis(),'pacote');
+    const initialMap=new Map(initial.map(x=>[String(x.pacote||'Sem classificação'),x]));
+    const currentMap=new Map(current.map(x=>[String(x.key||x.label||'Sem classificação'),x]));
+    const keys=uniq([...initialMap.keys(),...currentMap.keys()]);
+    const initialTotal=initial.reduce((sum,x)=>sum+n(x.capex_inicial),0);
+    const currentTotal=allOis().reduce((sum,x)=>sum+n(x.atribuido),0);
+    return keys.map(pacote=>{
+      const ini=n(initialMap.get(pacote)?.capex_inicial);
+      const atu=n(currentMap.get(pacote)?.atribuido);
+      const variacao=atu-ini;
+      return {
+        pacote,
+        capex_inicial:ini,
+        capex_atual:atu,
+        variacao,
+        variacao_pct:ini ? variacao/ini*100 : null,
+        pct_inicial:initialTotal ? ini/initialTotal*100 : 0,
+        pct_atual:currentTotal ? atu/currentTotal*100 : 0
+      };
+    }).filter(x=>!mgr.pacote || x.pacote===mgr.pacote)
+      .sort((a,b)=>b.capex_atual-a.capex_atual);
+  }
+
   function saldoMatches(oi) {
     const s=n(oi?.saldo);
     if(mgr.saldo==='positive') return s>0.005;
@@ -499,7 +532,8 @@
     const aporte=movements.filter(m=>m.tipo==='aporte').reduce((s,m)=>s+n(m.valor),0);
     const conting=movements.filter(m=>m.tipo==='contingenciamento').reduce((s,m)=>s+n(m.valor),0);
     const unresolvedTransferTotal=unresolvedTransfers.reduce((s,t)=>s+n(t.valor),0);
-    return {ois,transfers,unresolvedTransfers,movements,packages,heads,nets,routes,moves,monthly,top,pending,totalAttr,totalComp,totalSaldo,totalReal,transferTotal,transferDirector,transferInternal,aporte,conting,unresolvedTransferTotal};
+    const capexComparison=capexComparisonRows();
+    return {ois,transfers,unresolvedTransfers,movements,packages,heads,nets,routes,moves,monthly,top,pending,totalAttr,totalComp,totalSaldo,totalReal,transferTotal,transferDirector,transferInternal,aporte,conting,unresolvedTransferTotal,capexComparison};
   }
 
   function optionHtml(value,label,current) {
@@ -550,10 +584,10 @@
     const compPct=s.totalAttr ? s.totalComp/s.totalAttr*100 : 0;
     const realPct=s.totalAttr ? s.totalReal/s.totalAttr*100 : 0;
     return `<div class="kpi-grid">
-      <div class="kpi-card"><div class="label">Valor atribuído</div><div class="value">${money(s.totalAttr)}</div><div class="v4071-kpi-sub">Snapshot atual · filtros de Pacote/HEAD/OI</div></div>
-      <div class="kpi-card" style="border-left-color:var(--azul-claro)"><div class="label">Compromissado</div><div class="value">${money(s.totalComp)}</div><div class="v4071-kpi-sub">${pct(compPct)} do atribuído</div></div>
-      <div class="kpi-card" style="border-left-color:var(--laranja)"><div class="label">Realizado no período</div><div class="value" style="color:var(--laranja)">${money(s.totalReal)}</div><div class="v4071-kpi-sub">${periodLabel()} · ${pct(realPct)} do atribuído</div></div>
-      <div class="kpi-card" style="border-left-color:var(--verde)"><div class="label">Saldo livre</div><div class="value" style="color:var(--verde)">${money(s.totalSaldo)}</div><div class="v4071-kpi-sub">Atribuído − compromissado</div></div>
+      <div class="kpi-card"><div class="label">CAPEX atual</div><div class="value">${money(s.totalAttr)}</div><div class="v4071-kpi-sub">Snapshot atual · filtros de Pacote/HEAD/OI</div></div>
+      <div class="kpi-card" style="border-left-color:var(--azul-claro)"><div class="label">Compromissado</div><div class="value">${money(s.totalComp)}</div><div class="v4071-kpi-sub">${pct(compPct)} do CAPEX</div></div>
+      <div class="kpi-card" style="border-left-color:var(--laranja)"><div class="label">Realizado no período</div><div class="value" style="color:var(--laranja)">${money(s.totalReal)}</div><div class="v4071-kpi-sub">${periodLabel()} · ${pct(realPct)} do CAPEX</div></div>
+      <div class="kpi-card" style="border-left-color:var(--verde)"><div class="label">Saldo livre</div><div class="value" style="color:var(--verde)">${money(s.totalSaldo)}</div><div class="v4071-kpi-sub">CAPEX − compromissado</div></div>
       <div class="kpi-card"><div class="label">OIs selecionadas</div><div class="value">${intFmt.format(s.ois.length)}</div><div class="v4071-kpi-sub">Após filtros globais</div></div>
       <div class="kpi-card"><div class="label">Transferido classificado</div><div class="value">${money(s.transferTotal)}</div><div class="v4071-kpi-sub">${intFmt.format(s.transfers.length)} transferência(s) entre pacotes identificados</div></div>
       <div class="kpi-card" style="border-left-color:var(--verde)"><div class="label">Aportes no período</div><div class="value" style="color:var(--verde)">${money(s.aporte)}</div><div class="v4071-kpi-sub">Histórico consolidado da Curva</div></div>
@@ -565,13 +599,26 @@
   function chartGridHtml() {
     const card=(id,title,desc,tall=false)=>`<div class="v4071-chart-card"><h3>${esc(title)}</h3><p>${esc(desc)}</p><div class="v4071-chart-wrap ${tall?'tall':''}"><canvas id="${id}"></canvas></div></div>`;
     return `<div class="v4071-grid-2">
-      ${card('v4071-chart-package','Concentração do CAPEX por pacote','% do valor atribuído. Clique em uma barra para filtrar o pacote.',true)}
-      ${card('v4071-chart-head','Concentração do CAPEX por HEAD','% do valor atribuído. Exibe os principais HEADs; clique para filtrar.',true)}
+      ${card('v4071-chart-package','Concentração do CAPEX por pacote','% do CAPEX atual. Clique em uma barra para filtrar o pacote.',true)}
+      ${card('v4071-chart-head','Concentração do CAPEX por HEAD','% do CAPEX atual. Exibe os principais HEADs; clique para filtrar.',true)}
       ${card('v4071-chart-realized','Evolução mensal do Realizado','Barras mensais + linha acumulada dentro do período selecionado.')}
       ${card('v4071-chart-transfer','Saldo líquido de transferências por pacote','Recebido − Doado. Movimentações internas do mesmo pacote gerencial não alteram o líquido.')}
       ${card('v4071-chart-balance','Compromissado x saldo livre por pacote','Leitura do valor já comprometido versus o saldo ainda disponível.')}
       ${card('v4071-chart-movement','Aportes x contingenciamentos por pacote','Histórico consolidado da Curva + movimentos integrados atuais no período selecionado.')}
     </div>`;
+  }
+
+  function capexComparisonTableHtml(s) {
+    const cols=[
+      {key:'pacote',label:'Pacote',value:r=>r.pacote,render:r=>`<strong class="main">${esc(r.pacote)}</strong>`},
+      {key:'capex_inicial',label:'CAPEX inicial',type:'number',num:true,value:r=>r.capex_inicial,render:r=>money(r.capex_inicial)},
+      {key:'capex_atual',label:'CAPEX atual',type:'number',num:true,value:r=>r.capex_atual,render:r=>money(r.capex_atual)},
+      {key:'variacao',label:'Variação R$',type:'number',num:true,value:r=>r.variacao,className:r=>r.variacao>0?'v4071-positive':r.variacao<0?'v4071-negative':'v4071-neutral',render:r=>money(r.variacao)},
+      {key:'variacao_pct',label:'Variação %',type:'number',num:true,value:r=>r.variacao_pct===null?NaN:r.variacao_pct,className:r=>r.variacao>0?'v4071-positive':r.variacao<0?'v4071-negative':'v4071-neutral',render:r=>r.variacao_pct===null?'—':pct(r.variacao_pct)},
+      {key:'pct_inicial',label:'% CAPEX inicial',type:'number',num:true,value:r=>r.pct_inicial,render:r=>pct(r.pct_inicial)},
+      {key:'pct_atual',label:'% CAPEX atual',type:'number',num:true,value:r=>r.pct_atual,render:r=>pct(r.pct_atual)}
+    ];
+    return renderManagerialTable({id:'compare',title:'CAPEX inicial x CAPEX atual por pacote',description:'Comparação do orçamento inicial com o CAPEX atual por pacote. Variação = CAPEX atual − CAPEX inicial. Filtros de HEAD/OI/saldo/período não se aplicam ao baseline inicial.',rows:s.capexComparison,columns:cols,empty:'Sem dados de CAPEX inicial para o exercício.'});
   }
 
   function packageTableRows(s) {
@@ -587,7 +634,7 @@
     const cols=[
       {key:'label',label:'Pacote',value:r=>r.label,render:r=>`<strong class="main">${esc(r.label)}</strong>`},
       {key:'qtd_ois',label:'OIs',type:'number',num:true,value:r=>r.qtd_ois,render:r=>intFmt.format(r.qtd_ois)},
-      {key:'atribuido',label:'Atribuído',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
+      {key:'atribuido',label:'CAPEX',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
       {key:'pct_capex',label:'% CAPEX',type:'number',num:true,value:r=>r.pct_capex,render:r=>pct(r.pct_capex)},
       {key:'compromissado',label:'Compromissado',type:'number',num:true,value:r=>r.compromissado,render:r=>money(r.compromissado)},
       {key:'realizado',label:'Realizado',type:'number',num:true,value:r=>r.realizado,render:r=>money(r.realizado)},
@@ -598,14 +645,14 @@
       {key:'aporte_mov',label:'Aportes',type:'number',num:true,value:r=>r.aporte_mov,className:'v4071-positive',render:r=>money(r.aporte_mov)},
       {key:'conting_mov',label:'Conting.',type:'number',num:true,value:r=>r.conting_mov,className:'v4071-negative',render:r=>money(r.conting_mov)}
     ];
-    return renderManagerialTable({id:'packages',title:'Pacotes CAPEX · visão integrada',description:'Atribuído, concentração, consumo, saldo, transferências e ajustes financeiros. Carry Over fica consolidado em um único pacote.',rows,columns:cols});
+    return renderManagerialTable({id:'packages',title:'Pacotes CAPEX · visão integrada',description:'CAPEX, concentração, consumo, saldo, transferências e ajustes financeiros. Carry Over fica consolidado em um único pacote.',rows,columns:cols});
   }
 
   function headTableHtml(s) {
     const cols=[
       {key:'label',label:'HEAD',value:r=>r.label,render:r=>`<strong class="main">${esc(r.label)}</strong>`},
       {key:'qtd_ois',label:'OIs',type:'number',num:true,value:r=>r.qtd_ois,render:r=>intFmt.format(r.qtd_ois)},
-      {key:'atribuido',label:'Atribuído',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
+      {key:'atribuido',label:'CAPEX',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
       {key:'pct_capex',label:'% CAPEX',type:'number',num:true,value:r=>r.pct_capex,render:r=>pct(r.pct_capex)},
       {key:'compromissado',label:'Compromissado',type:'number',num:true,value:r=>r.compromissado,render:r=>money(r.compromissado)},
       {key:'realizado',label:'Realizado',type:'number',num:true,value:r=>r.realizado,render:r=>money(r.realizado)},
@@ -635,7 +682,7 @@
       {key:'oi_obra',label:'OI / Obra',value:r=>`${r.oi} ${r.nome||''}`,render:r=>`<strong class="main">${esc(r.oi)}</strong><small>${esc(r.nome||'')}</small>`},
       {key:'pacote',label:'Pacote',value:r=>r.pacote,render:r=>esc(r.pacote)},
       {key:'head',label:'HEAD',value:r=>r.head,render:r=>esc(r.head)},
-      {key:'atribuido',label:'Atribuído',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
+      {key:'atribuido',label:'CAPEX',type:'number',num:true,value:r=>r.atribuido,render:r=>money(r.atribuido)},
       {key:'compromissado',label:'Compromissado',type:'number',num:true,value:r=>r.compromissado,render:r=>money(r.compromissado)},
       {key:'saldo',label:'Saldo',type:'number',num:true,value:r=>r.saldo,className:'v4071-positive',render:r=>`<strong>${money(r.saldo)}</strong>`},
       {key:'realizado',label:'Realizado período',type:'number',num:true,value:r=>realizedPeriod(r),render:r=>money(realizedPeriod(r))}
@@ -654,6 +701,7 @@
   }
 
   function managerialTableHtmlById(id,s=summaryData()) {
+    if(id==='compare') return capexComparisonTableHtml(s);
     if(id==='packages') return packageTableHtml(s);
     if(id==='heads') return headTableHtml(s);
     if(id==='net') return transferNetTableHtml(s);
@@ -705,7 +753,7 @@
     const content=document.getElementById('v4071-content'); if(!content || !mgr.raw) return;
     const s=summaryData();
     const summary=document.getElementById('v4071-filter-summary'); if(summary) summary.innerHTML=filtersSummaryHtml(s);
-    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}${packageTableHtml(s)}${headTableHtml(s)}${transferNetTableHtml(s)}${topOisTableHtml(s)}${routesTableHtml(s)}`;
+    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}${topOisTableHtml(s)}${capexComparisonTableHtml(s)}${packageTableHtml(s)}${headTableHtml(s)}${transferNetTableHtml(s)}${routesTableHtml(s)}`;
     bindContentActions();
     renderCharts(s);
   }
@@ -745,7 +793,7 @@
     const appEl=document.getElementById('app'); if(!appEl)return;
     mgr.loading=true;
     appEl.innerHTML='<div class="session-loading"><div class="session-loading-card"><strong>Gerencial</strong><span>Consolidando dados e indicadores...</span></div></div>';
-    const {data,error}=await sb.rpc('obter_gerencial_controle_v4077',{p_exercicio:null});
+    const {data,error}=await sb.rpc('obter_gerencial_controle_v4079',{p_exercicio:null});
     mgr.loading=false;
     if(error){appEl.innerHTML=`<div class="error-msg">Não foi possível carregar o Gerencial: ${esc(error.message||error)}</div>`;return;}
     mgr.raw=data||{};
@@ -821,11 +869,12 @@
     if(typeof XLSX==='undefined'){alert('Biblioteca Excel indisponível.');return;}
     const s=summaryData(); const wb=XLSX.utils.book_new();
     const resumo=[...Object.entries(exportFiltersObject()).map(([Indicador,Valor])=>({Indicador,Valor})),
-      {Indicador:'Valor atribuído',Valor:s.totalAttr},{Indicador:'Compromissado',Valor:s.totalComp},{Indicador:'Realizado no período',Valor:s.totalReal},{Indicador:'Saldo livre',Valor:s.totalSaldo},{Indicador:'OIs',Valor:s.ois.length},{Indicador:'Transferido no período',Valor:s.transferTotal},{Indicador:'Aportes no período',Valor:s.aporte},{Indicador:'Contingenciamentos no período',Valor:s.conting},{Indicador:'Pendências de classificação',Valor:s.pending.length},{Indicador:'Transferências históricas sem pacote',Valor:s.unresolvedTransfers.length},{Indicador:'Valor histórico sem pacote',Valor:s.unresolvedTransferTotal}];
+      {Indicador:'CAPEX atual',Valor:s.totalAttr},{Indicador:'Compromissado',Valor:s.totalComp},{Indicador:'Realizado no período',Valor:s.totalReal},{Indicador:'Saldo livre',Valor:s.totalSaldo},{Indicador:'OIs',Valor:s.ois.length},{Indicador:'Transferido no período',Valor:s.transferTotal},{Indicador:'Aportes no período',Valor:s.aporte},{Indicador:'Contingenciamentos no período',Valor:s.conting},{Indicador:'Pendências de classificação',Valor:s.pending.length},{Indicador:'Transferências históricas sem pacote',Valor:s.unresolvedTransfers.length},{Indicador:'Valor histórico sem pacote',Valor:s.unresolvedTransferTotal}];
     XLSX.utils.book_append_sheet(wb,workbookSheet(resumo,[28,32]),'Resumo');
-    XLSX.utils.book_append_sheet(wb,workbookSheet(s.packages.map(x=>({Pacote:x.label,OIs:x.qtd_ois,Atribuido:x.atribuido,Pct_CAPEX:x.pct_capex,Compromissado:x.compromissado,Realizado_Periodo:x.realizado,Saldo:x.saldo,Aporte_Atual:x.aporte,Conting_Atual:x.conting})),[36,10,18,12,18,18,18,18,18]),'Pacotes');
-    XLSX.utils.book_append_sheet(wb,workbookSheet(s.heads.map(x=>({HEAD:x.label,OIs:x.qtd_ois,Atribuido:x.atribuido,Pct_CAPEX:x.pct_capex,Compromissado:x.compromissado,Realizado_Periodo:x.realizado,Saldo:x.saldo})),[36,10,18,12,18,18,18]),'HEAD');
-    XLSX.utils.book_append_sheet(wb,workbookSheet(s.top.map((o,i)=>({Posicao:i+1,OI:o.oi,Obra:o.nome,Pacote:o.pacote,HEAD:o.head,Atribuido:n(o.atribuido),Compromissado:n(o.compromissado),Saldo:n(o.saldo),Realizado_Periodo:realizedPeriod(o)})),[9,12,42,34,32,18,18,18,18]),'Top Saldo');
+    XLSX.utils.book_append_sheet(wb,workbookSheet(s.packages.map(x=>({Pacote:x.label,OIs:x.qtd_ois,CAPEX:x.atribuido,Pct_CAPEX:x.pct_capex,Compromissado:x.compromissado,Realizado_Periodo:x.realizado,Saldo:x.saldo,Aporte_Atual:x.aporte,Conting_Atual:x.conting})),[36,10,18,12,18,18,18,18,18]),'Pacotes');
+    XLSX.utils.book_append_sheet(wb,workbookSheet(s.heads.map(x=>({HEAD:x.label,OIs:x.qtd_ois,CAPEX:x.atribuido,Pct_CAPEX:x.pct_capex,Compromissado:x.compromissado,Realizado_Periodo:x.realizado,Saldo:x.saldo})),[36,10,18,12,18,18,18]),'HEAD');
+    XLSX.utils.book_append_sheet(wb,workbookSheet(s.top.map((o,i)=>({Posicao:i+1,OI:o.oi,Obra:o.nome,Pacote:o.pacote,HEAD:o.head,CAPEX:n(o.atribuido),Compromissado:n(o.compromissado),Saldo:n(o.saldo),Realizado_Periodo:realizedPeriod(o)})),[9,12,42,34,32,18,18,18,18]),'Top Saldo');
+    XLSX.utils.book_append_sheet(wb,workbookSheet(s.capexComparison.map(x=>({Pacote:x.pacote,CAPEX_Inicial:x.capex_inicial,CAPEX_Atual:x.capex_atual,Variacao_R$:x.variacao,Variacao_Pct:x.variacao_pct,Pct_CAPEX_Inicial:x.pct_inicial,Pct_CAPEX_Atual:x.pct_atual})),[38,20,20,20,16,18,18]),'CAPEX Inicial x Atual');
     XLSX.utils.book_append_sheet(wb,workbookSheet(s.nets.map(x=>({Pacote:x.pacote,Recebido:x.recebido,Doado:x.doado,Liquido:x.liquido,Entradas:x.qtd_entrada,Saidas:x.qtd_saida})),[34,18,18,18,10,10]),'Liquido Transferencias');
     XLSX.utils.book_append_sheet(wb,workbookSheet([...s.transfers,...s.unresolvedTransfers].map(t=>({Data:t.data,Documento:t.numero_documento,OI_Origem:t.oi_origem,Obra_Origem:t.nome_origem,Pacote_Origem:t.pacote_origem,HEAD_Origem:t.head_origem,OI_Destino:t.oi_destino,Obra_Destino:t.nome_destino,Pacote_Destino:t.pacote_destino,HEAD_Destino:t.head_destino,Valor:n(t.valor),Status_Classificacao:transferClassifiable(t)?'Classificada':'Histórica sem pacote',Exige_Diretoria:transferClassifiable(t)?(t.exige_autorizacao?'Sim':'Não'):'Indeterminado',Justificativa:t.justificativa})),[12,16,12,36,32,28,12,36,32,28,18,15,45]),'Transferencias');
     XLSX.utils.book_append_sheet(wb,workbookSheet(s.monthly.map(x=>({Mes:x.label,Realizado:x.valor,Acumulado_Periodo:x.acumulado})),[12,20,20]),'Realizado Mensal');
@@ -844,7 +893,7 @@
       const addHeader=(title='HAPCAPEX · Gerencial')=>{doc.setFontSize(15);doc.setTextColor(13,43,78);doc.text(title,12,12);doc.setFontSize(8);doc.setTextColor(90,104,130);doc.text(`Exercício ${mgr.raw?.exercicio} · ${periodLabel()} · Pacote: ${mgr.pacote||'Todos'} · HEAD: ${mgr.head||'Todos'} · Busca: ${mgr.query||'—'}`,12,18);};
       const footer=()=>{const pages=doc.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(7);doc.setTextColor(120);doc.text(`HAPCAPEX V${VERSION} · Gerado em ${new Date().toLocaleString('pt-BR')}`,12,H-6);doc.text(`${i}/${pages}`,W-18,H-6);}};
       addHeader();
-      doc.autoTable({startY:23,theme:'grid',styles:{fontSize:8,cellPadding:2},head:[['Atribuído','Compromissado','Realizado período','Saldo livre','OIs','Transferido','Aportes','Conting.']],body:[[money(s.totalAttr),money(s.totalComp),money(s.totalReal),money(s.totalSaldo),String(s.ois.length),money(s.transferTotal),money(s.aporte),money(s.conting)]],headStyles:{fillColor:[26,75,140]}});
+      doc.autoTable({startY:23,theme:'grid',styles:{fontSize:8,cellPadding:2},head:[['CAPEX','Compromissado','Realizado período','Saldo livre','OIs','Transferido','Aportes','Conting.']],body:[[money(s.totalAttr),money(s.totalComp),money(s.totalReal),money(s.totalSaldo),String(s.ois.length),money(s.transferTotal),money(s.aporte),money(s.conting)]],headStyles:{fillColor:[26,75,140]}});
       let y=doc.lastAutoTable.finalY+5;
       const chartIds=['v4071-chart-package','v4071-chart-head','v4071-chart-realized','v4071-chart-transfer','v4071-chart-balance','v4071-chart-movement'];
       const chartTitles=['Concentração por pacote','Concentração por HEAD','Evolução mensal do Realizado','Saldo líquido de transferências','Compromissado x saldo livre','Aportes x contingenciamentos'];
@@ -857,13 +906,14 @@
         try{doc.addImage(canvas.toDataURL('image/png'),'PNG',x,y+3,width,height);}catch(_){}
         if(col===1)y+=78;
       }
+      doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · Top OIs com maior saldo');
+      doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.5,cellPadding:1.3},head:[['#','OI','Obra','Pacote','HEAD','CAPEX','Comprom.','Saldo']],body:s.top.map((o,i)=>[i+1,o.oi,o.nome,o.pacote,o.head,money(o.atribuido),money(o.compromissado),money(o.saldo)]),headStyles:{fillColor:[30,138,74]}});
+      doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · CAPEX inicial x atual');
+      doc.autoTable({startY:23,theme:'striped',styles:{fontSize:7,cellPadding:1.5},head:[['Pacote','CAPEX inicial','CAPEX atual','Variação R$','Variação %','% Inicial','% Atual']],body:s.capexComparison.map(x=>[x.pacote,money(x.capex_inicial),money(x.capex_atual),money(x.variacao),x.variacao_pct===null?'—':pct(x.variacao_pct),pct(x.pct_inicial),pct(x.pct_atual)]),headStyles:{fillColor:[13,43,78]}});
       doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · Pacotes');
-      doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.7,cellPadding:1.4},head:[['Pacote','OIs','Atribuído','% CAPEX','Comprom.','Realizado','Saldo']],body:s.packages.map(x=>[x.label,x.qtd_ois,money(x.atribuido),pct(x.pct_capex),money(x.compromissado),money(x.realizado),money(x.saldo)]),headStyles:{fillColor:[13,43,78]}});
-      doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · HEAD e Top Saldo');
-      doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.5,cellPadding:1.3},head:[['HEAD','OIs','Atribuído','% CAPEX','Comprom.','Realizado','Saldo']],body:s.heads.map(x=>[x.label,x.qtd_ois,money(x.atribuido),pct(x.pct_capex),money(x.compromissado),money(x.realizado),money(x.saldo)]),headStyles:{fillColor:[13,43,78]},margin:{bottom:15}});
-      const nextY=Math.min(doc.lastAutoTable.finalY+6,H-50);
-      if(nextY>H-45){doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · Top Saldo');y=23;} else y=nextY;
-      doc.autoTable({startY:y,theme:'striped',styles:{fontSize:6.5,cellPadding:1.3},head:[['#','OI','Obra','Pacote','HEAD','Saldo']],body:s.top.map((o,i)=>[i+1,o.oi,o.nome,o.pacote,o.head,money(o.saldo)]),headStyles:{fillColor:[30,138,74]}});
+      doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.7,cellPadding:1.4},head:[['Pacote','OIs','CAPEX','% CAPEX','Comprom.','Realizado','Saldo']],body:s.packages.map(x=>[x.label,x.qtd_ois,money(x.atribuido),pct(x.pct_capex),money(x.compromissado),money(x.realizado),money(x.saldo)]),headStyles:{fillColor:[13,43,78]}});
+      doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · HEAD');
+      doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.5,cellPadding:1.3},head:[['HEAD','OIs','CAPEX','% CAPEX','Comprom.','Realizado','Saldo']],body:s.heads.map(x=>[x.label,x.qtd_ois,money(x.atribuido),pct(x.pct_capex),money(x.compromissado),money(x.realizado),money(x.saldo)]),headStyles:{fillColor:[13,43,78]}});
       if(s.pending.length){doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · Pendências de cadastro');doc.autoTable({startY:23,theme:'grid',styles:{fontSize:7,cellPadding:1.6},head:[['OI','Obra','Sem Pacote','Sem HEAD']],body:s.pending.map(o=>[o.oi,o.nome,o.pacote_faltante?'Sim':'Não',o.head_faltante?'Sim':'Não']),headStyles:{fillColor:[224,112,32]}});}
       footer();
       doc.save(`Gerencial_HAPCAPEX_${mgr.raw?.exercicio||''}_${new Date().toISOString().slice(0,10)}.pdf`);
@@ -888,7 +938,7 @@
     },250);
     patchDynamicUi();
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
-    window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,canonicalPackage,isExcludedManagerialPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData};
+    window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,canonicalPackage,isExcludedManagerialPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData,capexComparisonRows};
   }
 
   if(document.body)boot();else document.addEventListener('DOMContentLoaded',boot,{once:true});
