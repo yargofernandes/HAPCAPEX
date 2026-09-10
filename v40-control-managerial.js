@@ -12,7 +12,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.80';
+  const VERSION = '40.0.82';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -642,7 +642,7 @@
       {key:'pct_inicial',label:'% CAPEX inicial',type:'number',num:true,totalFormat:'pct',value:r=>r.pct_inicial,render:r=>pct(r.pct_inicial)},
       {key:'pct_atual',label:'% CAPEX atual',type:'number',num:true,totalFormat:'pct',value:r=>r.pct_atual,render:r=>pct(r.pct_atual)}
     ];
-    return renderManagerialTable({id:'compare',title:'CAPEX inicial x CAPEX atual por pacote',description:'Comparação do orçamento inicial com o CAPEX atual por pacote. Variação = CAPEX atual − CAPEX inicial. Filtros de HEAD/OI/saldo/período não se aplicam ao baseline inicial.',rows:s.capexComparison,columns:cols,empty:'Sem dados de CAPEX inicial para o exercício.'});
+    return renderManagerialTable({id:'compare',title:'CAPEX inicial x CAPEX atual por pacote',description:'Comparação do CAPEX inicial com o CAPEX atual por pacote. O CAPEX inicial é reagrupado pela classificação atual das OIs: corrigir uma classificação corrige também a leitura histórica. Variação = CAPEX atual − CAPEX inicial.',rows:s.capexComparison,columns:cols,empty:'Sem dados de CAPEX inicial para o exercício.'});
   }
 
   function packageTableRows(s) {
@@ -817,7 +817,7 @@
     const appEl=document.getElementById('app'); if(!appEl)return;
     mgr.loading=true;
     appEl.innerHTML='<div class="session-loading"><div class="session-loading-card"><strong>Gerencial</strong><span>Consolidando dados e indicadores...</span></div></div>';
-    const {data,error}=await sb.rpc('obter_gerencial_controle_v4079',{p_exercicio:null});
+    const {data,error}=await sb.rpc('obter_gerencial_controle_v4082',{p_exercicio:null});
     mgr.loading=false;
     if(error){appEl.innerHTML=`<div class="error-msg">Não foi possível carregar o Gerencial: ${esc(error.message||error)}</div>`;return;}
     mgr.raw=data||{};
@@ -855,7 +855,7 @@
 
   async function renderCharts(s) {
     const seq=++mgr.chartSeq;
-    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.80] Chart.js indisponível',err);return;}
+    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.82] Chart.js indisponível',err);return;}
     if(seq!==mgr.chartSeq) return;
     Object.values(mgr.charts).forEach(c=>{try{c?.destroy();}catch(_){}});mgr.charts={};
     if(typeof state!=='undefined' && state?.tab!=='gerencial') return;
@@ -996,7 +996,7 @@
     },250);
     patchDynamicUi();
     observer.observe(document.body,{childList:true,subtree:true,characterData:true});
-    window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,canonicalPackage,isExcludedManagerialPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData,capexComparisonRows};
+    window.HAP_V4071_CONTROL_MANAGERIAL={version:VERSION,metodologiaClassificacao:'retroativa_atual',canonicalPackage,isExcludedManagerialPackage,endFromDuration,daysInclusive,loadManagerialTab,summaryData,capexComparisonRows};
   }
 
   if(document.body)boot();else document.addEventListener('DOMContentLoaded',boot,{once:true});
