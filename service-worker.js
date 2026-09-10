@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-80-table-totals-pdf-chart-values-20260910';
+const CACHE_NAME = 'hapcapex-v40-0-81-legacy-curve-edit-optional-20260910';
 const APP_SHELL = [
   './',
   './index.html',
@@ -26,6 +26,7 @@ const APP_SHELL = [
   './v40-classification-copy.js?v=40.0.60',
   './v40-control-managerial.js?v=40.0.80',
   './v40-date-local-policy.js?v=40.0.75',
+  './v40-legacy-curve-edit-optional.js?v=40.0.81',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
   './dashboard-core.js?v=29',
@@ -48,6 +49,7 @@ const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
 const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
 const CONTROL_MANAGERIAL_TAG = '<script src="./v40-control-managerial.js?v=40.0.80"></script>';
 const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.75"></script>';
+const LEGACY_CURVE_EDIT_OPTIONAL_TAG = '<script src="./v40-legacy-curve-edit-optional.js?v=40.0.81"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
   Nome da obra
@@ -336,6 +338,7 @@ async function decorateHtmlResponse(response, url) {
     text = removeVersionedScript(text, 'v40-classification-copy.js');
     text = removeVersionedScript(text, 'v40-control-managerial.js');
     text = removeVersionedScript(text, 'v40-date-local-policy.js');
+    text = removeVersionedScript(text, 'v40-legacy-curve-edit-optional.js');
 
     const governancePatterns = [
       '<script src="v37-control-governance.js?v=37.0"></script>',
@@ -345,10 +348,10 @@ async function decorateHtmlResponse(response, url) {
     ];
     const marker = governancePatterns.find(tag => text.includes(tag));
     if (marker) {
-      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}${CONTROL_MANAGERIAL_TAG}${DATE_LOCAL_POLICY_TAG}`);
+      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}${CONTROL_MANAGERIAL_TAG}${DATE_LOCAL_POLICY_TAG}${LEGACY_CURVE_EDIT_OPTIONAL_TAG}`);
     } else {
       const initTag = '<script>init();</script>';
-      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG + CLASSIFICATION_COPY_TAG + CONTROL_MANAGERIAL_TAG + DATE_LOCAL_POLICY_TAG;
+      const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG + CLASSIFICATION_COPY_TAG + CONTROL_MANAGERIAL_TAG + DATE_LOCAL_POLICY_TAG + LEGACY_CURVE_EDIT_OPTIONAL_TAG;
       if (text.includes(initTag)) text = text.replace(initTag, `${fallbackInjection}${initTag}`);
       else if (/<\/body>/i.test(text)) text = text.replace(/<\/body>/i, `${fallbackInjection}</body>`);
       else text += fallbackInjection;
