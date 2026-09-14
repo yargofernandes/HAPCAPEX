@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-86-managerial-filter-fix-20260914';
+const CACHE_NAME = 'hapcapex-v40-0-88-managerial-balance-all-20260914';
 const APP_SHELL = [
   './',
   './index.html',
@@ -26,7 +26,7 @@ const APP_SHELL = [
   './v40-classification-copy.js?v=40.0.60',
   './v40-classification-copy-global.js?v=40.0.84',
   './v40-control-managerial.js?v=40.0.83',
-  './v40-date-local-policy.js?v=40.0.86',
+  './v40-date-local-policy.js?v=40.0.88',
   './v40-legacy-curve-edit-optional.js?v=40.0.81',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
@@ -50,7 +50,7 @@ const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
 const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
 const CLASSIFICATION_COPY_GLOBAL_TAG = '<script src="./v40-classification-copy-global.js?v=40.0.84"></script>';
 const CONTROL_MANAGERIAL_TAG = '<script src="./v40-control-managerial.js?v=40.0.83"></script>';
-const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.86"></script>';
+const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.88"></script>';
 const LEGACY_CURVE_EDIT_OPTIONAL_TAG = '<script src="./v40-legacy-curve-edit-optional.js?v=40.0.81"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">

@@ -1,9 +1,10 @@
-/* HAPCAPEX V40.0.86 — Política de datas de calendário no Controle de Capex.
+/* HAPCAPEX V40.0.88 — Política de datas e ajustes visuais do Gerencial.
    Mantém a correção de deslocamento de datas em fusos UTC negativos.
-   V40.0.86:
-   - Gerencial: Situação do saldo fica apenas com "Com saldo" e "Saldo Zerado".
-   - Gerencial: remove o filtro "Regra transferência".
-   - O padrão da Situação do saldo passa a ser "Com saldo".
+   V40.0.88:
+   - Gerencial: Situação do saldo = "Todos", "Com saldo" e "Saldo Zerado".
+   - "Todos" é a opção padrão e não aplica filtro de saldo.
+   - Continua removido o filtro "Regra transferência".
+   - Mantém a consolidação gerencial de pacotes da V40.0.87.
    - Não altera dados financeiros, regras de autorização ou registros do banco.
 */
 (() => {
@@ -116,37 +117,37 @@
 })();
 
 
-/* V40.0.86 — Simplificação dos filtros do Gerencial.
+/* V40.0.88 — Simplificação dos filtros do Gerencial.
    Implementado neste arquivo já existente para evitar a criação de um novo módulo.
    Escopo exclusivamente de interface/filtro; não altera regras financeiras ou banco. */
 (() => {
   'use strict';
-  if (window.__HAP_V4086_MANAGERIAL_FILTERS__) return;
-  window.__HAP_V4086_MANAGERIAL_FILTERS__ = true;
+  if (window.__HAP_V4087_MANAGERIAL_FILTERS__) return;
+  window.__HAP_V4087_MANAGERIAL_FILTERS__ = true;
 
   function injectManagerialFilterStyle() {
-    if (document.getElementById('hap-v4086-managerial-filter-style')) return;
+    if (document.getElementById('hap-v4087-managerial-filter-style')) return;
     const style = document.createElement('style');
-    style.id = 'hap-v4086-managerial-filter-style';
+    style.id = 'hap-v4087-managerial-filter-style';
     style.textContent = `
-      .v4071-filter-grid.v4086-managerial-filters{
+      .v4071-filter-grid.v4087-managerial-filters{
         grid-template-columns:minmax(220px,2fr) repeat(3,minmax(145px,1fr))!important;
       }
       @media(max-width:1100px){
-        .v4071-filter-grid.v4086-managerial-filters{
+        .v4071-filter-grid.v4087-managerial-filters{
           grid-template-columns:repeat(3,minmax(0,1fr))!important;
         }
-        .v4071-filter-grid.v4086-managerial-filters>label:first-child{
+        .v4071-filter-grid.v4087-managerial-filters>label:first-child{
           grid-column:1/-1;
         }
       }
       @media(max-width:800px){
-        .v4071-filter-grid.v4086-managerial-filters{
+        .v4071-filter-grid.v4087-managerial-filters{
           grid-template-columns:1fr 1fr!important;
         }
       }
       @media(max-width:520px){
-        .v4071-filter-grid.v4086-managerial-filters{
+        .v4071-filter-grid.v4087-managerial-filters{
           grid-template-columns:1fr!important;
         }
       }
@@ -154,32 +155,29 @@
     document.head.appendChild(style);
   }
 
-  function forcePositiveBalanceFilter(select) {
-    if (!select) return;
-    if (select.value === 'positive' || select.value === 'zero') return;
-    select.value = 'positive';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
   function patchSaldoFilter() {
     const select = document.getElementById('v4071-filter-saldo');
     if (!select) return false;
 
-    // Mantém somente as duas escolhas solicitadas.
+    // Mantém "Todos" sem filtro, além das duas situações úteis solicitadas.
     Array.from(select.options).forEach(option => {
-      if (!['positive', 'zero'].includes(option.value)) option.remove();
+      if (!['all', 'positive', 'zero'].includes(option.value)) option.remove();
     });
 
+    const all = Array.from(select.options).find(option => option.value === 'all');
     const positive = Array.from(select.options).find(option => option.value === 'positive');
     const zero = Array.from(select.options).find(option => option.value === 'zero');
+    if (all && all.textContent !== 'Todos') all.textContent = 'Todos';
     if (positive && positive.textContent !== 'Com saldo') positive.textContent = 'Com saldo';
     if (zero && zero.textContent !== 'Saldo Zerado') zero.textContent = 'Saldo Zerado';
 
-    select.closest('.v4071-filter-grid')?.classList.add('v4086-managerial-filters');
+    // Se uma tela antiga ainda estiver com "negative", neutraliza para "Todos".
+    if (!['all', 'positive', 'zero'].includes(select.value)) {
+      select.value = 'all';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 
-    // O Gerencial antigo inicia em "Todos". Como essa escolha deixa de existir,
-    // a visão inicial passa a ser "Com saldo".
-    forcePositiveBalanceFilter(select);
+    select.closest('.v4071-filter-grid')?.classList.add('v4087-managerial-filters');
     return true;
   }
 
@@ -194,16 +192,13 @@
 
   function patchClearButton() {
     const button = document.getElementById('v4071-clear');
-    if (!button || button.dataset.v4086SaldoDefault === '1') return;
-    button.dataset.v4086SaldoDefault = '1';
+    if (!button || button.dataset.v4088SaldoDefault === '1') return;
+    button.dataset.v4088SaldoDefault = '1';
 
-    // O manipulador original zera os filtros. Em seguida restabelecemos a única
-    // opção padrão válida da nova interface: "Com saldo".
+    // O handler original já redefine mgr.saldo para "all".
+    // Apenas reaplicamos a limpeza visual depois que o toolbar for reconstruído.
     button.addEventListener('click', () => {
-      setTimeout(() => {
-        patchManagerialFilters();
-        forcePositiveBalanceFilter(document.getElementById('v4071-filter-saldo'));
-      }, 0);
+      setTimeout(() => patchManagerialFilters(), 0);
     });
   }
 
@@ -239,3 +234,118 @@
     if (attempts >= 40) clearInterval(bootTimer);
   }, 250);
 })();
+
+/* V40.0.87 — Consolidação visual de pacotes no Gerencial.
+   IMPORTANTE: atua somente sobre a resposta da RPC do Gerencial no navegador.
+   Não grava, renomeia ou altera classificações no banco de dados. */
+(() => {
+  'use strict';
+  if (window.__HAP_V4087_MANAGERIAL_PACKAGE_GROUPING__) return;
+  window.__HAP_V4087_MANAGERIAL_PACKAGE_GROUPING__ = true;
+
+  const TARGET_RPC = 'obter_gerencial_controle_v4082';
+  const CANONICAL_OPERATIONAL = 'Pacote Operacional | Suficiência de Rede';
+  const CANONICAL_PROJECTS = 'Projetos 2026';
+
+  function packageKey(value) {
+    return String(value || '')
+      .replace(/\u00a0/g, ' ')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s*\|\s*/g, ' | ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  function canonicalManagerialPackage(value) {
+    const raw = String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    const key = packageKey(raw);
+
+    if (key === 'PACOTE OPERACIONAL | SUFICIENCIA DE REDE' ||
+        key === 'OBRA EXTRA | PACOTE OPERACIONAL') {
+      return CANONICAL_OPERATIONAL;
+    }
+
+    if (key === 'PROJETOS 2026 | VERTICALIZACAO' ||
+        key === 'PROJETOS 2026 | PROJETOS' ||
+        key === 'OBRA EXTRA | PROJETOS 2026') {
+      return CANONICAL_PROJECTS;
+    }
+
+    return raw;
+  }
+
+  function mapRows(rows, mapper) {
+    return Array.isArray(rows) ? rows.map(row => mapper({ ...row })) : rows;
+  }
+
+  function consolidateInitialPackages(rows) {
+    if (!Array.isArray(rows)) return rows;
+    const grouped = new Map();
+    rows.forEach(source => {
+      const row = { ...source };
+      const pacote = canonicalManagerialPackage(row.pacote);
+      const key = packageKey(pacote);
+      if (!grouped.has(key)) grouped.set(key, { ...row, pacote, capex_inicial: 0 });
+      const target = grouped.get(key);
+      const value = Number(row.capex_inicial);
+      target.capex_inicial += Number.isFinite(value) ? value : 0;
+    });
+    return [...grouped.values()];
+  }
+
+  function transformManagerialPayload(payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    const data = { ...payload };
+
+    data.ois = mapRows(data.ois, row => {
+      row.pacote = canonicalManagerialPackage(row.pacote);
+      return row;
+    });
+
+    data.transferencias = mapRows(data.transferencias, row => {
+      row.pacote_origem = canonicalManagerialPackage(row.pacote_origem);
+      row.pacote_destino = canonicalManagerialPackage(row.pacote_destino);
+      return row;
+    });
+
+    data.movimentos = mapRows(data.movimentos, row => {
+      row.pacote = canonicalManagerialPackage(row.pacote);
+      return row;
+    });
+
+    data.capex_inicial_pacotes = consolidateInitialPackages(data.capex_inicial_pacotes);
+    return data;
+  }
+
+  function wrapRpc() {
+    const client = (typeof sb !== 'undefined' && sb) ? sb : window.sb;
+    if (!client || typeof client.rpc !== 'function') return false;
+    const current = client.rpc;
+    if (current.__hapV4087ManagerialPackageGrouping) return true;
+
+    const wrapped = async function(fn, args, options) {
+      const result = await current.call(this, fn, args, options);
+      if (fn !== TARGET_RPC || !result || result.error || !result.data) return result;
+      return { ...result, data: transformManagerialPayload(result.data) };
+    };
+    wrapped.__hapV4087ManagerialPackageGrouping = true;
+    wrapped.__hapV4087Original = current;
+    client.rpc = wrapped;
+    return true;
+  }
+
+  wrapRpc();
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries += 1;
+    if (wrapRpc() || tries >= 40) clearInterval(timer);
+  }, 250);
+
+  window.HAP_V4087_MANAGERIAL_PACKAGE_GROUPING = Object.freeze({
+    canonicalManagerialPackage,
+    transformManagerialPayload
+  });
+})();
+
