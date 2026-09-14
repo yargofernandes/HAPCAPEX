@@ -1,6 +1,6 @@
-/* HAPCAPEX V40.0.85 — Política de datas de calendário no Controle de Capex.
+/* HAPCAPEX V40.0.86 — Política de datas de calendário no Controle de Capex.
    Mantém a correção de deslocamento de datas em fusos UTC negativos.
-   V40.0.85:
+   V40.0.86:
    - Gerencial: Situação do saldo fica apenas com "Com saldo" e "Saldo Zerado".
    - Gerencial: remove o filtro "Regra transferência".
    - O padrão da Situação do saldo passa a ser "Com saldo".
@@ -116,37 +116,37 @@
 })();
 
 
-/* V40.0.85 — Simplificação dos filtros do Gerencial.
+/* V40.0.86 — Simplificação dos filtros do Gerencial.
    Implementado neste arquivo já existente para evitar a criação de um novo módulo.
    Escopo exclusivamente de interface/filtro; não altera regras financeiras ou banco. */
 (() => {
   'use strict';
-  if (window.__HAP_V4085_MANAGERIAL_FILTERS__) return;
-  window.__HAP_V4085_MANAGERIAL_FILTERS__ = true;
+  if (window.__HAP_V4086_MANAGERIAL_FILTERS__) return;
+  window.__HAP_V4086_MANAGERIAL_FILTERS__ = true;
 
   function injectManagerialFilterStyle() {
-    if (document.getElementById('hap-v4085-managerial-filter-style')) return;
+    if (document.getElementById('hap-v4086-managerial-filter-style')) return;
     const style = document.createElement('style');
-    style.id = 'hap-v4085-managerial-filter-style';
+    style.id = 'hap-v4086-managerial-filter-style';
     style.textContent = `
-      .v4071-filter-grid.v4085-managerial-filters{
+      .v4071-filter-grid.v4086-managerial-filters{
         grid-template-columns:minmax(220px,2fr) repeat(3,minmax(145px,1fr))!important;
       }
       @media(max-width:1100px){
-        .v4071-filter-grid.v4085-managerial-filters{
+        .v4071-filter-grid.v4086-managerial-filters{
           grid-template-columns:repeat(3,minmax(0,1fr))!important;
         }
-        .v4071-filter-grid.v4085-managerial-filters>label:first-child{
+        .v4071-filter-grid.v4086-managerial-filters>label:first-child{
           grid-column:1/-1;
         }
       }
       @media(max-width:800px){
-        .v4071-filter-grid.v4085-managerial-filters{
+        .v4071-filter-grid.v4086-managerial-filters{
           grid-template-columns:1fr 1fr!important;
         }
       }
       @media(max-width:520px){
-        .v4071-filter-grid.v4085-managerial-filters{
+        .v4071-filter-grid.v4086-managerial-filters{
           grid-template-columns:1fr!important;
         }
       }
@@ -175,7 +175,7 @@
     if (positive && positive.textContent !== 'Com saldo') positive.textContent = 'Com saldo';
     if (zero && zero.textContent !== 'Saldo Zerado') zero.textContent = 'Saldo Zerado';
 
-    select.closest('.v4071-filter-grid')?.classList.add('v4085-managerial-filters');
+    select.closest('.v4071-filter-grid')?.classList.add('v4086-managerial-filters');
 
     // O Gerencial antigo inicia em "Todos". Como essa escolha deixa de existir,
     // a visão inicial passa a ser "Com saldo".
@@ -194,8 +194,8 @@
 
   function patchClearButton() {
     const button = document.getElementById('v4071-clear');
-    if (!button || button.dataset.v4085SaldoDefault === '1') return;
-    button.dataset.v4085SaldoDefault = '1';
+    if (!button || button.dataset.v4086SaldoDefault === '1') return;
+    button.dataset.v4086SaldoDefault = '1';
 
     // O manipulador original zera os filtros. Em seguida restabelecemos a única
     // opção padrão válida da nova interface: "Com saldo".
