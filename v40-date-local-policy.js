@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.88 — Política de datas e ajustes visuais do Gerencial.
+/* HAPCAPEX V40.0.90 — Política de datas e ajustes visuais do Gerencial.
    Mantém a correção de deslocamento de datas em fusos UTC negativos.
    V40.0.88:
    - Gerencial: Situação do saldo = "Todos", "Com saldo" e "Saldo Zerado".
@@ -235,17 +235,19 @@
   }, 250);
 })();
 
-/* V40.0.87 — Consolidação visual de pacotes no Gerencial.
+/* V40.0.89 — Consolidação visual de pacotes no Gerencial.
    IMPORTANTE: atua somente sobre a resposta da RPC do Gerencial no navegador.
-   Não grava, renomeia ou altera classificações no banco de dados. */
+   Não grava, renomeia ou altera classificações no banco de dados.
+   V40.0.89 adiciona Manutenção Dia a Dia + Obra Extra | Manutenção Dia a Dia. */
 (() => {
   'use strict';
-  if (window.__HAP_V4087_MANAGERIAL_PACKAGE_GROUPING__) return;
-  window.__HAP_V4087_MANAGERIAL_PACKAGE_GROUPING__ = true;
+  if (window.__HAP_V4089_MANAGERIAL_PACKAGE_GROUPING__) return;
+  window.__HAP_V4089_MANAGERIAL_PACKAGE_GROUPING__ = true;
 
   const TARGET_RPC = 'obter_gerencial_controle_v4082';
   const CANONICAL_OPERATIONAL = 'Pacote Operacional | Suficiência de Rede';
   const CANONICAL_PROJECTS = 'Projetos 2026';
+  const CANONICAL_MAINTENANCE = 'Manutenção Dia a Dia';
 
   function packageKey(value) {
     return String(value || '')
@@ -271,6 +273,11 @@
         key === 'PROJETOS 2026 | PROJETOS' ||
         key === 'OBRA EXTRA | PROJETOS 2026') {
       return CANONICAL_PROJECTS;
+    }
+
+    if (key === 'MANUTENCAO DIA A DIA' ||
+        key === 'OBRA EXTRA | MANUTENCAO DIA A DIA') {
+      return CANONICAL_MAINTENANCE;
     }
 
     return raw;

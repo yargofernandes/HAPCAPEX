@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-88-managerial-balance-all-20260914';
+const CACHE_NAME = 'hapcapex-v40-0-90-operational-head-scope-20260914';
 const APP_SHELL = [
   './',
   './index.html',
@@ -25,8 +25,8 @@ const APP_SHELL = [
   './v40-control-ui.js?v=40.0.31',
   './v40-classification-copy.js?v=40.0.60',
   './v40-classification-copy-global.js?v=40.0.84',
-  './v40-control-managerial.js?v=40.0.83',
-  './v40-date-local-policy.js?v=40.0.88',
+  './v40-control-managerial.js?v=40.0.90',
+  './v40-date-local-policy.js?v=40.0.90',
   './v40-legacy-curve-edit-optional.js?v=40.0.81',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
@@ -49,8 +49,8 @@ const AUDIT_PERF_TAG = '<script src="./v40-audit-performance.js?v=40.0.16"></scr
 const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
 const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
 const CLASSIFICATION_COPY_GLOBAL_TAG = '<script src="./v40-classification-copy-global.js?v=40.0.84"></script>';
-const CONTROL_MANAGERIAL_TAG = '<script src="./v40-control-managerial.js?v=40.0.83"></script>';
-const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.88"></script>';
+const CONTROL_MANAGERIAL_TAG = '<script src="./v40-control-managerial.js?v=40.0.90"></script>';
+const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.90"></script>';
 const LEGACY_CURVE_EDIT_OPTIONAL_TAG = '<script src="./v40-legacy-curve-edit-optional.js?v=40.0.81"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
@@ -253,6 +253,9 @@ function isIndexPage(url) {
 function isBootstrapScript(url) {
   return /\/bootstrap\.js$/i.test(url.pathname);
 }
+function isControlManagerialScript(url) {
+  return /\/v40-control-managerial\.js$/i.test(url.pathname);
+}
 
 function addSri(html) {
   let text = html;
@@ -280,6 +283,55 @@ function responseWithText(response, text, contentType, extraHeaders = {}) {
   return new Response(text, { status: response.status, statusText: response.statusText, headers });
 }
 
+
+function patchControlManagerialSource(source) {
+  if (!source || source.includes('HAP_V4090_OPERATIONAL_HEAD_SCOPE')) {
+    return { text: source, applied: !!source?.includes('HAP_V4090_OPERATIONAL_HEAD_SCOPE') };
+  }
+
+  const replacements = [
+    [
+      "  const isExcludedManagerialPackage = value => EXCLUDED_MANAGERIAL_PACKAGES.has(norm(value));",
+      "  const isExcludedManagerialPackage = value => EXCLUDED_MANAGERIAL_PACKAGES.has(norm(value));\n  // HAP_V4090_OPERATIONAL_HEAD_SCOPE — bolsões financeiros não são áreas operacionais.\n  const NON_OPERATIONAL_HEADS = new Set(['SAVING SLT','SAVING C.O']);\n  const isOperationalHead = value => !NON_OPERATIONAL_HEADS.has(norm(value));"
+    ],
+    [
+      "    const heads=aggregateFinance(ois,'head');",
+      "    const heads=aggregateFinance(ois.filter(o=>isOperationalHead(o?.head)),'head');"
+    ],
+    [
+      "    const heads=uniq(allOis().map(o=>o.head)).sort((a,b)=>String(a).localeCompare(String(b),'pt-BR'));",
+      "    const heads=uniq(allOis().filter(o=>isOperationalHead(o?.head)).map(o=>o.head)).sort((a,b)=>String(a).localeCompare(String(b),'pt-BR'));"
+    ],
+    [
+      "${card('v4071-chart-head','Concentração do CAPEX por HEAD','% do CAPEX atual. Exibe os principais HEADs; clique para filtrar.',true)}",
+      "${card('v4071-chart-head','Concentração do CAPEX por HEAD','% do CAPEX das áreas operacionais. SAVING SLT e SAVING C.O não entram nesta análise; clique para filtrar.',true)}"
+    ],
+    [
+      "return renderManagerialTable({id:'heads',title:'HEAD Operação',description:'Distribuição financeira e concentração dentro do universo filtrado.',rows:s.heads,columns:cols});",
+      "return renderManagerialTable({id:'heads',title:'HEAD Operação',description:'Distribuição financeira entre áreas operacionais. SAVING SLT e SAVING C.O não entram nesta análise.',rows:s.heads,columns:cols});"
+    ]
+  ];
+
+  let text = source;
+  for (const [from, to] of replacements) {
+    if (!text.includes(from)) {
+      return { text: source, applied: false };
+    }
+    text = text.replace(from, to);
+  }
+  return { text, applied: true };
+}
+
+async function decorateControlManagerialResponse(response) {
+  if (!response || !response.ok) return response;
+  const original = await response.text();
+  const patched = patchControlManagerialSource(original);
+  return responseWithText(response, patched.text, 'application/javascript; charset=utf-8', {
+    'x-hapcapex-functional': 'v40.0.90',
+    'x-hapcapex-managerial-head-scope': patched.applied ? 'operational-only' : 'not-applied'
+  });
+}
+
 async function decorateBootstrapResponse(response) {
   if (!response || !response.ok) return response;
   let text = await response.text();
@@ -305,7 +357,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.86',
+    'x-hapcapex-functional': 'v40.0.90',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -387,12 +439,13 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.86'
+    'x-hapcapex-functional': 'v40.0.90'
   });
 }
 
 async function decorateResponse(response, url) {
   if (isBootstrapScript(url)) return decorateBootstrapResponse(response);
+  if (isControlManagerialScript(url)) return decorateControlManagerialResponse(response);
   return decorateHtmlResponse(response, url);
 }
 
