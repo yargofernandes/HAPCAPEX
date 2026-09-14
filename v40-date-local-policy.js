@@ -1,7 +1,10 @@
-/* HAPCAPEX V40.0.75 — Política de datas de calendário no Controle de Capex.
-   Corrige o deslocamento de -1 dia causado por new Date('YYYY-MM-DD') em fusos UTC negativos.
-   Escopo: exibição de Transferências e Base Consumo + data padrão de nova transferência.
-   Não altera datas armazenadas no banco.
+/* HAPCAPEX V40.0.85 — Política de datas de calendário no Controle de Capex.
+   Mantém a correção de deslocamento de datas em fusos UTC negativos.
+   V40.0.85:
+   - Gerencial: Situação do saldo fica apenas com "Com saldo" e "Saldo Zerado".
+   - Gerencial: remove o filtro "Regra transferência".
+   - O padrão da Situação do saldo passa a ser "Com saldo".
+   - Não altera dados financeiros, regras de autorização ou registros do banco.
 */
 (() => {
   'use strict';
@@ -28,7 +31,7 @@
     const original = Date.prototype.toLocaleDateString;
     Date.prototype.toLocaleDateString = function(locale, options) {
       // SQL DATE chega ao browser como YYYY-MM-DD. new Date() interpreta isso como
-      // meia-noite UTC; em Fortaleza, por exemplo, vira 21h do dia anterior.
+      // meia-noite UTC; em fusos UTC negativos pode virar o dia anterior.
       // Durante os renders abaixo, datas em meia-noite UTC são datas de calendário,
       // portanto devem ser exibidas pelos componentes UTC, sem conversão de fuso.
       if ((!locale || String(locale).toLowerCase().startsWith('pt-br')) &&
@@ -110,4 +113,129 @@
   }, 200);
 
   window.HAP_DATE_ONLY = Object.freeze({ localTodayISO });
+})();
+
+
+/* V40.0.85 — Simplificação dos filtros do Gerencial.
+   Implementado neste arquivo já existente para evitar a criação de um novo módulo.
+   Escopo exclusivamente de interface/filtro; não altera regras financeiras ou banco. */
+(() => {
+  'use strict';
+  if (window.__HAP_V4085_MANAGERIAL_FILTERS__) return;
+  window.__HAP_V4085_MANAGERIAL_FILTERS__ = true;
+
+  function injectManagerialFilterStyle() {
+    if (document.getElementById('hap-v4085-managerial-filter-style')) return;
+    const style = document.createElement('style');
+    style.id = 'hap-v4085-managerial-filter-style';
+    style.textContent = `
+      .v4071-filter-grid.v4085-managerial-filters{
+        grid-template-columns:minmax(220px,2fr) repeat(3,minmax(145px,1fr))!important;
+      }
+      @media(max-width:1100px){
+        .v4071-filter-grid.v4085-managerial-filters{
+          grid-template-columns:repeat(3,minmax(0,1fr))!important;
+        }
+        .v4071-filter-grid.v4085-managerial-filters>label:first-child{
+          grid-column:1/-1;
+        }
+      }
+      @media(max-width:800px){
+        .v4071-filter-grid.v4085-managerial-filters{
+          grid-template-columns:1fr 1fr!important;
+        }
+      }
+      @media(max-width:520px){
+        .v4071-filter-grid.v4085-managerial-filters{
+          grid-template-columns:1fr!important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function forcePositiveBalanceFilter(select) {
+    if (!select) return;
+    if (select.value === 'positive' || select.value === 'zero') return;
+    select.value = 'positive';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function patchSaldoFilter() {
+    const select = document.getElementById('v4071-filter-saldo');
+    if (!select) return false;
+
+    // Mantém somente as duas escolhas solicitadas.
+    Array.from(select.options).forEach(option => {
+      if (!['positive', 'zero'].includes(option.value)) option.remove();
+    });
+
+    const positive = Array.from(select.options).find(option => option.value === 'positive');
+    const zero = Array.from(select.options).find(option => option.value === 'zero');
+    if (positive && positive.textContent !== 'Com saldo') positive.textContent = 'Com saldo';
+    if (zero && zero.textContent !== 'Saldo Zerado') zero.textContent = 'Saldo Zerado';
+
+    select.closest('.v4071-filter-grid')?.classList.add('v4085-managerial-filters');
+
+    // O Gerencial antigo inicia em "Todos". Como essa escolha deixa de existir,
+    // a visão inicial passa a ser "Com saldo".
+    forcePositiveBalanceFilter(select);
+    return true;
+  }
+
+  function removeTransferRuleFilter() {
+    const select = document.getElementById('v4071-filter-transfer');
+    if (!select) return false;
+    const label = select.closest('label');
+    if (label) label.remove();
+    else select.remove();
+    return true;
+  }
+
+  function patchClearButton() {
+    const button = document.getElementById('v4071-clear');
+    if (!button || button.dataset.v4085SaldoDefault === '1') return;
+    button.dataset.v4085SaldoDefault = '1';
+
+    // O manipulador original zera os filtros. Em seguida restabelecemos a única
+    // opção padrão válida da nova interface: "Com saldo".
+    button.addEventListener('click', () => {
+      setTimeout(() => {
+        patchManagerialFilters();
+        forcePositiveBalanceFilter(document.getElementById('v4071-filter-saldo'));
+      }, 0);
+    });
+  }
+
+  function patchManagerialFilters() {
+    injectManagerialFilterStyle();
+    const changedSaldo = patchSaldoFilter();
+    const changedTransfer = removeTransferRuleFilter();
+    patchClearButton();
+    return changedSaldo || changedTransfer;
+  }
+
+  patchManagerialFilters();
+
+  const observer = new MutationObserver(() => {
+    // O Gerencial reconstrói o toolbar ao entrar novamente na aba.
+    patchManagerialFilters();
+  });
+
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      patchManagerialFilters();
+      observer.observe(document.body, { childList: true, subtree: true });
+    }, { once: true });
+  }
+
+  // Janela curta adicional para cobrir carregamento assíncrono dos módulos legados.
+  let attempts = 0;
+  const bootTimer = setInterval(() => {
+    patchManagerialFilters();
+    attempts += 1;
+    if (attempts >= 40) clearInterval(bootTimer);
+  }, 250);
 })();
