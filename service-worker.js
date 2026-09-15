@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-92-bulk-transfer-direct-20260915';
+const CACHE_NAME = 'hapcapex-v40-0-93-remove-control-audit-20260915';
 const APP_SHELL = [
   './',
   './index.html',
@@ -21,7 +21,6 @@ const APP_SHELL = [
   './v40-managerial-kpis-sort.js?v=40.0.9',
   './v40-aporte-status.js?v=40.0.75',
   './v40-tipologia-governance.js?v=40.0.26',
-  './v40-audit-performance.js?v=40.0.16',
   './v40-control-ui.js?v=40.0.31',
   './v40-classification-copy.js?v=40.0.60',
   './v40-classification-copy-global.js?v=40.0.84',
@@ -39,13 +38,14 @@ const APP_SHELL = [
 
 const GLOBAL_ADMIN_TAG = '<script src="./v39-global-admin.js?v=39.8.0"></script>';
 const CONTROL_HOTFIX_TAG = '<script src="./v39-8-control-hotfix.js?v=39.8.2"></script>';
+const CONTROL_GOVERNANCE_TAG = '<script src="./v37-control-governance.js?v=40.0.93"></script>';
 const CONTROL_SECURITY_TAG = '<script src="./v40-control-security.js?v=40.0.1"></script>';
 const CONTROL_PREAUTH_TAG = '<script src="./v40-control-preauth.js?v=40.0.3"></script>';
 const LOGOUT_TAG = '<script src="./v40-logout-fix.js?v=40.0.6"></script>';
 const MANAGERIAL_TAG = '<script src="./v40-managerial-kpis-sort.js?v=40.0.9"></script>';
 const APORTE_STATUS_TAG = '<script src="./v40-aporte-status.js?v=40.0.75"></script>';
 const TIPOLOGIA_TAG = '<script src="./v40-tipologia-governance.js?v=40.0.26"></script>';
-const AUDIT_PERF_TAG = '<script src="./v40-audit-performance.js?v=40.0.16"></script>';
+const AUDIT_PERF_TAG = ''; // V40.0.93: auditoria é exclusivamente global.
 const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
 const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
 const CLASSIFICATION_COPY_GLOBAL_TAG = '<script src="./v40-classification-copy-global.js?v=40.0.84"></script>';
@@ -256,6 +256,9 @@ function isBootstrapScript(url) {
 function isControlManagerialScript(url) {
   return /\/v40-control-managerial\.js$/i.test(url.pathname);
 }
+function isControlGovernanceScript(url) {
+  return /\/v37-control-governance\.js$/i.test(url.pathname);
+}
 
 function addSri(html) {
   let text = html;
@@ -327,7 +330,7 @@ async function decorateControlManagerialResponse(response) {
   const original = await response.text();
   const patched = patchControlManagerialSource(original);
   return responseWithText(response, patched.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.0.92',
+    'x-hapcapex-functional': 'v40.0.93',
     'x-hapcapex-managerial-head-scope': patched.applied ? 'operational-only' : 'not-applied'
   });
 }
@@ -357,7 +360,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.92',
+    'x-hapcapex-functional': 'v40.0.93',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -378,6 +381,52 @@ function patchControlBulkTransferSourceV4092(source) {
   text = text.replace(bindingTarget, bindingReplacement);
   text = text.replace(helperTarget, CONTROL_BULK_TRANSFER_HELPERS_V4092 + '\n\n' + helperTarget);
   return { text, applied: true };
+}
+
+
+function patchControlGovernanceSourceV4093(source) {
+  if (!source) return { text: source, applied: false };
+  if (source.includes('HAP_V4093_GLOBAL_AUDIT_ONLY')) {
+    return { text: source, applied: true };
+  }
+
+  // 1) Remove somente o pill AUDITORIA adicionado ao menu do Controle.
+  const auditPillRe = /const extra\s*=\s*`[^`]*AUDITORIA<\/span>`;/;
+  const stateAnchor = "    if (state.tab === 'doacoes') state.tab='capex';";
+  const mobileAuditAnchor = "    if (text.includes('AUDITORIA')) return 'auditoria';";
+
+  if (!auditPillRe.test(source) || !source.includes(stateAnchor) || !source.includes(mobileAuditAnchor)) {
+    return { text: source, applied: false };
+  }
+
+  let text = source.replace(
+    auditPillRe,
+    "const extra = ''; // HAP_V4093_GLOBAL_AUDIT_ONLY — auditoria somente no módulo global."
+  );
+
+  // 2) Se uma sessão antiga ainda estiver em state.tab='auditoria', retorna ao CAPEX.
+  text = text.replace(
+    stateAnchor,
+    stateAnchor + "\n    if (state.tab === 'auditoria') state.tab='capex';"
+  );
+
+  // 3) O menu móvel também deixa de reconhecer Auditoria como aba do Controle.
+  text = text.replace(
+    mobileAuditAnchor,
+    "    if (text.includes('AUDITORIA')) return '';"
+  );
+
+  return { text, applied: true };
+}
+
+async function decorateControlGovernanceResponse(response) {
+  if (!response || !response.ok) return response;
+  const original = await response.text();
+  const patched = patchControlGovernanceSourceV4093(original);
+  return responseWithText(response, patched.text, 'application/javascript; charset=utf-8', {
+    'x-hapcapex-functional': 'v40.0.93',
+    'x-hapcapex-control-audit': patched.applied ? 'global-only' : 'not-applied'
+  });
 }
 
 async function decorateHtmlResponse(response, url) {
@@ -425,7 +474,7 @@ async function decorateHtmlResponse(response, url) {
     ];
     const marker = governancePatterns.find(tag => text.includes(tag));
     if (marker) {
-      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${marker}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}${CLASSIFICATION_COPY_GLOBAL_TAG}${CONTROL_MANAGERIAL_TAG}${DATE_LOCAL_POLICY_TAG}${LEGACY_CURVE_EDIT_OPTIONAL_TAG}`);
+      text = text.replace(marker, `${CONTROL_SECURITY_TAG}${CONTROL_HOTFIX_TAG}${CONTROL_GOVERNANCE_TAG}${CONTROL_PREAUTH_TAG}${LOGOUT_TAG}${MANAGERIAL_TAG}${APORTE_STATUS_TAG}${TIPOLOGIA_TAG}${AUDIT_PERF_TAG}${CONTROL_UI_TAG}${CLASSIFICATION_COPY_TAG}${CLASSIFICATION_COPY_GLOBAL_TAG}${CONTROL_MANAGERIAL_TAG}${DATE_LOCAL_POLICY_TAG}${LEGACY_CURVE_EDIT_OPTIONAL_TAG}`);
     } else {
       const initTag = '<script>init();</script>';
       const fallbackInjection = CONTROL_SECURITY_TAG + CONTROL_HOTFIX_TAG + CONTROL_PREAUTH_TAG + LOGOUT_TAG + MANAGERIAL_TAG + APORTE_STATUS_TAG + TIPOLOGIA_TAG + AUDIT_PERF_TAG + CONTROL_UI_TAG + CLASSIFICATION_COPY_TAG + CLASSIFICATION_COPY_GLOBAL_TAG + CONTROL_MANAGERIAL_TAG + DATE_LOCAL_POLICY_TAG + LEGACY_CURVE_EDIT_OPTIONAL_TAG;
@@ -461,7 +510,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.92',
+    'x-hapcapex-functional': 'v40.0.93',
     'x-hapcapex-bulk-transfer': control ? (bulkTransferPatched ? 'direct-source-patched' : 'not-applied') : 'n/a'
   });
 }
@@ -469,6 +518,7 @@ async function decorateHtmlResponse(response, url) {
 async function decorateResponse(response, url) {
   if (isBootstrapScript(url)) return decorateBootstrapResponse(response);
   if (isControlManagerialScript(url)) return decorateControlManagerialResponse(response);
+  if (isControlGovernanceScript(url)) return decorateControlGovernanceResponse(response);
   return decorateHtmlResponse(response, url);
 }
 
