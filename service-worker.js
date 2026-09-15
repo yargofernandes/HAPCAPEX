@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-90-operational-head-scope-20260914';
+const CACHE_NAME = 'hapcapex-v40-0-91-bulk-transfer-paste-20260915';
 const APP_SHELL = [
   './',
   './index.html',
@@ -26,7 +26,7 @@ const APP_SHELL = [
   './v40-classification-copy.js?v=40.0.60',
   './v40-classification-copy-global.js?v=40.0.84',
   './v40-control-managerial.js?v=40.0.90',
-  './v40-date-local-policy.js?v=40.0.90',
+  './v40-date-local-policy.js?v=40.0.91',
   './v40-legacy-curve-edit-optional.js?v=40.0.81',
   './original-baseline.js?v=40.0.0',
   './bootstrap.js?v=37.0',
@@ -50,7 +50,7 @@ const CONTROL_UI_TAG = '<script src="./v40-control-ui.js?v=40.0.31"></script>';
 const CLASSIFICATION_COPY_TAG = '<script src="./v40-classification-copy.js?v=40.0.60"></script>';
 const CLASSIFICATION_COPY_GLOBAL_TAG = '<script src="./v40-classification-copy-global.js?v=40.0.84"></script>';
 const CONTROL_MANAGERIAL_TAG = '<script src="./v40-control-managerial.js?v=40.0.90"></script>';
-const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.90"></script>';
+const DATE_LOCAL_POLICY_TAG = '<script src="./v40-date-local-policy.js?v=40.0.91"></script>';
 const LEGACY_CURVE_EDIT_OPTIONAL_TAG = '<script src="./v40-legacy-curve-edit-optional.js?v=40.0.81"></script>';
 
 const WORK_NAME_MODAL_HTML = `<label id="v4015-work-name-field" style="grid-column:1/-1">
@@ -327,7 +327,7 @@ async function decorateControlManagerialResponse(response) {
   const original = await response.text();
   const patched = patchControlManagerialSource(original);
   return responseWithText(response, patched.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.0.90',
+    'x-hapcapex-functional': 'v40.0.91',
     'x-hapcapex-managerial-head-scope': patched.applied ? 'operational-only' : 'not-applied'
   });
 }
@@ -357,7 +357,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.90',
+    'x-hapcapex-functional': 'v40.0.91',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -439,7 +439,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.90'
+    'x-hapcapex-functional': 'v40.0.91'
   });
 }
 
