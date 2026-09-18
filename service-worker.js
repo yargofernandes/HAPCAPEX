@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-105-transfer-oi-workflow-20260918';
+const CACHE_NAME = 'hapcapex-v40-0-106-managerial-regulatory-group-20260918';
 const APP_SHELL = [
   './',
   './index.html',
@@ -353,6 +353,117 @@ function patchControlManagerialSource(source) {
 }
 
 
+
+function patchManagerPackageGroupsV40106(source) {
+  if (!source) return { text: source, applied: false };
+  if (source.includes('HAP_V40106_MANAGERIAL_PACKAGE_GROUPS')) {
+    return { text: source, applied: true };
+  }
+
+  const canonicalOld = `  function canonicalPackage(value) {
+    const raw = String(value || '').replace(/\\u00a0/g,' ').replace(/\\s+/g,' ').trim();
+    const normalized = raw.replace(/[|\\-]/g,' ').replace(/\\s+/g,' ').toUpperCase();
+    return /CARRY\\s*OVER/.test(normalized) ? 'Carry Over' : (raw || 'Sem classificação');
+  }`;
+
+  const canonicalNew = `  // HAP_V40106_MANAGERIAL_PACKAGE_GROUPS — aliases consolidados somente para leitura gerencial.
+  function canonicalPackage(value) {
+    const raw = String(value || '').replace(/\\u00a0/g,' ').replace(/\\s+/g,' ').trim();
+    if (!raw) return 'Sem classificação';
+    const key = norm(raw)
+      .replace(/\\s*\\|\\s*/g,'|')
+      .replace(/\\s*\\/\\s*/g,'/')
+      .replace(/\\s*-\\s*/g,'-');
+
+    if (key.includes('CARRY OVER')) return 'Carry Over';
+
+    if (key === 'PACOTE OPERACIONAL|SUFICIENCIA DE REDE' ||
+        key === 'OBRA EXTRA|PACOTE OPERACIONAL') {
+      return 'Pacote Operacional | Suficiência de Rede';
+    }
+
+    if (key === 'PROJETOS 2026|VERTICALIZACAO' ||
+        key === 'PROJETOS 2026|PROJETOS' ||
+        key === 'OBRA EXTRA|PROJETOS 2026') {
+      return 'Projetos 2026';
+    }
+
+    if (key === 'MANUTENCAO DIA A DIA' ||
+        key === 'OBRA EXTRA|MANUTENCAO DIA A DIA') {
+      return 'Manutenção Dia a Dia';
+    }
+
+    if (key === 'REGULATORIO/AMBIENTAL' ||
+        key === 'OBRA EXTRA|REGULATORIO/AMBIENTAL') {
+      return 'Regulatório / Ambiental';
+    }
+
+    return raw;
+  }`;
+
+  const dataOld = `  function allOis() {
+    const rows=Array.isArray(mgr.raw?.ois) ? mgr.raw.ois : [];
+    return rows.filter(o=>!isExcludedManagerialPackage(o?.pacote) && !isExcludedManagerialPackage(o?.pacote_original));
+  }
+  function allTransfers() {
+    const rows=Array.isArray(mgr.raw?.transferencias) ? mgr.raw.transferencias : [];
+    return rows.filter(t=>!isExcludedManagerialPackage(t?.pacote_origem) && !isExcludedManagerialPackage(t?.pacote_destino) && !isExcludedManagerialPackage(t?.pacote_origem_original) && !isExcludedManagerialPackage(t?.pacote_destino_original));
+  }
+  function allMovements() {
+    const rows=Array.isArray(mgr.raw?.movimentos) ? mgr.raw.movimentos : [];
+    return rows.filter(m=>!isExcludedManagerialPackage(m?.pacote));
+  }
+
+  function allInitialPackages() {
+    const rows=Array.isArray(mgr.raw?.capex_inicial_pacotes) ? mgr.raw.capex_inicial_pacotes : [];
+    return rows.filter(r=>!isExcludedManagerialPackage(r?.pacote));
+  }`;
+
+  const dataNew = `  function allOis() {
+    const rows=Array.isArray(mgr.raw?.ois) ? mgr.raw.ois : [];
+    return rows
+      .filter(o=>!isExcludedManagerialPackage(o?.pacote) && !isExcludedManagerialPackage(o?.pacote_original))
+      .map(o=>({...o,pacote:canonicalPackage(o?.pacote_original || o?.pacote)}));
+  }
+  function allTransfers() {
+    const rows=Array.isArray(mgr.raw?.transferencias) ? mgr.raw.transferencias : [];
+    return rows
+      .filter(t=>!isExcludedManagerialPackage(t?.pacote_origem) && !isExcludedManagerialPackage(t?.pacote_destino) && !isExcludedManagerialPackage(t?.pacote_origem_original) && !isExcludedManagerialPackage(t?.pacote_destino_original))
+      .map(t=>({
+        ...t,
+        pacote_origem:canonicalPackage(t?.pacote_origem_original || t?.pacote_origem),
+        pacote_destino:canonicalPackage(t?.pacote_destino_original || t?.pacote_destino)
+      }));
+  }
+  function allMovements() {
+    const rows=Array.isArray(mgr.raw?.movimentos) ? mgr.raw.movimentos : [];
+    return rows
+      .filter(m=>!isExcludedManagerialPackage(m?.pacote))
+      .map(m=>({...m,pacote:canonicalPackage(m?.pacote)}));
+  }
+
+  function allInitialPackages() {
+    const rows=Array.isArray(mgr.raw?.capex_inicial_pacotes) ? mgr.raw.capex_inicial_pacotes : [];
+    const grouped=new Map();
+    rows.filter(r=>!isExcludedManagerialPackage(r?.pacote)).forEach(r=>{
+      const pacote=canonicalPackage(r?.pacote);
+      if(!grouped.has(pacote)) grouped.set(pacote,{...r,pacote,capex_inicial:0,qtd_itens:0});
+      const x=grouped.get(pacote);
+      x.capex_inicial+=n(r?.capex_inicial);
+      x.qtd_itens+=n(r?.qtd_itens);
+    });
+    return [...grouped.values()];
+  }`;
+
+  if (!source.includes(canonicalOld) || !source.includes(dataOld)) {
+    return { text: source, applied: false };
+  }
+
+  let text = source.replace(canonicalOld, canonicalNew);
+  text = text.replace(dataOld, dataNew);
+  return { text, applied: true };
+}
+
 function patchManagerExcelFiltersV4098(source) {
   if (!source) return { text: source, applied: false };
   if (source.includes('HAP_V4098_MANAGERIAL_EXCEL_FILTERS')) return { text: source, applied: true };
@@ -387,7 +498,7 @@ async function decorateDashboardCoreResponse(response) {
   const original=await response.text();
   const patched=patchDashboardCoreV4098(original);
   return responseWithText(response,patched.text,'application/javascript; charset=utf-8',{
-    'x-hapcapex-functional':'v40.0.105','x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied'
+    'x-hapcapex-functional':'v40.0.106','x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied'
   });
 }
 
@@ -395,10 +506,12 @@ async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
   const headPatch = patchControlManagerialSource(original);
-  const excelPatch = patchManagerExcelFiltersV4098(headPatch.text);
+  const packagePatch = patchManagerPackageGroupsV40106(headPatch.text);
+  const excelPatch = patchManagerExcelFiltersV4098(packagePatch.text);
   return responseWithText(response, excelPatch.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.0.105',
+    'x-hapcapex-functional': 'v40.0.106',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
+    'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied'
   });
 }
@@ -428,7 +541,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.105',
+    'x-hapcapex-functional': 'v40.0.106',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -515,7 +628,7 @@ async function decorateControlGovernanceResponse(response) {
   const auditPatch = patchControlGovernanceSourceV4093(original);
   const filterPatch = patchControlGovernanceFilterUiV40103(auditPatch.text);
   return responseWithText(response, filterPatch.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.0.105',
+    'x-hapcapex-functional': 'v40.0.106',
     'x-hapcapex-control-audit': auditPatch.applied ? 'global-only' : 'not-applied',
     'x-hapcapex-filter-ui': filterPatch.applied ? 'excel-only' : 'not-applied'
   });
@@ -623,7 +736,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.105',
+    'x-hapcapex-functional': 'v40.0.106',
     'x-hapcapex-bulk-transfer': control ? (bulkTransferPatched ? 'direct-source-patched' : 'not-applied') : 'n/a',
     'x-hapcapex-excel-filters': control ? 'control-runtime' : 'curve-runtime',
     'x-hapcapex-filter-runtime': 'v40.0.102-idempotent'
@@ -640,7 +753,7 @@ async function decorateLegacyFilterScriptResponse(response, url) {
   const which = /capex-column-filters/i.test(url.pathname) ? 'CAPEX' : 'Transferências';
   const source = `/* HAPCAPEX V40.0.103 — ${which}: módulo legado de filtros neutralizado. */\n(() => {\n  'use strict';\n  window.__HAP_V40050_CAPEX_COLUMN_FILTERS__ = true;\n  window.__HAP_V4041_TRANSFER_FILTERS__ = true;\n  const selectors='#v40050-capex-clear,.v40050-capex-filter-count,.v40050-capex-filter-wrap,.v4041-transfer-filter-row,.hap-xf-toolbar-clear';\n  const cleanup=()=>document.querySelectorAll(selectors).forEach(el=>el.remove());\n  cleanup();\n  const root=document.getElementById('app')||document.documentElement;\n  if(root&&!window.__HAP_V40103_LEGACY_FILTER_CLEANUP_OBSERVER__){\n    window.__HAP_V40103_LEGACY_FILTER_CLEANUP_OBSERVER__=new MutationObserver(cleanup);\n    window.__HAP_V40103_LEGACY_FILTER_CLEANUP_OBSERVER__.observe(root,{childList:true,subtree:true});\n  }\n})();\n`;
   return responseWithText(response, source, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-legacy-filter': 'disabled-v40.0.105'
+    'x-hapcapex-legacy-filter': 'disabled-v40.0.106'
   });
 }
 
