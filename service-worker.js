@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-107-stable-contingency-reference-20260921';
+const CACHE_NAME = 'hapcapex-v40-0-109-chart-filter-toggle-20260921';
 const APP_SHELL = [
   './',
   './index.html',
@@ -464,6 +464,171 @@ function patchManagerPackageGroupsV40106(source) {
   return { text, applied: true };
 }
 
+
+function patchManagerHeadBalanceChartV40108(source) {
+  if (!source) return { text: source, applied: false };
+  if (source.includes('HAP_V40108_MANAGERIAL_HEAD_BALANCE')) {
+    return { text: source, applied: true };
+  }
+
+  const cardOld = "${card('v4071-chart-movement','Aportes x contingenciamentos por pacote','Histórico consolidado da Curva + movimentos integrados atuais no período selecionado.')}";
+  const cardNew = "${card('v4071-chart-movement','Compromissado x saldo livre por HEAD','Leitura do valor já comprometido versus o saldo ainda disponível por HEAD Operação.')}";
+
+  const chartOld = `    const mv=s.moves.slice(0,14);
+    make('v4071-chart-movement',{type:'bar',data:{labels:mv.map(x=>x.pacote),datasets:[{label:'Aportes',data:mv.map(x=>x.aporte),backgroundColor:'#1e8a4a'},{label:'Contingenciamentos',data:mv.map(x=>x.conting),backgroundColor:'#c0392b'}]},options:{...chartBaseOptions(),indexAxis:'y',scales:{x:{ticks:{callback:v=>compactMoney(v),color:'#24364b',padding:6,font:{size:11,weight:'600',family:CHART_FONT_FAMILY}}},y:{ticks:{color:'#24364b',padding:6,font:{size:11,weight:'600',family:CHART_FONT_FAMILY}}}},onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(mv[elements[0].index]?.pacote);}}});`;
+
+  const chartNew = `    const headBal=s.heads.slice(0,14);
+    make('v4071-chart-movement',{type:'bar',data:{labels:headBal.map(x=>x.label),datasets:[{label:'Compromissado',data:headBal.map(x=>x.compromissado),backgroundColor:'#2e6bbf',stack:'a'},{label:'Saldo livre',data:headBal.map(x=>x.saldo),backgroundColor:'#1e8a4a',stack:'a'}]},options:{...chartBaseOptions(),indexAxis:'y',scales:{x:{stacked:true,ticks:{callback:v=>compactMoney(v),color:'#24364b',padding:6,font:{size:11,weight:'600',family:CHART_FONT_FAMILY}}},y:{stacked:true,ticks:{color:'#24364b',padding:6,font:{size:11,weight:'600',family:CHART_FONT_FAMILY}}}},onClick:(evt,elements)=>{if(elements.length)applyHeadFilter(headBal[elements[0].index]?.label);}}}); // HAP_V40108_MANAGERIAL_HEAD_BALANCE`;
+
+  const pdfOld = `    if(id==='v4071-chart-movement'){
+      const rows=s.moves.slice(0,14);
+      return {head:[['Pacote','Aportes','Contingenciamentos','Líquido']],body:rows.map(x=>[x.pacote,money(x.aporte),money(x.conting),money(x.liquido)]),foot:[['TOTAL',money(rows.reduce((a,x)=>a+n(x.aporte),0)),money(rows.reduce((a,x)=>a+n(x.conting),0)),money(rows.reduce((a,x)=>a+n(x.liquido),0))]]};
+    }`;
+
+  const pdfNew = `    if(id==='v4071-chart-movement'){
+      const rows=s.heads.slice(0,14);
+      return {head:[['HEAD','Compromissado','Saldo livre','CAPEX']],body:rows.map(x=>[x.label,money(x.compromissado),money(x.saldo),money(x.atribuido)]),foot:[['TOTAL',money(rows.reduce((a,x)=>a+n(x.compromissado),0)),money(rows.reduce((a,x)=>a+n(x.saldo),0)),money(rows.reduce((a,x)=>a+n(x.atribuido),0))]]};
+    }`;
+
+  const titlesOld = "const chartTitles=['Concentração por pacote','Concentração por HEAD','Evolução mensal do Realizado','Saldo líquido de transferências','Compromissado x saldo livre','Aportes x contingenciamentos'];";
+  const titlesNew = "const chartTitles=['Concentração por pacote','Concentração por HEAD','Evolução mensal do Realizado','Saldo líquido de transferências','Compromissado x saldo livre por pacote','Compromissado x saldo livre por HEAD'];";
+
+  if (!source.includes(cardOld) ||
+      !source.includes(chartOld) ||
+      !source.includes(pdfOld) ||
+      !source.includes(titlesOld)) {
+    return { text: source, applied: false };
+  }
+
+  let text = source.replace(cardOld, cardNew);
+  text = text.replace(chartOld, chartNew);
+  text = text.replace(pdfOld, pdfNew);
+  text = text.replace(titlesOld, titlesNew);
+  return { text, applied: true };
+}
+
+
+function patchManagerChartFilterToggleV40109(source) {
+  if (!source) return { text: source, applied: false };
+  if (source.includes('HAP_V40109_CHART_FILTER_TOGGLE')) {
+    return { text: source, applied: true };
+  }
+
+  const functionsOld = `  function applyPackageFilter(label){mgr.pacote=String(label||'');syncFilterControls();renderContent();}
+  function applyHeadFilter(label){mgr.head=String(label||'');syncFilterControls();renderContent();}`;
+
+  const functionsNew = `  // HAP_V40109_CHART_FILTER_TOGGLE — filtros acionados por gráficos funcionam como toggle.
+  function renderAfterChartFilter(){syncFilterControls();renderContent();}
+
+  function applyPackageFilter(label){
+    const value=String(label||'');
+    const same=!!value && mgr.__chartPackageFilter===value && mgr.pacote===value;
+    if(same){
+      mgr.pacote='';
+      mgr.__chartPackageFilter='';
+    }else{
+      mgr.pacote=value;
+      mgr.__chartPackageFilter=value;
+    }
+    renderAfterChartFilter();
+  }
+
+  function applyHeadFilter(label){
+    const value=String(label||'');
+    const same=!!value && mgr.__chartHeadFilter===value && mgr.head===value;
+    if(same){
+      mgr.head='';
+      mgr.__chartHeadFilter='';
+    }else{
+      mgr.head=value;
+      mgr.__chartHeadFilter=value;
+    }
+    renderAfterChartFilter();
+  }
+
+  function clearChartPackageFilter(){
+    let changed=false;
+    if(mgr.__chartPackageFilter && mgr.pacote===mgr.__chartPackageFilter){
+      mgr.pacote='';
+      changed=true;
+    }
+    mgr.__chartPackageFilter='';
+    if(changed)renderAfterChartFilter();
+  }
+
+  function clearChartHeadFilter(){
+    let changed=false;
+    if(mgr.__chartHeadFilter && mgr.head===mgr.__chartHeadFilter){
+      mgr.head='';
+      changed=true;
+    }
+    mgr.__chartHeadFilter='';
+    if(changed)renderAfterChartFilter();
+  }
+
+  function clearAllChartFilters(){
+    let changed=false;
+    if(mgr.__chartPackageFilter && mgr.pacote===mgr.__chartPackageFilter){
+      mgr.pacote='';
+      changed=true;
+    }
+    if(mgr.__chartHeadFilter && mgr.head===mgr.__chartHeadFilter){
+      mgr.head='';
+      changed=true;
+    }
+    mgr.__chartPackageFilter='';
+    mgr.__chartHeadFilter='';
+    if(changed)renderAfterChartFilter();
+  }
+
+  if(!window.__HAP_V40109_CHART_OUTSIDE_CLEAR__){
+    window.__HAP_V40109_CHART_OUTSIDE_CLEAR__=true;
+    document.addEventListener('click',event=>{
+      if(typeof state==='undefined' || state?.tab!=='gerencial')return;
+      if(!mgr.__chartPackageFilter && !mgr.__chartHeadFilter)return;
+      const target=event.target;
+      if(target?.closest?.('canvas[id^="v4071-chart-"]'))return;
+      clearAllChartFilters();
+    });
+  }`;
+
+  if (!source.includes(functionsOld)) {
+    return { text: source, applied: false };
+  }
+
+  let text = source.replace(functionsOld, functionsNew);
+
+  const replacements = [
+    [
+      `onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(p[elements[0].index]?.label);}`,
+      `onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(p[elements[0].index]?.label);else clearChartPackageFilter();}`
+    ],
+    [
+      `onClick:(evt,elements)=>{if(elements.length)applyHeadFilter(h[elements[0].index]?.label);}`,
+      `onClick:(evt,elements)=>{if(elements.length)applyHeadFilter(h[elements[0].index]?.label);else clearChartHeadFilter();}`
+    ],
+    [
+      `onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(net[elements[0].index]?.pacote);}`,
+      `onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(net[elements[0].index]?.pacote);else clearChartPackageFilter();}`
+    ],
+    [
+      `onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(bal[elements[0].index]?.label);}`,
+      `onClick:(evt,elements)=>{if(elements.length)applyPackageFilter(bal[elements[0].index]?.label);else clearChartPackageFilter();}`
+    ],
+    [
+      `onClick:(evt,elements)=>{if(elements.length)applyHeadFilter(headBal[elements[0].index]?.label);}`,
+      `onClick:(evt,elements)=>{if(elements.length)applyHeadFilter(headBal[elements[0].index]?.label);else clearChartHeadFilter();}`
+    ]
+  ];
+
+  for (const [oldText,newText] of replacements) {
+    if (!text.includes(oldText)) return { text: source, applied: false };
+    text = text.replace(oldText,newText);
+  }
+
+  return { text, applied: true };
+}
+
 function patchManagerExcelFiltersV4098(source) {
   if (!source) return { text: source, applied: false };
   if (source.includes('HAP_V4098_MANAGERIAL_EXCEL_FILTERS')) return { text: source, applied: true };
@@ -498,7 +663,7 @@ async function decorateDashboardCoreResponse(response) {
   const original=await response.text();
   const patched=patchDashboardCoreV4098(original);
   return responseWithText(response,patched.text,'application/javascript; charset=utf-8',{
-    'x-hapcapex-functional':'v40.0.107','x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied'
+    'x-hapcapex-functional':'v40.0.109','x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied'
   });
 }
 
@@ -507,11 +672,15 @@ async function decorateControlManagerialResponse(response) {
   const original = await response.text();
   const headPatch = patchControlManagerialSource(original);
   const packagePatch = patchManagerPackageGroupsV40106(headPatch.text);
-  const excelPatch = patchManagerExcelFiltersV4098(packagePatch.text);
+  const headBalancePatch = patchManagerHeadBalanceChartV40108(packagePatch.text);
+  const chartTogglePatch = patchManagerChartFilterToggleV40109(headBalancePatch.text);
+  const excelPatch = patchManagerExcelFiltersV4098(chartTogglePatch.text);
   return responseWithText(response, excelPatch.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.0.107',
+    'x-hapcapex-functional': 'v40.0.109',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
+    'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
+    'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied'
   });
 }
@@ -541,7 +710,7 @@ async function decorateBootstrapResponse(response) {
 
   return responseWithText(response, text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.107',
+    'x-hapcapex-functional': 'v40.0.109',
     'x-hapcapex-bootstrap-guard': text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE') ? 'active' : 'not-applied'
   });
 }
@@ -628,7 +797,7 @@ async function decorateControlGovernanceResponse(response) {
   const auditPatch = patchControlGovernanceSourceV4093(original);
   const filterPatch = patchControlGovernanceFilterUiV40103(auditPatch.text);
   return responseWithText(response, filterPatch.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.0.107',
+    'x-hapcapex-functional': 'v40.0.109',
     'x-hapcapex-control-audit': auditPatch.applied ? 'global-only' : 'not-applied',
     'x-hapcapex-filter-ui': filterPatch.applied ? 'excel-only' : 'not-applied'
   });
@@ -758,7 +927,7 @@ async function decorateHtmlResponse(response, url) {
 
   return responseWithText(response, text, 'text/html; charset=utf-8', {
     'x-hapcapex-security': 'v40.0.6',
-    'x-hapcapex-functional': 'v40.0.107',
+    'x-hapcapex-functional': 'v40.0.109',
     'x-hapcapex-bulk-transfer': control ? (bulkTransferPatched ? 'direct-source-patched' : 'not-applied') : 'n/a',
     'x-hapcapex-excel-filters': control ? 'control-runtime' : 'curve-runtime',
     'x-hapcapex-filter-runtime': 'v40.0.102-idempotent'
@@ -775,7 +944,7 @@ async function decorateLegacyFilterScriptResponse(response, url) {
   const which = /capex-column-filters/i.test(url.pathname) ? 'CAPEX' : 'Transferências';
   const source = `/* HAPCAPEX V40.0.103 — ${which}: módulo legado de filtros neutralizado. */\n(() => {\n  'use strict';\n  window.__HAP_V40050_CAPEX_COLUMN_FILTERS__ = true;\n  window.__HAP_V4041_TRANSFER_FILTERS__ = true;\n  const selectors='#v40050-capex-clear,.v40050-capex-filter-count,.v40050-capex-filter-wrap,.v4041-transfer-filter-row,.hap-xf-toolbar-clear';\n  const cleanup=()=>document.querySelectorAll(selectors).forEach(el=>el.remove());\n  cleanup();\n  const root=document.getElementById('app')||document.documentElement;\n  if(root&&!window.__HAP_V40103_LEGACY_FILTER_CLEANUP_OBSERVER__){\n    window.__HAP_V40103_LEGACY_FILTER_CLEANUP_OBSERVER__=new MutationObserver(cleanup);\n    window.__HAP_V40103_LEGACY_FILTER_CLEANUP_OBSERVER__.observe(root,{childList:true,subtree:true});\n  }\n})();\n`;
   return responseWithText(response, source, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-legacy-filter': 'disabled-v40.0.107'
+    'x-hapcapex-legacy-filter': 'disabled-v40.0.109'
   });
 }
 
