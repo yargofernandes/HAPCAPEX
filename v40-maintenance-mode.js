@@ -1,61 +1,44 @@
-/* HAPCAPEX V40.0.112 — Manutenção: governança da O.I. + filtros da Curva.
-   Correções:
-   1) preserva/exibe participacao_curva='manutencao' nos modais de criação/edição,
-      inclusive quando v40-control-ui.js substitui window.editarOi após este módulo carregar;
-   2) faz os filtros estilo Excel da aba Manutenção participarem efetivamente do
-      conjunto renderizado, KPIs, gráficos e riscos;
-   3) mantém a regra funcional já homologada: Manutenção = somente realizado,
-      sem planejamento/CAPEX previsto individual e sem automatismo por classificação.
+/* HAPCAPEX V40.0.113 — Manutenção: governança da O.I. + filtros da Curva.
+   Hotfix sobre V40.0.112:
+   - elimina loop de MutationObserver que podia travar a página ao abrir "Editar O.I.";
+   - mantém o modal padrão do Controle de CAPEX;
+   - preserva/exibe participacao_curva='manutencao' na criação e edição;
+   - mantém os filtros estilo Excel da aba Manutenção aplicados à tabela/KPIs/gráficos/riscos.
 */
 (() => {
   'use strict';
-  if (window.__HAP_V40112_MAINTENANCE_MODE__) return;
-  window.__HAP_V40112_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.112';
+  if (window.__HAP_V40113_MAINTENANCE_MODE__) return;
+  window.__HAP_V40113_MAINTENANCE_MODE__ = true;
+
+  const VERSION = '40.0.113';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
   const NEW_SELECTOR = '#f-vai-curva';
 
   function addOption(select) {
-    if (!select || select.querySelector(`option[value="${MODE}"]`)) return;
+    if (!select || select.querySelector(`option[value="${MODE}"]`)) return false;
     const option = document.createElement('option');
     option.value = MODE;
     option.textContent = LABEL;
     const nao = select.querySelector('option[value="nao"]');
     if (nao) select.insertBefore(option, nao);
     else select.appendChild(option);
+    return true;
   }
 
-  function ensureMaintenanceNote(container, select, button) {
-    if (!container || !select) return;
-    let note = container.querySelector('.v4040-maintenance-note');
-    if (!note) {
-      note = document.createElement('div');
-      note.className = 'v4023-plan-note v4040-maintenance-note';
-      note.hidden = true;
-      note.innerHTML = '<strong>Manutenção:</strong> esta O.I. será incluída na aba Manutenção da Curva sem planejamento ou CAPEX previsto individual. Serão exibidos somente os realizados da própria O.I.; o orçamento permanece no bolsão de Manutenção (O.I. 50158051).';
-      container.appendChild(note);
+  function updateMaintenanceNote(select, note, button) {
+    if (!select) return;
+    const isMaintenance = select.value === MODE;
+    if (note) note.hidden = !isMaintenance;
+    if (!button) return;
+    if (isMaintenance) {
+      button.disabled = false;
+      button.textContent = 'Criar O.I. na Manutenção';
+    } else if (!select.value) {
+      button.textContent = 'Selecione o modo de participação';
     }
-
-    const refresh = () => {
-      const isMaintenance = select.value === MODE;
-      note.hidden = !isMaintenance;
-      if (!button) return;
-      if (isMaintenance) {
-        button.disabled = false;
-        button.textContent = 'Criar O.I. na Manutenção';
-      } else if (!select.value) {
-        button.textContent = 'Selecione o modo de participação';
-      }
-    };
-
-    if (select.dataset.v40112MaintenanceNote !== '1') {
-      select.dataset.v40112MaintenanceNote = '1';
-      select.addEventListener('change', () => setTimeout(refresh, 0));
-    }
-    refresh();
   }
 
   function patchNewModal(backdrop) {
@@ -63,25 +46,41 @@
     const select = backdrop.querySelector(NEW_SELECTOR);
     if (!select) return;
 
-    addOption(select);
-    select.dataset.v40112MaintenancePatched = '1';
+    // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
+    if (select.dataset.v40113MaintenancePatched === '1') return;
+    select.dataset.v40113MaintenancePatched = '1';
 
-    const help = backdrop.querySelector('.v4023-intent-help');
+    addOption(select);
+
+    const box = select.closest('.v4023-intent-box');
+    const help = box?.querySelector('.v4023-intent-help');
     if (help) {
       help.innerHTML = '<strong>Obra individual:</strong> possui linha e planejamento próprios. <strong>Consolidada em pacote:</strong> mantém O.I., aporte e consumo no Controle, mas o efeito financeiro pertence ao pacote escolhido. <strong>Manutenção:</strong> entra apenas na aba Manutenção, sem fluxo previsto individual e com somente os realizados. <strong>Não participa:</strong> não possui efeito na Curva.';
     }
 
-    const box = select.closest('.v4023-intent-box');
+    let note = box?.querySelector('.v4040-maintenance-note');
+    if (!note && box) {
+      note = document.createElement('div');
+      note.className = 'v4023-plan-note v4040-maintenance-note';
+      note.hidden = true;
+      note.innerHTML = '<strong>Manutenção:</strong> esta O.I. será incluída na aba Manutenção da Curva sem planejamento ou CAPEX previsto individual. Serão exibidos somente os realizados da própria O.I.; o orçamento permanece no bolsão de Manutenção (O.I. 50158051).';
+      box.appendChild(note);
+    }
+
     const later = backdrop.querySelector('#v4023-save-later');
-    ensureMaintenanceNote(box, select, later);
+    select.addEventListener('change', () => updateMaintenanceNote(select, note, later));
+    updateMaintenanceNote(select, note, later);
   }
 
   function decorateEditModal(backdrop) {
     const select = backdrop?.querySelector(EDIT_SELECTOR);
     if (!select) return null;
 
+    // CRÍTICO: patch estritamente idempotente.
+    if (select.dataset.v40113MaintenancePatched === '1') return select;
+    select.dataset.v40113MaintenancePatched = '1';
+
     addOption(select);
-    select.dataset.v40112MaintenancePatched = '1';
 
     const box = select.closest('.v4023-intent-box');
     const help = box?.querySelector('.v4023-intent-help');
@@ -99,10 +98,7 @@
     }
 
     const refresh = () => { if (note) note.hidden = select.value !== MODE; };
-    if (select.dataset.v40112EditListener !== '1') {
-      select.dataset.v40112EditListener = '1';
-      select.addEventListener('change', () => setTimeout(refresh, 0));
-    }
+    select.addEventListener('change', refresh);
     refresh();
     return select;
   }
@@ -111,52 +107,63 @@
     const select = decorateEditModal(backdrop);
     if (!select || !id || !window.sb?.rpc) return;
 
-    const token = `${id}`;
-    if (select.dataset.v40112GovernanceLoaded === token) return;
-    select.dataset.v40112GovernanceLoaded = token;
+    const token = String(id);
+    if (select.dataset.v40113GovernanceLoaded === token) return;
+    select.dataset.v40113GovernanceLoaded = token;
 
     try {
       const { data, error } = await window.sb.rpc('obter_governanca_oi_v4027', { p_id: id });
       if (error) throw error;
+
       const mode = data?.participacao_curva;
       if (mode) {
         addOption(select);
-        select.value = mode;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
+        if (select.value !== mode) {
+          select.value = mode;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       }
     } catch (error) {
-      delete select.dataset.v40112GovernanceLoaded;
+      delete select.dataset.v40113GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
 
-  function scanModals() {
+  function scanNewModalsOnly() {
     document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
       if (backdrop.querySelector(NEW_SELECTOR)) patchNewModal(backdrop);
+      // Edição é apenas decorada aqui; a leitura do Supabase ocorre pelo wrapper com o ID correto.
       if (backdrop.querySelector(EDIT_SELECTOR)) decorateEditModal(backdrop);
     });
   }
 
+  function findLatestEditBackdrop() {
+    return Array.from(document.querySelectorAll('.modal-backdrop'))
+      .reverse()
+      .find(backdrop => backdrop.querySelector(EDIT_SELECTOR));
+  }
+
   function scheduleEditPatch(id) {
-    [0, 40, 120, 300].forEach(delay => setTimeout(() => {
-      const boxes = Array.from(document.querySelectorAll('.modal-backdrop')).reverse();
-      const backdrop = boxes.find(b => b.querySelector(EDIT_SELECTOR));
-      if (backdrop) void patchEditModal(backdrop, id);
-    }, delay));
+    [0, 50, 150, 350].forEach(delay => {
+      setTimeout(() => {
+        const backdrop = findLatestEditBackdrop();
+        if (backdrop) void patchEditModal(backdrop, id);
+      }, delay);
+    });
   }
 
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40112MaintenanceWrapped) return true;
+    if (current.__hapV40113MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40112MaintenanceWrapped = true;
-    wrapped.__hapV40112Original = current;
+    wrapped.__hapV40113MaintenanceWrapped = true;
+    wrapped.__hapV40113Original = current;
     window.editarOi = wrapped;
     return true;
   }
@@ -171,13 +178,11 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40112MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40113MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
           if (window.HAP_XF?.apply) {
-            // manFilteredObras/manObras são bindings globais do dashboard-core.js.
-            // O filtro legado (texto + período) roda primeiro; o HAP_XF refina e ordena depois.
             manFilteredObras = window.HAP_XF.apply('curve-maintenance', manFilteredObras);
             const count = document.getElementById('manFilterCount');
             if (count) count.textContent = `${manFilteredObras.length} de ${manObras.length} obras`;
@@ -191,33 +196,40 @@
         }
         return result;
       };
-      wrappedApply.__hapV40112MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40112Original = currentApply;
+      wrappedApply.__hapV40113MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40113Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40112MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40113MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40112MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40112Original = currentClear;
+      wrappedClear.__hapV40113MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40113Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
     return true;
   }
 
+  let scanQueued = false;
   const observer = new MutationObserver(() => {
-    scanModals();
-    wrapEditOi();
-    installMaintenanceFilterBridge();
+    // Agrupa mutações numa única varredura e impede cascatas síncronas.
+    if (scanQueued) return;
+    scanQueued = true;
+    queueMicrotask(() => {
+      scanQueued = false;
+      scanNewModalsOnly();
+      wrapEditOi();
+      installMaintenanceFilterBridge();
+    });
   });
 
   function boot() {
-    scanModals();
+    scanNewModalsOnly();
     observer.observe(document.body, { childList: true, subtree: true });
 
     let attempts = 0;
@@ -225,7 +237,7 @@
       attempts += 1;
       wrapEditOi();
       installMaintenanceFilterBridge();
-      if (attempts > 600) clearInterval(retry); // 60 s: cobre login/carregamento dinâmico do dashboard.
+      if (attempts > 600) clearInterval(retry);
     }, 100);
 
     window.addEventListener('hapcapex:curve-ready', () => {
@@ -237,7 +249,7 @@
       version: VERSION,
       mode: MODE,
       refresh() {
-        scanModals();
+        scanNewModalsOnly();
         wrapEditOi();
         installMaintenanceFilterBridge();
       }
