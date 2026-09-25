@@ -1,17 +1,19 @@
-/* HAPCAPEX V40.0.113 — Manutenção: governança da O.I. + filtros da Curva.
-   Hotfix sobre V40.0.112:
-   - elimina loop de MutationObserver que podia travar a página ao abrir "Editar O.I.";
-   - mantém o modal padrão do Controle de CAPEX;
+/* HAPCAPEX V40.0.114 — Manutenção: governança da O.I. + filtros da Curva.
+   Hotfix sobre V40.0.113:
+   - corrige a leitura da governança no modal de edição usando o cliente Supabase real
+     do Controle de CAPEX (binding global lexical `sb`, não apenas `window.sb`);
+   - mantém o modal padrão e evita loops de MutationObserver;
    - preserva/exibe participacao_curva='manutencao' na criação e edição;
+   - remove o aviso de "cadastro legado" quando a governança real já foi carregada;
    - mantém os filtros estilo Excel da aba Manutenção aplicados à tabela/KPIs/gráficos/riscos.
 */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40113_MAINTENANCE_MODE__) return;
-  window.__HAP_V40113_MAINTENANCE_MODE__ = true;
+  if (window.__HAP_V40114_MAINTENANCE_MODE__) return;
+  window.__HAP_V40114_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.113';
+  const VERSION = '40.0.114';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
@@ -47,8 +49,8 @@
     if (!select) return;
 
     // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
-    if (select.dataset.v40113MaintenancePatched === '1') return;
-    select.dataset.v40113MaintenancePatched = '1';
+    if (select.dataset.v40114MaintenancePatched === '1') return;
+    select.dataset.v40114MaintenancePatched = '1';
 
     addOption(select);
 
@@ -77,8 +79,8 @@
     if (!select) return null;
 
     // CRÍTICO: patch estritamente idempotente.
-    if (select.dataset.v40113MaintenancePatched === '1') return select;
-    select.dataset.v40113MaintenancePatched = '1';
+    if (select.dataset.v40114MaintenancePatched === '1') return select;
+    select.dataset.v40114MaintenancePatched = '1';
 
     addOption(select);
 
@@ -103,28 +105,45 @@
     return select;
   }
 
+  function getSupabaseClient() {
+    // controle-capex.html declara `const sb = ...` em script clássico.
+    // Top-level const não vira window.sb, mas continua acessível por identificador
+    // aos scripts clássicos carregados depois. O fallback mantém compatibilidade.
+    try {
+      if (typeof sb !== 'undefined' && sb?.rpc) return sb;
+    } catch (_) {}
+    return window.sb?.rpc ? window.sb : null;
+  }
+
   async function patchEditModal(backdrop, id) {
     const select = decorateEditModal(backdrop);
-    if (!select || !id || !window.sb?.rpc) return;
+    const client = getSupabaseClient();
+    if (!select || !id || !client) return;
 
     const token = String(id);
-    if (select.dataset.v40113GovernanceLoaded === token) return;
-    select.dataset.v40113GovernanceLoaded = token;
+    if (select.dataset.v40114GovernanceLoaded === token) return;
+    select.dataset.v40114GovernanceLoaded = token;
 
     try {
-      const { data, error } = await window.sb.rpc('obter_governanca_oi_v4027', { p_id: id });
+      const { data, error } = await client.rpc('obter_governanca_oi_v4027', { p_id: id });
       if (error) throw error;
 
-      const mode = data?.participacao_curva;
+      const mode = String(data?.participacao_curva || '').trim();
       if (mode) {
         addOption(select);
-        if (select.value !== mode) {
-          select.value = mode;
-          select.dispatchEvent(new Event('change', { bubbles: true }));
+        select.value = mode;
+
+        // Se a governança existe no banco, este cadastro não é legado.
+        // O módulo legado pode ter observado o select antes da resposta do RPC.
+        backdrop?.querySelectorAll('[data-v4081-legacy-hint]').forEach(el => el.remove());
+        if (backdrop?.dataset) {
+          backdrop.dataset.v4081InitialCurveMode = mode;
         }
+
+        select.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (error) {
-      delete select.dataset.v40113GovernanceLoaded;
+      delete select.dataset.v40114GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
@@ -155,15 +174,15 @@
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40113MaintenanceWrapped) return true;
+    if (current.__hapV40114MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40113MaintenanceWrapped = true;
-    wrapped.__hapV40113Original = current;
+    wrapped.__hapV40114MaintenanceWrapped = true;
+    wrapped.__hapV40114Original = current;
     window.editarOi = wrapped;
     return true;
   }
@@ -178,7 +197,7 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40113MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40114MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
@@ -196,19 +215,19 @@
         }
         return result;
       };
-      wrappedApply.__hapV40113MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40113Original = currentApply;
+      wrappedApply.__hapV40114MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40114Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40113MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40114MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40113MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40113Original = currentClear;
+      wrappedClear.__hapV40114MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40114Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
