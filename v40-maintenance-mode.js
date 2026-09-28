@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.115 — Manutenção: governança da O.I. + filtros da Curva.
+/* HAPCAPEX V40.0.116 — Manutenção: governança da O.I. + filtros da Curva.
    Hotfix sobre V40.0.113:
    - corrige a leitura da governança no modal de edição usando o cliente Supabase real
      do Controle de CAPEX (binding global lexical `sb`, não apenas `window.sb`);
@@ -7,15 +7,17 @@
    - remove o aviso de "cadastro legado" quando a governança real já foi carregada;
    - mantém os filtros estilo Excel da aba Manutenção aplicados à tabela/KPIs/gráficos/riscos;
    - aportes operacionais de O.I.s com governança explícita `manutencao` são roteados
-     automaticamente para a aba Manutenção, sem abrir planejamento individual.
+     automaticamente para a aba Manutenção, sem abrir planejamento individual;
+   - elimina o loop de MutationObserver/RPC que podia travar a página ao digitar uma O.I.
+     no aporte operacional.
 */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40115_MAINTENANCE_MODE__) return;
-  window.__HAP_V40115_MAINTENANCE_MODE__ = true;
+  if (window.__HAP_V40116_MAINTENANCE_MODE__) return;
+  window.__HAP_V40116_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.115';
+  const VERSION = '40.0.116';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
@@ -51,8 +53,8 @@
     if (!select) return;
 
     // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
-    if (select.dataset.v40115MaintenancePatched === '1') return;
-    select.dataset.v40115MaintenancePatched = '1';
+    if (select.dataset.v40116MaintenancePatched === '1') return;
+    select.dataset.v40116MaintenancePatched = '1';
 
     addOption(select);
 
@@ -81,8 +83,8 @@
     if (!select) return null;
 
     // CRÍTICO: patch estritamente idempotente.
-    if (select.dataset.v40115MaintenancePatched === '1') return select;
-    select.dataset.v40115MaintenancePatched = '1';
+    if (select.dataset.v40116MaintenancePatched === '1') return select;
+    select.dataset.v40116MaintenancePatched = '1';
 
     addOption(select);
 
@@ -170,35 +172,59 @@
     const later = box.querySelector('#v374-save-later');
     const kpiOnly = box.querySelector('#v4066-kpi-only');
     const note = box.querySelector('.v374-plan-later-note');
+    const maintenanceText = 'Registrar aporte em Manutenção';
+    const maintenanceTitle = 'A O.I. já está governada como Manutenção. O aporte será aplicado automaticamente sem planejamento individual.';
+    const maintenanceNote = '<strong>Manutenção identificada automaticamente:</strong> esta O.I. já participa da Curva como Manutenção. O aporte será acrescentado ao Controle e mantido na aba Manutenção, <strong>sem datas, tipologia ou regra de planejamento individual</strong>.';
 
     if (active) {
-      backdrop.dataset.v40115MaintenanceAporte = '1';
+      if (backdrop.dataset.v40116MaintenanceAporte !== '1') {
+        backdrop.dataset.v40116MaintenanceAporte = '1';
+      }
       if (next) {
-        if (!next.dataset.v40115OriginalText) next.dataset.v40115OriginalText = next.textContent || 'Registrar e planejar agora';
-        next.textContent = 'Registrar aporte em Manutenção';
-        next.title = 'A O.I. já está governada como Manutenção. O aporte será aplicado automaticamente sem planejamento individual.';
+        if (!next.dataset.v40116OriginalText) next.dataset.v40116OriginalText = next.textContent || 'Registrar e planejar agora';
+        if (next.textContent !== maintenanceText) next.textContent = maintenanceText;
+        if (next.title !== maintenanceTitle) next.title = maintenanceTitle;
       }
       if (later) {
-        if (!later.dataset.v40115OriginalDisplay) later.dataset.v40115OriginalDisplay = later.style.display || '';
-        later.style.display = 'none';
+        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40116OriginalDisplay')) {
+          later.dataset.v40116OriginalDisplay = later.style.display || '';
+        }
+        if (later.style.display !== 'none') later.style.display = 'none';
       }
       if (kpiOnly) {
-        if (!kpiOnly.dataset.v40115OriginalDisplay) kpiOnly.dataset.v40115OriginalDisplay = kpiOnly.style.display || '';
-        kpiOnly.style.display = 'none';
+        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40116OriginalDisplay')) {
+          kpiOnly.dataset.v40116OriginalDisplay = kpiOnly.style.display || '';
+        }
+        if (kpiOnly.style.display !== 'none') kpiOnly.style.display = 'none';
       }
       if (note) {
-        if (!note.dataset.v40115OriginalHtml) note.dataset.v40115OriginalHtml = note.innerHTML;
-        note.innerHTML = '<strong>Manutenção identificada automaticamente:</strong> esta O.I. já participa da Curva como Manutenção. O aporte será acrescentado ao Controle e mantido na aba Manutenção, <strong>sem datas, tipologia ou regra de planejamento individual</strong>.';
+        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40116OriginalHtml')) {
+          note.dataset.v40116OriginalHtml = note.innerHTML;
+        }
+        if (note.innerHTML !== maintenanceNote) note.innerHTML = maintenanceNote;
       }
-    } else if (backdrop.dataset.v40115MaintenanceAporte === '1') {
-      delete backdrop.dataset.v40115MaintenanceAporte;
-      if (next?.dataset.v40115OriginalText) {
-        next.textContent = next.dataset.v40115OriginalText;
-        next.removeAttribute('title');
-      }
-      if (later) later.style.display = later.dataset.v40115OriginalDisplay || '';
-      if (kpiOnly) kpiOnly.style.display = kpiOnly.dataset.v40115OriginalDisplay || '';
-      if (note?.dataset.v40115OriginalHtml) note.innerHTML = note.dataset.v40115OriginalHtml;
+      return;
+    }
+
+    if (backdrop.dataset.v40116MaintenanceAporte !== '1') return;
+    delete backdrop.dataset.v40116MaintenanceAporte;
+
+    if (next?.dataset.v40116OriginalText) {
+      const originalText = next.dataset.v40116OriginalText;
+      if (next.textContent !== originalText) next.textContent = originalText;
+      if (next.hasAttribute('title')) next.removeAttribute('title');
+    }
+    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40116OriginalDisplay')) {
+      const display = later.dataset.v40116OriginalDisplay || '';
+      if (later.style.display !== display) later.style.display = display;
+    }
+    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40116OriginalDisplay')) {
+      const display = kpiOnly.dataset.v40116OriginalDisplay || '';
+      if (kpiOnly.style.display !== display) kpiOnly.style.display = display;
+    }
+    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40116OriginalHtml')) {
+      const originalHtml = note.dataset.v40116OriginalHtml;
+      if (note.innerHTML !== originalHtml) note.innerHTML = originalHtml;
     }
   }
 
@@ -206,21 +232,39 @@
     const box = getOperationalAporteBox(backdrop);
     const oiInput = box?.querySelector('#v36-a-oi');
     if (!box || !oiInput) return null;
+
     const oi = String(oiInput.value || '').replace(/\D/g, '').trim();
     if (!/^\d{8}$/.test(oi)) {
+      delete backdrop.dataset.v40116AporteCheckedOi;
+      delete backdrop.dataset.v40116AporteGovernanceState;
       setMaintenanceAporteUi(backdrop, false);
       return null;
     }
 
-    const seq = String((Number(backdrop.dataset.v40115AporteLookupSeq || 0) + 1));
-    backdrop.dataset.v40115AporteLookupSeq = seq;
+    if (!force && backdrop.dataset.v40116AporteCheckedOi === oi) {
+      const state = backdrop.dataset.v40116AporteGovernanceState;
+      if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
+      else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
+      return state || null;
+    }
+
+    const seq = String((Number(backdrop.dataset.v40116AporteLookupSeq || 0) + 1));
+    backdrop.dataset.v40116AporteLookupSeq = seq;
     try {
       const governance = await getAporteGovernance(oi, force);
-      if (backdrop.dataset.v40115AporteLookupSeq !== seq) return governance;
+      if (backdrop.dataset.v40116AporteLookupSeq !== seq) return governance;
       if (String(oiInput.value || '').replace(/\D/g, '').trim() !== oi) return governance;
-      setMaintenanceAporteUi(backdrop, isGovernedMaintenance(governance));
+
+      const maintenance = isGovernedMaintenance(governance);
+      backdrop.dataset.v40116AporteCheckedOi = oi;
+      backdrop.dataset.v40116AporteGovernanceState = maintenance ? 'maintenance' : 'other';
+      setMaintenanceAporteUi(backdrop, maintenance);
       return governance;
     } catch (error) {
+      if (backdrop.dataset.v40116AporteLookupSeq === seq) {
+        delete backdrop.dataset.v40116AporteCheckedOi;
+        delete backdrop.dataset.v40116AporteGovernanceState;
+      }
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar governança do aporte da O.I. ${oi}.`, error);
       return null;
     }
@@ -231,21 +275,47 @@
     const oiInput = box?.querySelector('#v36-a-oi');
     if (!box || !oiInput) return;
 
-    if (oiInput.dataset.v40115MaintenanceAporteBound !== '1') {
-      oiInput.dataset.v40115MaintenanceAporteBound = '1';
+    if (oiInput.dataset.v40116MaintenanceAporteBound !== '1') {
+      oiInput.dataset.v40116MaintenanceAporteBound = '1';
       let timer = null;
       const schedule = () => {
         clearTimeout(timer);
-        timer = setTimeout(() => void refreshOperationalAporteGovernance(backdrop), 120);
+        const currentOi = String(oiInput.value || '').replace(/\D/g, '').trim();
+        if (backdrop.dataset.v40116AporteCheckedOi && backdrop.dataset.v40116AporteCheckedOi !== currentOi) {
+          delete backdrop.dataset.v40116AporteCheckedOi;
+          delete backdrop.dataset.v40116AporteGovernanceState;
+          setMaintenanceAporteUi(backdrop, false);
+        }
+        if (!/^\d{8}$/.test(currentOi)) return;
+        timer = setTimeout(() => void refreshOperationalAporteGovernance(backdrop), 180);
       };
       oiInput.addEventListener('input', schedule);
       oiInput.addEventListener('change', schedule);
     }
 
-    // V37 e o módulo de KPI podem acrescentar nota/botões após o modal nascer.
-    // Reaplica somente o estado visual, sem nova consulta quando já confirmado.
-    if (backdrop.dataset.v40115MaintenanceAporte === '1') setMaintenanceAporteUi(backdrop, true);
-    else void refreshOperationalAporteGovernance(backdrop);
+    const currentOi = String(oiInput.value || '').replace(/\D/g, '').trim();
+    if (!/^\d{8}$/.test(currentOi)) {
+      setMaintenanceAporteUi(backdrop, false);
+      return;
+    }
+
+    if (backdrop.dataset.v40116AporteCheckedOi === currentOi) {
+      const state = backdrop.dataset.v40116AporteGovernanceState;
+      if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
+      else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
+      return;
+    }
+
+    // Uma única consulta por O.I. digitada. O MutationObserver pode revarrer o modal,
+    // mas não dispara novas RPCs nem reescreve o DOM quando o estado já foi confirmado.
+    if (backdrop.dataset.v40116AporteLookupPending !== currentOi) {
+      backdrop.dataset.v40116AporteLookupPending = currentOi;
+      void refreshOperationalAporteGovernance(backdrop).finally(() => {
+        if (backdrop.dataset.v40116AporteLookupPending === currentOi) {
+          delete backdrop.dataset.v40116AporteLookupPending;
+        }
+      });
+    }
   }
 
   async function registerGovernedMaintenanceAporte(backdrop, box, button) {
@@ -294,20 +364,20 @@
   }
 
   function replayAporteClick(button) {
-    button.dataset.v40115AporteBypass = '1';
+    button.dataset.v40116AporteBypass = '1';
     button.disabled = false;
     queueMicrotask(() => button.click());
   }
 
   function installAporteMaintenanceInterceptor() {
-    if (window.__HAP_V40115_APORTE_MAINTENANCE_INTERCEPTOR__) return;
-    window.__HAP_V40115_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
+    if (window.__HAP_V40116_APORTE_MAINTENANCE_INTERCEPTOR__) return;
+    window.__HAP_V40116_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
 
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('#v36-a-next,#v374-save-later') : null;
       if (!target) return;
-      if (target.dataset.v40115AporteBypass === '1') {
-        delete target.dataset.v40115AporteBypass;
+      if (target.dataset.v40116AporteBypass === '1') {
+        delete target.dataset.v40116AporteBypass;
         return;
       }
 
@@ -340,7 +410,7 @@
           // Se a consulta de governança falhar, preserva o fluxo anterior; se a gravação falhar,
           // o próprio formulário já exibiu o erro e não deve abrir planejamento genérico.
           if (document.body.contains(backdrop)) {
-            const isMaintenanceUi = backdrop.dataset.v40115MaintenanceAporte === '1';
+            const isMaintenanceUi = backdrop.dataset.v40116MaintenanceAporte === '1';
             if (!isMaintenanceUi) {
               target.textContent = originalText;
               replayAporteClick(target);
@@ -359,8 +429,8 @@
     if (!select || !id || !client) return;
 
     const token = String(id);
-    if (select.dataset.v40115GovernanceLoaded === token) return;
-    select.dataset.v40115GovernanceLoaded = token;
+    if (select.dataset.v40116GovernanceLoaded === token) return;
+    select.dataset.v40116GovernanceLoaded = token;
 
     try {
       const { data, error } = await client.rpc('obter_governanca_oi_v4027', { p_id: id });
@@ -381,7 +451,7 @@
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (error) {
-      delete select.dataset.v40115GovernanceLoaded;
+      delete select.dataset.v40116GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
@@ -413,15 +483,15 @@
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40115MaintenanceWrapped) return true;
+    if (current.__hapV40116MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40115MaintenanceWrapped = true;
-    wrapped.__hapV40115Original = current;
+    wrapped.__hapV40116MaintenanceWrapped = true;
+    wrapped.__hapV40116Original = current;
     window.editarOi = wrapped;
     return true;
   }
@@ -436,7 +506,7 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40115MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40116MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
@@ -454,19 +524,19 @@
         }
         return result;
       };
-      wrappedApply.__hapV40115MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40115Original = currentApply;
+      wrappedApply.__hapV40116MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40116Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40115MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40116MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40115MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40115Original = currentClear;
+      wrappedClear.__hapV40116MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40116Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
