@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.117 — Manutenção: governança da O.I. + filtros da Curva.
+/* HAPCAPEX V40.0.118 — Manutenção: governança da O.I. + filtros da Curva.
    Hotfix sobre V40.0.113:
    - corrige a leitura da governança no modal de edição usando o cliente Supabase real
      do Controle de CAPEX (binding global lexical `sb`, não apenas `window.sb`);
@@ -10,15 +10,17 @@
      automaticamente para a aba Manutenção, sem abrir planejamento individual;
    - elimina o loop de MutationObserver/RPC que podia travar a página ao digitar uma O.I.
      no aporte operacional;
-   - V40.0.117: corrige o travamento/lentidão dos filtros da Base Consumo com paginação concorrente e cache curto.
+   - V40.0.118: preserva a aceleração dos filtros da Base Consumo com paginação concorrente e cache curto;
+   - V40.0.118: adiciona seleção rápida por Mês e Ano aos filtros de colunas do tipo Data;
+   - V40.0.118: transforma o KPI Valor total da Base Consumo em total dinâmico da coluna Montante conforme os filtros ativos.
 */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40117_MAINTENANCE_MODE__) return;
-  window.__HAP_V40117_MAINTENANCE_MODE__ = true;
+  if (window.__HAP_V40118_MAINTENANCE_MODE__) return;
+  window.__HAP_V40118_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.117';
+  const VERSION = '40.0.118';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
@@ -54,8 +56,8 @@
     if (!select) return;
 
     // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
-    if (select.dataset.v40117MaintenancePatched === '1') return;
-    select.dataset.v40117MaintenancePatched = '1';
+    if (select.dataset.v40118MaintenancePatched === '1') return;
+    select.dataset.v40118MaintenancePatched = '1';
 
     addOption(select);
 
@@ -84,8 +86,8 @@
     if (!select) return null;
 
     // CRÍTICO: patch estritamente idempotente.
-    if (select.dataset.v40117MaintenancePatched === '1') return select;
-    select.dataset.v40117MaintenancePatched = '1';
+    if (select.dataset.v40118MaintenancePatched === '1') return select;
+    select.dataset.v40118MaintenancePatched = '1';
 
     addOption(select);
 
@@ -178,53 +180,53 @@
     const maintenanceNote = '<strong>Manutenção identificada automaticamente:</strong> esta O.I. já participa da Curva como Manutenção. O aporte será acrescentado ao Controle e mantido na aba Manutenção, <strong>sem datas, tipologia ou regra de planejamento individual</strong>.';
 
     if (active) {
-      if (backdrop.dataset.v40117MaintenanceAporte !== '1') {
-        backdrop.dataset.v40117MaintenanceAporte = '1';
+      if (backdrop.dataset.v40118MaintenanceAporte !== '1') {
+        backdrop.dataset.v40118MaintenanceAporte = '1';
       }
       if (next) {
-        if (!next.dataset.v40117OriginalText) next.dataset.v40117OriginalText = next.textContent || 'Registrar e planejar agora';
+        if (!next.dataset.v40118OriginalText) next.dataset.v40118OriginalText = next.textContent || 'Registrar e planejar agora';
         if (next.textContent !== maintenanceText) next.textContent = maintenanceText;
         if (next.title !== maintenanceTitle) next.title = maintenanceTitle;
       }
       if (later) {
-        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40117OriginalDisplay')) {
-          later.dataset.v40117OriginalDisplay = later.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40118OriginalDisplay')) {
+          later.dataset.v40118OriginalDisplay = later.style.display || '';
         }
         if (later.style.display !== 'none') later.style.display = 'none';
       }
       if (kpiOnly) {
-        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40117OriginalDisplay')) {
-          kpiOnly.dataset.v40117OriginalDisplay = kpiOnly.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40118OriginalDisplay')) {
+          kpiOnly.dataset.v40118OriginalDisplay = kpiOnly.style.display || '';
         }
         if (kpiOnly.style.display !== 'none') kpiOnly.style.display = 'none';
       }
       if (note) {
-        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40117OriginalHtml')) {
-          note.dataset.v40117OriginalHtml = note.innerHTML;
+        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40118OriginalHtml')) {
+          note.dataset.v40118OriginalHtml = note.innerHTML;
         }
         if (note.innerHTML !== maintenanceNote) note.innerHTML = maintenanceNote;
       }
       return;
     }
 
-    if (backdrop.dataset.v40117MaintenanceAporte !== '1') return;
-    delete backdrop.dataset.v40117MaintenanceAporte;
+    if (backdrop.dataset.v40118MaintenanceAporte !== '1') return;
+    delete backdrop.dataset.v40118MaintenanceAporte;
 
-    if (next?.dataset.v40117OriginalText) {
-      const originalText = next.dataset.v40117OriginalText;
+    if (next?.dataset.v40118OriginalText) {
+      const originalText = next.dataset.v40118OriginalText;
       if (next.textContent !== originalText) next.textContent = originalText;
       if (next.hasAttribute('title')) next.removeAttribute('title');
     }
-    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40117OriginalDisplay')) {
-      const display = later.dataset.v40117OriginalDisplay || '';
+    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40118OriginalDisplay')) {
+      const display = later.dataset.v40118OriginalDisplay || '';
       if (later.style.display !== display) later.style.display = display;
     }
-    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40117OriginalDisplay')) {
-      const display = kpiOnly.dataset.v40117OriginalDisplay || '';
+    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40118OriginalDisplay')) {
+      const display = kpiOnly.dataset.v40118OriginalDisplay || '';
       if (kpiOnly.style.display !== display) kpiOnly.style.display = display;
     }
-    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40117OriginalHtml')) {
-      const originalHtml = note.dataset.v40117OriginalHtml;
+    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40118OriginalHtml')) {
+      const originalHtml = note.dataset.v40118OriginalHtml;
       if (note.innerHTML !== originalHtml) note.innerHTML = originalHtml;
     }
   }
@@ -236,35 +238,35 @@
 
     const oi = String(oiInput.value || '').replace(/\D/g, '').trim();
     if (!/^\d{8}$/.test(oi)) {
-      delete backdrop.dataset.v40117AporteCheckedOi;
-      delete backdrop.dataset.v40117AporteGovernanceState;
+      delete backdrop.dataset.v40118AporteCheckedOi;
+      delete backdrop.dataset.v40118AporteGovernanceState;
       setMaintenanceAporteUi(backdrop, false);
       return null;
     }
 
-    if (!force && backdrop.dataset.v40117AporteCheckedOi === oi) {
-      const state = backdrop.dataset.v40117AporteGovernanceState;
+    if (!force && backdrop.dataset.v40118AporteCheckedOi === oi) {
+      const state = backdrop.dataset.v40118AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return state || null;
     }
 
-    const seq = String((Number(backdrop.dataset.v40117AporteLookupSeq || 0) + 1));
-    backdrop.dataset.v40117AporteLookupSeq = seq;
+    const seq = String((Number(backdrop.dataset.v40118AporteLookupSeq || 0) + 1));
+    backdrop.dataset.v40118AporteLookupSeq = seq;
     try {
       const governance = await getAporteGovernance(oi, force);
-      if (backdrop.dataset.v40117AporteLookupSeq !== seq) return governance;
+      if (backdrop.dataset.v40118AporteLookupSeq !== seq) return governance;
       if (String(oiInput.value || '').replace(/\D/g, '').trim() !== oi) return governance;
 
       const maintenance = isGovernedMaintenance(governance);
-      backdrop.dataset.v40117AporteCheckedOi = oi;
-      backdrop.dataset.v40117AporteGovernanceState = maintenance ? 'maintenance' : 'other';
+      backdrop.dataset.v40118AporteCheckedOi = oi;
+      backdrop.dataset.v40118AporteGovernanceState = maintenance ? 'maintenance' : 'other';
       setMaintenanceAporteUi(backdrop, maintenance);
       return governance;
     } catch (error) {
-      if (backdrop.dataset.v40117AporteLookupSeq === seq) {
-        delete backdrop.dataset.v40117AporteCheckedOi;
-        delete backdrop.dataset.v40117AporteGovernanceState;
+      if (backdrop.dataset.v40118AporteLookupSeq === seq) {
+        delete backdrop.dataset.v40118AporteCheckedOi;
+        delete backdrop.dataset.v40118AporteGovernanceState;
       }
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar governança do aporte da O.I. ${oi}.`, error);
       return null;
@@ -276,15 +278,15 @@
     const oiInput = box?.querySelector('#v36-a-oi');
     if (!box || !oiInput) return;
 
-    if (oiInput.dataset.v40117MaintenanceAporteBound !== '1') {
-      oiInput.dataset.v40117MaintenanceAporteBound = '1';
+    if (oiInput.dataset.v40118MaintenanceAporteBound !== '1') {
+      oiInput.dataset.v40118MaintenanceAporteBound = '1';
       let timer = null;
       const schedule = () => {
         clearTimeout(timer);
         const currentOi = String(oiInput.value || '').replace(/\D/g, '').trim();
-        if (backdrop.dataset.v40117AporteCheckedOi && backdrop.dataset.v40117AporteCheckedOi !== currentOi) {
-          delete backdrop.dataset.v40117AporteCheckedOi;
-          delete backdrop.dataset.v40117AporteGovernanceState;
+        if (backdrop.dataset.v40118AporteCheckedOi && backdrop.dataset.v40118AporteCheckedOi !== currentOi) {
+          delete backdrop.dataset.v40118AporteCheckedOi;
+          delete backdrop.dataset.v40118AporteGovernanceState;
           setMaintenanceAporteUi(backdrop, false);
         }
         if (!/^\d{8}$/.test(currentOi)) return;
@@ -300,8 +302,8 @@
       return;
     }
 
-    if (backdrop.dataset.v40117AporteCheckedOi === currentOi) {
-      const state = backdrop.dataset.v40117AporteGovernanceState;
+    if (backdrop.dataset.v40118AporteCheckedOi === currentOi) {
+      const state = backdrop.dataset.v40118AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return;
@@ -309,11 +311,11 @@
 
     // Uma única consulta por O.I. digitada. O MutationObserver pode revarrer o modal,
     // mas não dispara novas RPCs nem reescreve o DOM quando o estado já foi confirmado.
-    if (backdrop.dataset.v40117AporteLookupPending !== currentOi) {
-      backdrop.dataset.v40117AporteLookupPending = currentOi;
+    if (backdrop.dataset.v40118AporteLookupPending !== currentOi) {
+      backdrop.dataset.v40118AporteLookupPending = currentOi;
       void refreshOperationalAporteGovernance(backdrop).finally(() => {
-        if (backdrop.dataset.v40117AporteLookupPending === currentOi) {
-          delete backdrop.dataset.v40117AporteLookupPending;
+        if (backdrop.dataset.v40118AporteLookupPending === currentOi) {
+          delete backdrop.dataset.v40118AporteLookupPending;
         }
       });
     }
@@ -365,20 +367,20 @@
   }
 
   function replayAporteClick(button) {
-    button.dataset.v40117AporteBypass = '1';
+    button.dataset.v40118AporteBypass = '1';
     button.disabled = false;
     queueMicrotask(() => button.click());
   }
 
   function installAporteMaintenanceInterceptor() {
-    if (window.__HAP_V40117_APORTE_MAINTENANCE_INTERCEPTOR__) return;
-    window.__HAP_V40117_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
+    if (window.__HAP_V40118_APORTE_MAINTENANCE_INTERCEPTOR__) return;
+    window.__HAP_V40118_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
 
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('#v36-a-next,#v374-save-later') : null;
       if (!target) return;
-      if (target.dataset.v40117AporteBypass === '1') {
-        delete target.dataset.v40117AporteBypass;
+      if (target.dataset.v40118AporteBypass === '1') {
+        delete target.dataset.v40118AporteBypass;
         return;
       }
 
@@ -411,7 +413,7 @@
           // Se a consulta de governança falhar, preserva o fluxo anterior; se a gravação falhar,
           // o próprio formulário já exibiu o erro e não deve abrir planejamento genérico.
           if (document.body.contains(backdrop)) {
-            const isMaintenanceUi = backdrop.dataset.v40117MaintenanceAporte === '1';
+            const isMaintenanceUi = backdrop.dataset.v40118MaintenanceAporte === '1';
             if (!isMaintenanceUi) {
               target.textContent = originalText;
               replayAporteClick(target);
@@ -430,8 +432,8 @@
     if (!select || !id || !client) return;
 
     const token = String(id);
-    if (select.dataset.v40117GovernanceLoaded === token) return;
-    select.dataset.v40117GovernanceLoaded = token;
+    if (select.dataset.v40118GovernanceLoaded === token) return;
+    select.dataset.v40118GovernanceLoaded = token;
 
     try {
       const { data, error } = await client.rpc('obter_governanca_oi_v4027', { p_id: id });
@@ -452,7 +454,7 @@
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (error) {
-      delete select.dataset.v40117GovernanceLoaded;
+      delete select.dataset.v40118GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
@@ -484,21 +486,21 @@
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40117MaintenanceWrapped) return true;
+    if (current.__hapV40118MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40117MaintenanceWrapped = true;
-    wrapped.__hapV40117Original = current;
+    wrapped.__hapV40118MaintenanceWrapped = true;
+    wrapped.__hapV40118Original = current;
     window.editarOi = wrapped;
     return true;
   }
 
 
-  // V40.0.117 — a Base Consumo possui dezenas de milhares de lançamentos.
+  // V40.0.118 — a Base Consumo possui dezenas de milhares de lançamentos.
   // O HAP_XF precisa da base completa para aplicar os filtros de cabeçalho, mas o
   // fetchAllRows legado fazia as páginas de 1.000 linhas de forma estritamente
   // sequencial. Com ~62 mil linhas, o primeiro filtro podia parecer travado.
@@ -597,7 +599,7 @@
   function installBaseConsumoFilterAcceleration() {
     const current = window.fetchAllRows;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40117BaseConsumoFast) return true;
+    if (current.__hapV40118BaseConsumoFast) return true;
 
     const wrapped = async function(viewName, orderCol, ascending) {
       if (String(viewName || '') !== BASE_CONSUMO_FAST_VIEW) {
@@ -612,8 +614,8 @@
       }
       return current.apply(this, arguments);
     };
-    wrapped.__hapV40117BaseConsumoFast = true;
-    wrapped.__hapV40117Original = current;
+    wrapped.__hapV40118BaseConsumoFast = true;
+    wrapped.__hapV40118Original = current;
     window.fetchAllRows = wrapped;
     return true;
   }
@@ -621,7 +623,7 @@
   function installBaseConsumoImportInvalidation() {
     const current = window.importarArquivoBaseConsumo;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40117BaseConsumoInvalidate) return true;
+    if (current.__hapV40118BaseConsumoInvalidate) return true;
 
     const wrapped = async function() {
       invalidateBaseConsumoFastCache();
@@ -631,9 +633,204 @@
         invalidateBaseConsumoFastCache();
       }
     };
-    wrapped.__hapV40117BaseConsumoInvalidate = true;
-    wrapped.__hapV40117Original = current;
+    wrapped.__hapV40118BaseConsumoInvalidate = true;
+    wrapped.__hapV40118Original = current;
     window.importarArquivoBaseConsumo = wrapped;
+    return true;
+  }
+
+  // V40.0.118 — atalhos de Mês/Ano nos filtros de data do HAP_XF.
+  // O núcleo do filtro permanece intocado: os atalhos apenas marcam/desmarcam os
+  // mesmos checkboxes de datas já usados pelo filtro estilo Excel e o usuário
+  // confirma normalmente pelo botão OK.
+  const DATE_FILTER_MONTHS = [
+    ['01','Janeiro'],['02','Fevereiro'],['03','Março'],['04','Abril'],
+    ['05','Maio'],['06','Junho'],['07','Julho'],['08','Agosto'],
+    ['09','Setembro'],['10','Outubro'],['11','Novembro'],['12','Dezembro']
+  ];
+
+  function parseFilterDateLabel(value) {
+    const match = String(value || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return null;
+    const day = String(match[1]).padStart(2, '0');
+    const month = String(match[2]).padStart(2, '0');
+    const year = match[3];
+    const date = new Date(`${year}-${month}-${day}T00:00:00Z`);
+    if (Number.isNaN(date.getTime()) || date.getUTCFullYear() !== Number(year) ||
+        date.getUTCMonth() + 1 !== Number(month) || date.getUTCDate() !== Number(day)) return null;
+    return { day, month, year };
+  }
+
+  function ensureDateFilterStyle() {
+    if (document.getElementById('hap-v40118-date-month-year-style')) return;
+    const style = document.createElement('style');
+    style.id = 'hap-v40118-date-month-year-style';
+    style.textContent = `
+      .hap-v40118-date-quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:6px 0 7px;padding:8px;background:#f7f9fc;border:1px solid #d9e0e9;border-radius:7px}
+      .hap-v40118-date-quick label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:10px;font-weight:800;color:#5a6882;text-transform:uppercase;letter-spacing:.03em}
+      .hap-v40118-date-quick select{width:100%;min-width:0;padding:7px 8px;border:1px solid #cbd5e3;border-radius:6px;background:#fff;color:#1a2233;font:12px 'Segoe UI',Arial,sans-serif;text-transform:none;letter-spacing:0}
+      @media(max-width:520px){.hap-v40118-date-quick{grid-template-columns:1fr}}
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function decorateDateFilterMenu(menu) {
+    if (!menu || menu.dataset.v40118MonthYear === '1') return false;
+    const condition = menu.querySelector('select[data-cond]');
+    const dateInput = menu.querySelector('input[data-a][type="date"]');
+    const search = menu.querySelector('.hap-xf-search');
+    const list = menu.querySelector('.hap-xf-list');
+    if (!condition || !dateInput || !search || !list) return false;
+
+    const rows = Array.from(menu.querySelectorAll('[data-item]'));
+    const parsedRows = rows.map(row => {
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      const label = row.querySelector('span')?.textContent || '';
+      return { row, checkbox, parts: parseFilterDateLabel(label) };
+    }).filter(item => item.checkbox && item.parts);
+    if (!parsedRows.length) return false;
+
+    ensureDateFilterStyle();
+    const years = [...new Set(parsedRows.map(item => item.parts.year))].sort((a,b) => Number(b) - Number(a));
+    const block = document.createElement('div');
+    block.className = 'hap-v40118-date-quick';
+    block.innerHTML = `
+      <label>Mês
+        <select data-v40118-month>
+          <option value="">Todos os meses</option>
+          ${DATE_FILTER_MONTHS.map(([value,label]) => `<option value="${value}">${label}</option>`).join('')}
+        </select>
+      </label>
+      <label>Ano
+        <select data-v40118-year>
+          <option value="">Todos os anos</option>
+          ${years.map(year => `<option value="${year}">${year}</option>`).join('')}
+        </select>
+      </label>`;
+    search.parentNode.insertBefore(block, search);
+
+    const monthSelect = block.querySelector('[data-v40118-month]');
+    const yearSelect = block.querySelector('[data-v40118-year]');
+
+    const applyMonthYear = () => {
+      if (search.value) {
+        search.value = '';
+        search.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+
+      // O atalho Mês/Ano substitui qualquer condição de data exata anterior
+      // para evitar a combinação acidental de dois filtros incompatíveis.
+      condition.value = '';
+      condition.dispatchEvent(new Event('change', { bubbles:true }));
+      const dateA = menu.querySelector('input[data-a]');
+      const dateB = menu.querySelector('input[data-b]');
+      if (dateA) dateA.value = '';
+      if (dateB) dateB.value = '';
+
+      const month = monthSelect.value;
+      const year = yearSelect.value;
+      const quickActive = !!month || !!year;
+      rows.forEach(row => {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (!checkbox) return;
+        const parts = parseFilterDateLabel(row.querySelector('span')?.textContent || '');
+        checkbox.checked = !quickActive || (!!parts && (!month || parts.month === month) && (!year || parts.year === year));
+      });
+      const first = rows.find(row => row.querySelector('input[type="checkbox"]'))?.querySelector('input[type="checkbox"]');
+      if (first) first.dispatchEvent(new Event('change', { bubbles:true }));
+    };
+
+    monthSelect.addEventListener('change', applyMonthYear);
+    yearSelect.addEventListener('change', applyMonthYear);
+    menu.dataset.v40118MonthYear = '1';
+    return true;
+  }
+
+  function decorateDateFilterMenus() {
+    document.querySelectorAll('.hap-xf-menu').forEach(decorateDateFilterMenu);
+  }
+
+  // V40.0.118 — total dinâmico da coluna Montante na Base Consumo.
+  // O total é calculado sobre TODA a fotografia atual, não apenas sobre a página
+  // visível. Quando houver filtro, reutiliza a mesma base completa/cache acelerado
+  // já usado pelos filtros para evitar novas cargas sequenciais de ~62 mil linhas.
+  let baseConsumoDynamicTotalTimer = null;
+  let baseConsumoDynamicTotalSeq = 0;
+
+  function brlDynamic(value) {
+    return Number(value || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+  }
+
+  function getBaseConsumoTotalCard() {
+    try {
+      if (String(state?.tab || '') !== 'base_consumo') return null;
+    } catch (_) { return null; }
+    return Array.from(document.querySelectorAll('.kpi-card')).find(card =>
+      String(card.querySelector('.label')?.textContent || '').trim().toLocaleLowerCase('pt-BR') === 'valor total'
+    ) || null;
+  }
+
+  async function updateBaseConsumoDynamicTotal() {
+    const card = getBaseConsumoTotalCard();
+    if (!card) return;
+    const valueEl = card.querySelector('.value');
+    if (!valueEl) return;
+
+    let sub = card.querySelector('.v40118-consumo-total-sub');
+    if (!sub) {
+      sub = document.createElement('div');
+      sub.className = 'sub v40118-consumo-total-sub';
+      card.appendChild(sub);
+    }
+
+    const xf = window.HAP_XF;
+    const active = !!xf?.hasActive?.('control-consumo');
+    if (!active) {
+      let total = 0;
+      try { total = Number(state?.consumoResumo?.valor_total || 0); } catch (_) {}
+      const formatted = brlDynamic(total);
+      if (valueEl.textContent !== formatted) valueEl.textContent = formatted;
+      const text = 'Total da coluna Montante · atualiza conforme os filtros';
+      if (sub.textContent !== text) sub.textContent = text;
+      return;
+    }
+
+    const seq = ++baseConsumoDynamicTotalSeq;
+    if (sub.textContent !== 'Calculando total dos filtros…') sub.textContent = 'Calculando total dos filtros…';
+    try {
+      const loaded = await loadBaseConsumoFast('data_lancamento', false);
+      if (seq !== baseConsumoDynamicTotalSeq || !getBaseConsumoTotalCard()) return;
+      if (loaded?.error || !Array.isArray(loaded?.data)) throw loaded?.error || new Error('Base Consumo indisponível.');
+      const filtered = xf?.apply ? xf.apply('control-consumo', loaded.data) : loaded.data;
+      const total = filtered.reduce((sum, row) => sum + (Number(row?.montante) || 0), 0);
+      const formatted = brlDynamic(total);
+      if (valueEl.textContent !== formatted) valueEl.textContent = formatted;
+      const text = `${filtered.length.toLocaleString('pt-BR')} lançamentos no resultado atual`;
+      if (sub.textContent !== text) sub.textContent = text;
+    } catch (error) {
+      console.warn(`[HAPCAPEX ${VERSION}] Falha ao calcular total dinâmico da Base Consumo.`, error);
+      if (sub.textContent !== 'Não foi possível recalcular o total agora.') sub.textContent = 'Não foi possível recalcular o total agora.';
+    }
+  }
+
+  function scheduleBaseConsumoDynamicTotal(delay=80) {
+    clearTimeout(baseConsumoDynamicTotalTimer);
+    baseConsumoDynamicTotalTimer = setTimeout(() => void updateBaseConsumoDynamicTotal(), delay);
+  }
+
+  function installBaseConsumoDynamicTotalBridge() {
+    if (window.__HAP_V40118_CONSUMO_DYNAMIC_TOTAL_BRIDGE__) return true;
+    const current = window.renderBaseConsumoTab;
+    if (typeof current !== 'function') return false;
+    const wrapped = function() {
+      const result = current.apply(this, arguments);
+      scheduleBaseConsumoDynamicTotal(40);
+      return result;
+    };
+    wrapped.__hapV40118DynamicTotalWrapped = true;
+    wrapped.__hapV40118Original = current;
+    window.renderBaseConsumoTab = wrapped;
+    window.__HAP_V40118_CONSUMO_DYNAMIC_TOTAL_BRIDGE__ = true;
     return true;
   }
 
@@ -647,7 +844,7 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40117MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40118MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
@@ -665,19 +862,19 @@
         }
         return result;
       };
-      wrappedApply.__hapV40117MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40117Original = currentApply;
+      wrappedApply.__hapV40118MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40118Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40117MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40118MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40117MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40117Original = currentClear;
+      wrappedClear.__hapV40118MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40118Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
@@ -695,6 +892,8 @@
       wrapEditOi();
       installBaseConsumoFilterAcceleration();
       installBaseConsumoImportInvalidation();
+      installBaseConsumoDynamicTotalBridge();
+      decorateDateFilterMenus();
       installMaintenanceFilterBridge();
     });
   });
@@ -704,6 +903,9 @@
     installAporteMaintenanceInterceptor();
     installBaseConsumoFilterAcceleration();
     installBaseConsumoImportInvalidation();
+    installBaseConsumoDynamicTotalBridge();
+    decorateDateFilterMenus();
+    scheduleBaseConsumoDynamicTotal(0);
     observer.observe(document.body, { childList: true, subtree: true });
 
     let attempts = 0;
@@ -712,6 +914,7 @@
       wrapEditOi();
       installBaseConsumoFilterAcceleration();
       installBaseConsumoImportInvalidation();
+      installBaseConsumoDynamicTotalBridge();
       installMaintenanceFilterBridge();
       if (attempts > 600) clearInterval(retry);
     }, 100);
@@ -729,6 +932,9 @@
         wrapEditOi();
         installBaseConsumoFilterAcceleration();
         installBaseConsumoImportInvalidation();
+        installBaseConsumoDynamicTotalBridge();
+        decorateDateFilterMenus();
+        scheduleBaseConsumoDynamicTotal(0);
         installMaintenanceFilterBridge();
         installAporteMaintenanceInterceptor();
       }
