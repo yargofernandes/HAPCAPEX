@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.116 — Manutenção: governança da O.I. + filtros da Curva.
+/* HAPCAPEX V40.0.117 — Manutenção: governança da O.I. + filtros da Curva.
    Hotfix sobre V40.0.113:
    - corrige a leitura da governança no modal de edição usando o cliente Supabase real
      do Controle de CAPEX (binding global lexical `sb`, não apenas `window.sb`);
@@ -9,15 +9,16 @@
    - aportes operacionais de O.I.s com governança explícita `manutencao` são roteados
      automaticamente para a aba Manutenção, sem abrir planejamento individual;
    - elimina o loop de MutationObserver/RPC que podia travar a página ao digitar uma O.I.
-     no aporte operacional.
+     no aporte operacional;
+   - V40.0.117: corrige o travamento/lentidão dos filtros da Base Consumo com paginação concorrente e cache curto.
 */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40116_MAINTENANCE_MODE__) return;
-  window.__HAP_V40116_MAINTENANCE_MODE__ = true;
+  if (window.__HAP_V40117_MAINTENANCE_MODE__) return;
+  window.__HAP_V40117_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.116';
+  const VERSION = '40.0.117';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
@@ -53,8 +54,8 @@
     if (!select) return;
 
     // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
-    if (select.dataset.v40116MaintenancePatched === '1') return;
-    select.dataset.v40116MaintenancePatched = '1';
+    if (select.dataset.v40117MaintenancePatched === '1') return;
+    select.dataset.v40117MaintenancePatched = '1';
 
     addOption(select);
 
@@ -83,8 +84,8 @@
     if (!select) return null;
 
     // CRÍTICO: patch estritamente idempotente.
-    if (select.dataset.v40116MaintenancePatched === '1') return select;
-    select.dataset.v40116MaintenancePatched = '1';
+    if (select.dataset.v40117MaintenancePatched === '1') return select;
+    select.dataset.v40117MaintenancePatched = '1';
 
     addOption(select);
 
@@ -177,53 +178,53 @@
     const maintenanceNote = '<strong>Manutenção identificada automaticamente:</strong> esta O.I. já participa da Curva como Manutenção. O aporte será acrescentado ao Controle e mantido na aba Manutenção, <strong>sem datas, tipologia ou regra de planejamento individual</strong>.';
 
     if (active) {
-      if (backdrop.dataset.v40116MaintenanceAporte !== '1') {
-        backdrop.dataset.v40116MaintenanceAporte = '1';
+      if (backdrop.dataset.v40117MaintenanceAporte !== '1') {
+        backdrop.dataset.v40117MaintenanceAporte = '1';
       }
       if (next) {
-        if (!next.dataset.v40116OriginalText) next.dataset.v40116OriginalText = next.textContent || 'Registrar e planejar agora';
+        if (!next.dataset.v40117OriginalText) next.dataset.v40117OriginalText = next.textContent || 'Registrar e planejar agora';
         if (next.textContent !== maintenanceText) next.textContent = maintenanceText;
         if (next.title !== maintenanceTitle) next.title = maintenanceTitle;
       }
       if (later) {
-        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40116OriginalDisplay')) {
-          later.dataset.v40116OriginalDisplay = later.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40117OriginalDisplay')) {
+          later.dataset.v40117OriginalDisplay = later.style.display || '';
         }
         if (later.style.display !== 'none') later.style.display = 'none';
       }
       if (kpiOnly) {
-        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40116OriginalDisplay')) {
-          kpiOnly.dataset.v40116OriginalDisplay = kpiOnly.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40117OriginalDisplay')) {
+          kpiOnly.dataset.v40117OriginalDisplay = kpiOnly.style.display || '';
         }
         if (kpiOnly.style.display !== 'none') kpiOnly.style.display = 'none';
       }
       if (note) {
-        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40116OriginalHtml')) {
-          note.dataset.v40116OriginalHtml = note.innerHTML;
+        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40117OriginalHtml')) {
+          note.dataset.v40117OriginalHtml = note.innerHTML;
         }
         if (note.innerHTML !== maintenanceNote) note.innerHTML = maintenanceNote;
       }
       return;
     }
 
-    if (backdrop.dataset.v40116MaintenanceAporte !== '1') return;
-    delete backdrop.dataset.v40116MaintenanceAporte;
+    if (backdrop.dataset.v40117MaintenanceAporte !== '1') return;
+    delete backdrop.dataset.v40117MaintenanceAporte;
 
-    if (next?.dataset.v40116OriginalText) {
-      const originalText = next.dataset.v40116OriginalText;
+    if (next?.dataset.v40117OriginalText) {
+      const originalText = next.dataset.v40117OriginalText;
       if (next.textContent !== originalText) next.textContent = originalText;
       if (next.hasAttribute('title')) next.removeAttribute('title');
     }
-    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40116OriginalDisplay')) {
-      const display = later.dataset.v40116OriginalDisplay || '';
+    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40117OriginalDisplay')) {
+      const display = later.dataset.v40117OriginalDisplay || '';
       if (later.style.display !== display) later.style.display = display;
     }
-    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40116OriginalDisplay')) {
-      const display = kpiOnly.dataset.v40116OriginalDisplay || '';
+    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40117OriginalDisplay')) {
+      const display = kpiOnly.dataset.v40117OriginalDisplay || '';
       if (kpiOnly.style.display !== display) kpiOnly.style.display = display;
     }
-    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40116OriginalHtml')) {
-      const originalHtml = note.dataset.v40116OriginalHtml;
+    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40117OriginalHtml')) {
+      const originalHtml = note.dataset.v40117OriginalHtml;
       if (note.innerHTML !== originalHtml) note.innerHTML = originalHtml;
     }
   }
@@ -235,35 +236,35 @@
 
     const oi = String(oiInput.value || '').replace(/\D/g, '').trim();
     if (!/^\d{8}$/.test(oi)) {
-      delete backdrop.dataset.v40116AporteCheckedOi;
-      delete backdrop.dataset.v40116AporteGovernanceState;
+      delete backdrop.dataset.v40117AporteCheckedOi;
+      delete backdrop.dataset.v40117AporteGovernanceState;
       setMaintenanceAporteUi(backdrop, false);
       return null;
     }
 
-    if (!force && backdrop.dataset.v40116AporteCheckedOi === oi) {
-      const state = backdrop.dataset.v40116AporteGovernanceState;
+    if (!force && backdrop.dataset.v40117AporteCheckedOi === oi) {
+      const state = backdrop.dataset.v40117AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return state || null;
     }
 
-    const seq = String((Number(backdrop.dataset.v40116AporteLookupSeq || 0) + 1));
-    backdrop.dataset.v40116AporteLookupSeq = seq;
+    const seq = String((Number(backdrop.dataset.v40117AporteLookupSeq || 0) + 1));
+    backdrop.dataset.v40117AporteLookupSeq = seq;
     try {
       const governance = await getAporteGovernance(oi, force);
-      if (backdrop.dataset.v40116AporteLookupSeq !== seq) return governance;
+      if (backdrop.dataset.v40117AporteLookupSeq !== seq) return governance;
       if (String(oiInput.value || '').replace(/\D/g, '').trim() !== oi) return governance;
 
       const maintenance = isGovernedMaintenance(governance);
-      backdrop.dataset.v40116AporteCheckedOi = oi;
-      backdrop.dataset.v40116AporteGovernanceState = maintenance ? 'maintenance' : 'other';
+      backdrop.dataset.v40117AporteCheckedOi = oi;
+      backdrop.dataset.v40117AporteGovernanceState = maintenance ? 'maintenance' : 'other';
       setMaintenanceAporteUi(backdrop, maintenance);
       return governance;
     } catch (error) {
-      if (backdrop.dataset.v40116AporteLookupSeq === seq) {
-        delete backdrop.dataset.v40116AporteCheckedOi;
-        delete backdrop.dataset.v40116AporteGovernanceState;
+      if (backdrop.dataset.v40117AporteLookupSeq === seq) {
+        delete backdrop.dataset.v40117AporteCheckedOi;
+        delete backdrop.dataset.v40117AporteGovernanceState;
       }
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar governança do aporte da O.I. ${oi}.`, error);
       return null;
@@ -275,15 +276,15 @@
     const oiInput = box?.querySelector('#v36-a-oi');
     if (!box || !oiInput) return;
 
-    if (oiInput.dataset.v40116MaintenanceAporteBound !== '1') {
-      oiInput.dataset.v40116MaintenanceAporteBound = '1';
+    if (oiInput.dataset.v40117MaintenanceAporteBound !== '1') {
+      oiInput.dataset.v40117MaintenanceAporteBound = '1';
       let timer = null;
       const schedule = () => {
         clearTimeout(timer);
         const currentOi = String(oiInput.value || '').replace(/\D/g, '').trim();
-        if (backdrop.dataset.v40116AporteCheckedOi && backdrop.dataset.v40116AporteCheckedOi !== currentOi) {
-          delete backdrop.dataset.v40116AporteCheckedOi;
-          delete backdrop.dataset.v40116AporteGovernanceState;
+        if (backdrop.dataset.v40117AporteCheckedOi && backdrop.dataset.v40117AporteCheckedOi !== currentOi) {
+          delete backdrop.dataset.v40117AporteCheckedOi;
+          delete backdrop.dataset.v40117AporteGovernanceState;
           setMaintenanceAporteUi(backdrop, false);
         }
         if (!/^\d{8}$/.test(currentOi)) return;
@@ -299,8 +300,8 @@
       return;
     }
 
-    if (backdrop.dataset.v40116AporteCheckedOi === currentOi) {
-      const state = backdrop.dataset.v40116AporteGovernanceState;
+    if (backdrop.dataset.v40117AporteCheckedOi === currentOi) {
+      const state = backdrop.dataset.v40117AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return;
@@ -308,11 +309,11 @@
 
     // Uma única consulta por O.I. digitada. O MutationObserver pode revarrer o modal,
     // mas não dispara novas RPCs nem reescreve o DOM quando o estado já foi confirmado.
-    if (backdrop.dataset.v40116AporteLookupPending !== currentOi) {
-      backdrop.dataset.v40116AporteLookupPending = currentOi;
+    if (backdrop.dataset.v40117AporteLookupPending !== currentOi) {
+      backdrop.dataset.v40117AporteLookupPending = currentOi;
       void refreshOperationalAporteGovernance(backdrop).finally(() => {
-        if (backdrop.dataset.v40116AporteLookupPending === currentOi) {
-          delete backdrop.dataset.v40116AporteLookupPending;
+        if (backdrop.dataset.v40117AporteLookupPending === currentOi) {
+          delete backdrop.dataset.v40117AporteLookupPending;
         }
       });
     }
@@ -364,20 +365,20 @@
   }
 
   function replayAporteClick(button) {
-    button.dataset.v40116AporteBypass = '1';
+    button.dataset.v40117AporteBypass = '1';
     button.disabled = false;
     queueMicrotask(() => button.click());
   }
 
   function installAporteMaintenanceInterceptor() {
-    if (window.__HAP_V40116_APORTE_MAINTENANCE_INTERCEPTOR__) return;
-    window.__HAP_V40116_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
+    if (window.__HAP_V40117_APORTE_MAINTENANCE_INTERCEPTOR__) return;
+    window.__HAP_V40117_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
 
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('#v36-a-next,#v374-save-later') : null;
       if (!target) return;
-      if (target.dataset.v40116AporteBypass === '1') {
-        delete target.dataset.v40116AporteBypass;
+      if (target.dataset.v40117AporteBypass === '1') {
+        delete target.dataset.v40117AporteBypass;
         return;
       }
 
@@ -410,7 +411,7 @@
           // Se a consulta de governança falhar, preserva o fluxo anterior; se a gravação falhar,
           // o próprio formulário já exibiu o erro e não deve abrir planejamento genérico.
           if (document.body.contains(backdrop)) {
-            const isMaintenanceUi = backdrop.dataset.v40116MaintenanceAporte === '1';
+            const isMaintenanceUi = backdrop.dataset.v40117MaintenanceAporte === '1';
             if (!isMaintenanceUi) {
               target.textContent = originalText;
               replayAporteClick(target);
@@ -429,8 +430,8 @@
     if (!select || !id || !client) return;
 
     const token = String(id);
-    if (select.dataset.v40116GovernanceLoaded === token) return;
-    select.dataset.v40116GovernanceLoaded = token;
+    if (select.dataset.v40117GovernanceLoaded === token) return;
+    select.dataset.v40117GovernanceLoaded = token;
 
     try {
       const { data, error } = await client.rpc('obter_governanca_oi_v4027', { p_id: id });
@@ -451,7 +452,7 @@
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (error) {
-      delete select.dataset.v40116GovernanceLoaded;
+      delete select.dataset.v40117GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
@@ -483,16 +484,156 @@
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40116MaintenanceWrapped) return true;
+    if (current.__hapV40117MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40116MaintenanceWrapped = true;
-    wrapped.__hapV40116Original = current;
+    wrapped.__hapV40117MaintenanceWrapped = true;
+    wrapped.__hapV40117Original = current;
     window.editarOi = wrapped;
+    return true;
+  }
+
+
+  // V40.0.117 — a Base Consumo possui dezenas de milhares de lançamentos.
+  // O HAP_XF precisa da base completa para aplicar os filtros de cabeçalho, mas o
+  // fetchAllRows legado fazia as páginas de 1.000 linhas de forma estritamente
+  // sequencial. Com ~62 mil linhas, o primeiro filtro podia parecer travado.
+  // Mantemos a mesma fonte/mesma regra de filtragem, apenas buscamos as páginas
+  // restantes em pequenos lotes concorrentes e reutilizamos o resultado por pouco
+  // tempo. Nenhum dado é gravado por este cache.
+  const BASE_CONSUMO_FAST_VIEW = 'vw_controle_base_consumo';
+  const BASE_CONSUMO_FAST_PAGE = 1000;
+  const BASE_CONSUMO_FAST_CONCURRENCY = 8;
+  const BASE_CONSUMO_FAST_TTL_MS = 120000;
+  const BASE_CONSUMO_FAST_COLUMNS = [
+    'id','ordem_interna','descricao','categoria_valor','categoria_resumo',
+    'montante','data_lancamento','fornecedor','fornecedor_nome','oi_nao_encontrada'
+  ].join(',');
+  const baseConsumoFastCache = new Map();
+  const baseConsumoFastLoading = new Map();
+
+  function baseConsumoFastKey(orderCol, ascending) {
+    return `${String(orderCol || 'data_lancamento')}|${ascending ? 'asc' : 'desc'}`;
+  }
+
+  function invalidateBaseConsumoFastCache() {
+    baseConsumoFastCache.clear();
+    baseConsumoFastLoading.clear();
+  }
+
+  function buildBaseConsumoFastQuery(client, orderCol, ascending, withCount=false) {
+    const safeOrder = ['id','ordem_interna','descricao','categoria_valor','montante','data_lancamento','fornecedor','fornecedor_nome']
+      .includes(String(orderCol || '')) ? String(orderCol) : 'data_lancamento';
+    let query = withCount
+      ? client.from(BASE_CONSUMO_FAST_VIEW).select(BASE_CONSUMO_FAST_COLUMNS, { count:'exact' })
+      : client.from(BASE_CONSUMO_FAST_VIEW).select(BASE_CONSUMO_FAST_COLUMNS);
+    query = query.order(safeOrder, { ascending: !!ascending });
+    if (safeOrder !== 'id') query = query.order('id', { ascending:true });
+    return query;
+  }
+
+  async function loadBaseConsumoFast(orderCol, ascending) {
+    const key = baseConsumoFastKey(orderCol, ascending);
+    const cached = baseConsumoFastCache.get(key);
+    if (cached && (Date.now() - cached.at) < BASE_CONSUMO_FAST_TTL_MS) {
+      return { data: cached.rows, error: null };
+    }
+    if (baseConsumoFastLoading.has(key)) return baseConsumoFastLoading.get(key);
+
+    const client = getSupabaseClient();
+    if (!client?.from) throw new Error('Supabase indisponível para carregar a Base Consumo.');
+
+    const promise = (async () => {
+      const first = await buildBaseConsumoFastQuery(client, orderCol, ascending, true)
+        .range(0, BASE_CONSUMO_FAST_PAGE - 1);
+      if (first.error) return { data:null, error:first.error };
+
+      const rows = [...(first.data || [])];
+      const total = Number(first.count ?? rows.length);
+      if (!Number.isFinite(total) || total <= rows.length) {
+        baseConsumoFastCache.set(key, { rows, at:Date.now() });
+        return { data:rows, error:null };
+      }
+
+      const totalPages = Math.ceil(total / BASE_CONSUMO_FAST_PAGE);
+      for (let page = 1; page < totalPages; page += BASE_CONSUMO_FAST_CONCURRENCY) {
+        const jobs = [];
+        const last = Math.min(totalPages, page + BASE_CONSUMO_FAST_CONCURRENCY);
+        for (let p = page; p < last; p += 1) {
+          const from = p * BASE_CONSUMO_FAST_PAGE;
+          const to = Math.min(total - 1, from + BASE_CONSUMO_FAST_PAGE - 1);
+          jobs.push(
+            buildBaseConsumoFastQuery(client, orderCol, ascending, false).range(from, to)
+          );
+        }
+        const batch = await Promise.all(jobs);
+        for (const response of batch) {
+          if (response?.error) return { data:null, error:response.error };
+          rows.push(...(response?.data || []));
+        }
+      }
+
+      // Proteção contra respostas incompletas: se a API não devolver exatamente o
+      // total informado pelo count, não cacheamos um conjunto parcial.
+      if (rows.length !== total) {
+        return {
+          data:null,
+          error:new Error(`Base Consumo incompleta: ${rows.length} de ${total} linhas carregadas.`)
+        };
+      }
+
+      baseConsumoFastCache.set(key, { rows, at:Date.now() });
+      return { data:rows, error:null };
+    })().finally(() => baseConsumoFastLoading.delete(key));
+
+    baseConsumoFastLoading.set(key, promise);
+    return promise;
+  }
+
+  function installBaseConsumoFilterAcceleration() {
+    const current = window.fetchAllRows;
+    if (typeof current !== 'function') return false;
+    if (current.__hapV40117BaseConsumoFast) return true;
+
+    const wrapped = async function(viewName, orderCol, ascending) {
+      if (String(viewName || '') !== BASE_CONSUMO_FAST_VIEW) {
+        return current.apply(this, arguments);
+      }
+      try {
+        const fast = await loadBaseConsumoFast(orderCol, ascending);
+        if (!fast?.error && Array.isArray(fast?.data)) return fast;
+        console.warn(`[HAPCAPEX ${VERSION}] Carga rápida da Base Consumo falhou; usando paginação legada.`, fast?.error);
+      } catch (error) {
+        console.warn(`[HAPCAPEX ${VERSION}] Carga rápida da Base Consumo falhou; usando paginação legada.`, error);
+      }
+      return current.apply(this, arguments);
+    };
+    wrapped.__hapV40117BaseConsumoFast = true;
+    wrapped.__hapV40117Original = current;
+    window.fetchAllRows = wrapped;
+    return true;
+  }
+
+  function installBaseConsumoImportInvalidation() {
+    const current = window.importarArquivoBaseConsumo;
+    if (typeof current !== 'function') return false;
+    if (current.__hapV40117BaseConsumoInvalidate) return true;
+
+    const wrapped = async function() {
+      invalidateBaseConsumoFastCache();
+      try {
+        return await current.apply(this, arguments);
+      } finally {
+        invalidateBaseConsumoFastCache();
+      }
+    };
+    wrapped.__hapV40117BaseConsumoInvalidate = true;
+    wrapped.__hapV40117Original = current;
+    window.importarArquivoBaseConsumo = wrapped;
     return true;
   }
 
@@ -506,7 +647,7 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40116MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40117MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
@@ -524,19 +665,19 @@
         }
         return result;
       };
-      wrappedApply.__hapV40116MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40116Original = currentApply;
+      wrappedApply.__hapV40117MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40117Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40116MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40117MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40116MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40116Original = currentClear;
+      wrappedClear.__hapV40117MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40117Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
@@ -552,6 +693,8 @@
       scanQueued = false;
       scanNewModalsOnly();
       wrapEditOi();
+      installBaseConsumoFilterAcceleration();
+      installBaseConsumoImportInvalidation();
       installMaintenanceFilterBridge();
     });
   });
@@ -559,12 +702,16 @@
   function boot() {
     scanNewModalsOnly();
     installAporteMaintenanceInterceptor();
+    installBaseConsumoFilterAcceleration();
+    installBaseConsumoImportInvalidation();
     observer.observe(document.body, { childList: true, subtree: true });
 
     let attempts = 0;
     const retry = setInterval(() => {
       attempts += 1;
       wrapEditOi();
+      installBaseConsumoFilterAcceleration();
+      installBaseConsumoImportInvalidation();
       installMaintenanceFilterBridge();
       if (attempts > 600) clearInterval(retry);
     }, 100);
@@ -580,6 +727,8 @@
       refresh() {
         scanNewModalsOnly();
         wrapEditOi();
+        installBaseConsumoFilterAcceleration();
+        installBaseConsumoImportInvalidation();
         installMaintenanceFilterBridge();
         installAporteMaintenanceInterceptor();
       }
