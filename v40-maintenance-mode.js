@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.118 — Manutenção: governança da O.I. + filtros da Curva.
+/* HAPCAPEX V40.0.119 — Manutenção: governança da O.I. + filtros da Curva.
    Hotfix sobre V40.0.113:
    - corrige a leitura da governança no modal de edição usando o cliente Supabase real
      do Controle de CAPEX (binding global lexical `sb`, não apenas `window.sb`);
@@ -10,17 +10,17 @@
      automaticamente para a aba Manutenção, sem abrir planejamento individual;
    - elimina o loop de MutationObserver/RPC que podia travar a página ao digitar uma O.I.
      no aporte operacional;
-   - V40.0.118: preserva a aceleração dos filtros da Base Consumo com paginação concorrente e cache curto;
-   - V40.0.118: adiciona seleção rápida por Mês e Ano aos filtros de colunas do tipo Data;
-   - V40.0.118: transforma o KPI Valor total da Base Consumo em total dinâmico da coluna Montante conforme os filtros ativos.
+   - V40.0.119: preserva a aceleração dos filtros da Base Consumo com paginação concorrente e cache curto;
+   - V40.0.119: adiciona seleção rápida por Mês e Ano aos filtros de colunas do tipo Data;
+   - V40.0.119: corrige o total dinâmico da Base Consumo, atualizando após o carregamento/filtro e exibindo também no rodapé da tabela.
 */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40118_MAINTENANCE_MODE__) return;
-  window.__HAP_V40118_MAINTENANCE_MODE__ = true;
+  if (window.__HAP_V40119_MAINTENANCE_MODE__) return;
+  window.__HAP_V40119_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.118';
+  const VERSION = '40.0.119';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
@@ -56,8 +56,8 @@
     if (!select) return;
 
     // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
-    if (select.dataset.v40118MaintenancePatched === '1') return;
-    select.dataset.v40118MaintenancePatched = '1';
+    if (select.dataset.v40119MaintenancePatched === '1') return;
+    select.dataset.v40119MaintenancePatched = '1';
 
     addOption(select);
 
@@ -86,8 +86,8 @@
     if (!select) return null;
 
     // CRÍTICO: patch estritamente idempotente.
-    if (select.dataset.v40118MaintenancePatched === '1') return select;
-    select.dataset.v40118MaintenancePatched = '1';
+    if (select.dataset.v40119MaintenancePatched === '1') return select;
+    select.dataset.v40119MaintenancePatched = '1';
 
     addOption(select);
 
@@ -180,53 +180,53 @@
     const maintenanceNote = '<strong>Manutenção identificada automaticamente:</strong> esta O.I. já participa da Curva como Manutenção. O aporte será acrescentado ao Controle e mantido na aba Manutenção, <strong>sem datas, tipologia ou regra de planejamento individual</strong>.';
 
     if (active) {
-      if (backdrop.dataset.v40118MaintenanceAporte !== '1') {
-        backdrop.dataset.v40118MaintenanceAporte = '1';
+      if (backdrop.dataset.v40119MaintenanceAporte !== '1') {
+        backdrop.dataset.v40119MaintenanceAporte = '1';
       }
       if (next) {
-        if (!next.dataset.v40118OriginalText) next.dataset.v40118OriginalText = next.textContent || 'Registrar e planejar agora';
+        if (!next.dataset.v40119OriginalText) next.dataset.v40119OriginalText = next.textContent || 'Registrar e planejar agora';
         if (next.textContent !== maintenanceText) next.textContent = maintenanceText;
         if (next.title !== maintenanceTitle) next.title = maintenanceTitle;
       }
       if (later) {
-        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40118OriginalDisplay')) {
-          later.dataset.v40118OriginalDisplay = later.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40119OriginalDisplay')) {
+          later.dataset.v40119OriginalDisplay = later.style.display || '';
         }
         if (later.style.display !== 'none') later.style.display = 'none';
       }
       if (kpiOnly) {
-        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40118OriginalDisplay')) {
-          kpiOnly.dataset.v40118OriginalDisplay = kpiOnly.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40119OriginalDisplay')) {
+          kpiOnly.dataset.v40119OriginalDisplay = kpiOnly.style.display || '';
         }
         if (kpiOnly.style.display !== 'none') kpiOnly.style.display = 'none';
       }
       if (note) {
-        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40118OriginalHtml')) {
-          note.dataset.v40118OriginalHtml = note.innerHTML;
+        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40119OriginalHtml')) {
+          note.dataset.v40119OriginalHtml = note.innerHTML;
         }
         if (note.innerHTML !== maintenanceNote) note.innerHTML = maintenanceNote;
       }
       return;
     }
 
-    if (backdrop.dataset.v40118MaintenanceAporte !== '1') return;
-    delete backdrop.dataset.v40118MaintenanceAporte;
+    if (backdrop.dataset.v40119MaintenanceAporte !== '1') return;
+    delete backdrop.dataset.v40119MaintenanceAporte;
 
-    if (next?.dataset.v40118OriginalText) {
-      const originalText = next.dataset.v40118OriginalText;
+    if (next?.dataset.v40119OriginalText) {
+      const originalText = next.dataset.v40119OriginalText;
       if (next.textContent !== originalText) next.textContent = originalText;
       if (next.hasAttribute('title')) next.removeAttribute('title');
     }
-    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40118OriginalDisplay')) {
-      const display = later.dataset.v40118OriginalDisplay || '';
+    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40119OriginalDisplay')) {
+      const display = later.dataset.v40119OriginalDisplay || '';
       if (later.style.display !== display) later.style.display = display;
     }
-    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40118OriginalDisplay')) {
-      const display = kpiOnly.dataset.v40118OriginalDisplay || '';
+    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40119OriginalDisplay')) {
+      const display = kpiOnly.dataset.v40119OriginalDisplay || '';
       if (kpiOnly.style.display !== display) kpiOnly.style.display = display;
     }
-    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40118OriginalHtml')) {
-      const originalHtml = note.dataset.v40118OriginalHtml;
+    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40119OriginalHtml')) {
+      const originalHtml = note.dataset.v40119OriginalHtml;
       if (note.innerHTML !== originalHtml) note.innerHTML = originalHtml;
     }
   }
@@ -238,35 +238,35 @@
 
     const oi = String(oiInput.value || '').replace(/\D/g, '').trim();
     if (!/^\d{8}$/.test(oi)) {
-      delete backdrop.dataset.v40118AporteCheckedOi;
-      delete backdrop.dataset.v40118AporteGovernanceState;
+      delete backdrop.dataset.v40119AporteCheckedOi;
+      delete backdrop.dataset.v40119AporteGovernanceState;
       setMaintenanceAporteUi(backdrop, false);
       return null;
     }
 
-    if (!force && backdrop.dataset.v40118AporteCheckedOi === oi) {
-      const state = backdrop.dataset.v40118AporteGovernanceState;
+    if (!force && backdrop.dataset.v40119AporteCheckedOi === oi) {
+      const state = backdrop.dataset.v40119AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return state || null;
     }
 
-    const seq = String((Number(backdrop.dataset.v40118AporteLookupSeq || 0) + 1));
-    backdrop.dataset.v40118AporteLookupSeq = seq;
+    const seq = String((Number(backdrop.dataset.v40119AporteLookupSeq || 0) + 1));
+    backdrop.dataset.v40119AporteLookupSeq = seq;
     try {
       const governance = await getAporteGovernance(oi, force);
-      if (backdrop.dataset.v40118AporteLookupSeq !== seq) return governance;
+      if (backdrop.dataset.v40119AporteLookupSeq !== seq) return governance;
       if (String(oiInput.value || '').replace(/\D/g, '').trim() !== oi) return governance;
 
       const maintenance = isGovernedMaintenance(governance);
-      backdrop.dataset.v40118AporteCheckedOi = oi;
-      backdrop.dataset.v40118AporteGovernanceState = maintenance ? 'maintenance' : 'other';
+      backdrop.dataset.v40119AporteCheckedOi = oi;
+      backdrop.dataset.v40119AporteGovernanceState = maintenance ? 'maintenance' : 'other';
       setMaintenanceAporteUi(backdrop, maintenance);
       return governance;
     } catch (error) {
-      if (backdrop.dataset.v40118AporteLookupSeq === seq) {
-        delete backdrop.dataset.v40118AporteCheckedOi;
-        delete backdrop.dataset.v40118AporteGovernanceState;
+      if (backdrop.dataset.v40119AporteLookupSeq === seq) {
+        delete backdrop.dataset.v40119AporteCheckedOi;
+        delete backdrop.dataset.v40119AporteGovernanceState;
       }
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar governança do aporte da O.I. ${oi}.`, error);
       return null;
@@ -278,15 +278,15 @@
     const oiInput = box?.querySelector('#v36-a-oi');
     if (!box || !oiInput) return;
 
-    if (oiInput.dataset.v40118MaintenanceAporteBound !== '1') {
-      oiInput.dataset.v40118MaintenanceAporteBound = '1';
+    if (oiInput.dataset.v40119MaintenanceAporteBound !== '1') {
+      oiInput.dataset.v40119MaintenanceAporteBound = '1';
       let timer = null;
       const schedule = () => {
         clearTimeout(timer);
         const currentOi = String(oiInput.value || '').replace(/\D/g, '').trim();
-        if (backdrop.dataset.v40118AporteCheckedOi && backdrop.dataset.v40118AporteCheckedOi !== currentOi) {
-          delete backdrop.dataset.v40118AporteCheckedOi;
-          delete backdrop.dataset.v40118AporteGovernanceState;
+        if (backdrop.dataset.v40119AporteCheckedOi && backdrop.dataset.v40119AporteCheckedOi !== currentOi) {
+          delete backdrop.dataset.v40119AporteCheckedOi;
+          delete backdrop.dataset.v40119AporteGovernanceState;
           setMaintenanceAporteUi(backdrop, false);
         }
         if (!/^\d{8}$/.test(currentOi)) return;
@@ -302,8 +302,8 @@
       return;
     }
 
-    if (backdrop.dataset.v40118AporteCheckedOi === currentOi) {
-      const state = backdrop.dataset.v40118AporteGovernanceState;
+    if (backdrop.dataset.v40119AporteCheckedOi === currentOi) {
+      const state = backdrop.dataset.v40119AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return;
@@ -311,11 +311,11 @@
 
     // Uma única consulta por O.I. digitada. O MutationObserver pode revarrer o modal,
     // mas não dispara novas RPCs nem reescreve o DOM quando o estado já foi confirmado.
-    if (backdrop.dataset.v40118AporteLookupPending !== currentOi) {
-      backdrop.dataset.v40118AporteLookupPending = currentOi;
+    if (backdrop.dataset.v40119AporteLookupPending !== currentOi) {
+      backdrop.dataset.v40119AporteLookupPending = currentOi;
       void refreshOperationalAporteGovernance(backdrop).finally(() => {
-        if (backdrop.dataset.v40118AporteLookupPending === currentOi) {
-          delete backdrop.dataset.v40118AporteLookupPending;
+        if (backdrop.dataset.v40119AporteLookupPending === currentOi) {
+          delete backdrop.dataset.v40119AporteLookupPending;
         }
       });
     }
@@ -367,20 +367,20 @@
   }
 
   function replayAporteClick(button) {
-    button.dataset.v40118AporteBypass = '1';
+    button.dataset.v40119AporteBypass = '1';
     button.disabled = false;
     queueMicrotask(() => button.click());
   }
 
   function installAporteMaintenanceInterceptor() {
-    if (window.__HAP_V40118_APORTE_MAINTENANCE_INTERCEPTOR__) return;
-    window.__HAP_V40118_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
+    if (window.__HAP_V40119_APORTE_MAINTENANCE_INTERCEPTOR__) return;
+    window.__HAP_V40119_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
 
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('#v36-a-next,#v374-save-later') : null;
       if (!target) return;
-      if (target.dataset.v40118AporteBypass === '1') {
-        delete target.dataset.v40118AporteBypass;
+      if (target.dataset.v40119AporteBypass === '1') {
+        delete target.dataset.v40119AporteBypass;
         return;
       }
 
@@ -413,7 +413,7 @@
           // Se a consulta de governança falhar, preserva o fluxo anterior; se a gravação falhar,
           // o próprio formulário já exibiu o erro e não deve abrir planejamento genérico.
           if (document.body.contains(backdrop)) {
-            const isMaintenanceUi = backdrop.dataset.v40118MaintenanceAporte === '1';
+            const isMaintenanceUi = backdrop.dataset.v40119MaintenanceAporte === '1';
             if (!isMaintenanceUi) {
               target.textContent = originalText;
               replayAporteClick(target);
@@ -432,8 +432,8 @@
     if (!select || !id || !client) return;
 
     const token = String(id);
-    if (select.dataset.v40118GovernanceLoaded === token) return;
-    select.dataset.v40118GovernanceLoaded = token;
+    if (select.dataset.v40119GovernanceLoaded === token) return;
+    select.dataset.v40119GovernanceLoaded = token;
 
     try {
       const { data, error } = await client.rpc('obter_governanca_oi_v4027', { p_id: id });
@@ -454,7 +454,7 @@
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (error) {
-      delete select.dataset.v40118GovernanceLoaded;
+      delete select.dataset.v40119GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
@@ -486,21 +486,21 @@
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40118MaintenanceWrapped) return true;
+    if (current.__hapV40119MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40118MaintenanceWrapped = true;
-    wrapped.__hapV40118Original = current;
+    wrapped.__hapV40119MaintenanceWrapped = true;
+    wrapped.__hapV40119Original = current;
     window.editarOi = wrapped;
     return true;
   }
 
 
-  // V40.0.118 — a Base Consumo possui dezenas de milhares de lançamentos.
+  // V40.0.119 — a Base Consumo possui dezenas de milhares de lançamentos.
   // O HAP_XF precisa da base completa para aplicar os filtros de cabeçalho, mas o
   // fetchAllRows legado fazia as páginas de 1.000 linhas de forma estritamente
   // sequencial. Com ~62 mil linhas, o primeiro filtro podia parecer travado.
@@ -599,7 +599,7 @@
   function installBaseConsumoFilterAcceleration() {
     const current = window.fetchAllRows;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40118BaseConsumoFast) return true;
+    if (current.__hapV40119BaseConsumoFast) return true;
 
     const wrapped = async function(viewName, orderCol, ascending) {
       if (String(viewName || '') !== BASE_CONSUMO_FAST_VIEW) {
@@ -614,8 +614,8 @@
       }
       return current.apply(this, arguments);
     };
-    wrapped.__hapV40118BaseConsumoFast = true;
-    wrapped.__hapV40118Original = current;
+    wrapped.__hapV40119BaseConsumoFast = true;
+    wrapped.__hapV40119Original = current;
     window.fetchAllRows = wrapped;
     return true;
   }
@@ -623,7 +623,7 @@
   function installBaseConsumoImportInvalidation() {
     const current = window.importarArquivoBaseConsumo;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40118BaseConsumoInvalidate) return true;
+    if (current.__hapV40119BaseConsumoInvalidate) return true;
 
     const wrapped = async function() {
       invalidateBaseConsumoFastCache();
@@ -633,13 +633,13 @@
         invalidateBaseConsumoFastCache();
       }
     };
-    wrapped.__hapV40118BaseConsumoInvalidate = true;
-    wrapped.__hapV40118Original = current;
+    wrapped.__hapV40119BaseConsumoInvalidate = true;
+    wrapped.__hapV40119Original = current;
     window.importarArquivoBaseConsumo = wrapped;
     return true;
   }
 
-  // V40.0.118 — atalhos de Mês/Ano nos filtros de data do HAP_XF.
+  // V40.0.119 — atalhos de Mês/Ano nos filtros de data do HAP_XF.
   // O núcleo do filtro permanece intocado: os atalhos apenas marcam/desmarcam os
   // mesmos checkboxes de datas já usados pelo filtro estilo Excel e o usuário
   // confirma normalmente pelo botão OK.
@@ -662,20 +662,20 @@
   }
 
   function ensureDateFilterStyle() {
-    if (document.getElementById('hap-v40118-date-month-year-style')) return;
+    if (document.getElementById('hap-v40119-date-month-year-style')) return;
     const style = document.createElement('style');
-    style.id = 'hap-v40118-date-month-year-style';
+    style.id = 'hap-v40119-date-month-year-style';
     style.textContent = `
-      .hap-v40118-date-quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:6px 0 7px;padding:8px;background:#f7f9fc;border:1px solid #d9e0e9;border-radius:7px}
-      .hap-v40118-date-quick label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:10px;font-weight:800;color:#5a6882;text-transform:uppercase;letter-spacing:.03em}
-      .hap-v40118-date-quick select{width:100%;min-width:0;padding:7px 8px;border:1px solid #cbd5e3;border-radius:6px;background:#fff;color:#1a2233;font:12px 'Segoe UI',Arial,sans-serif;text-transform:none;letter-spacing:0}
-      @media(max-width:520px){.hap-v40118-date-quick{grid-template-columns:1fr}}
+      .hap-v40119-date-quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:6px 0 7px;padding:8px;background:#f7f9fc;border:1px solid #d9e0e9;border-radius:7px}
+      .hap-v40119-date-quick label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:10px;font-weight:800;color:#5a6882;text-transform:uppercase;letter-spacing:.03em}
+      .hap-v40119-date-quick select{width:100%;min-width:0;padding:7px 8px;border:1px solid #cbd5e3;border-radius:6px;background:#fff;color:#1a2233;font:12px 'Segoe UI',Arial,sans-serif;text-transform:none;letter-spacing:0}
+      @media(max-width:520px){.hap-v40119-date-quick{grid-template-columns:1fr}}
     `;
     (document.head || document.documentElement).appendChild(style);
   }
 
   function decorateDateFilterMenu(menu) {
-    if (!menu || menu.dataset.v40118MonthYear === '1') return false;
+    if (!menu || menu.dataset.v40119MonthYear === '1') return false;
     const condition = menu.querySelector('select[data-cond]');
     const dateInput = menu.querySelector('input[data-a][type="date"]');
     const search = menu.querySelector('.hap-xf-search');
@@ -693,24 +693,24 @@
     ensureDateFilterStyle();
     const years = [...new Set(parsedRows.map(item => item.parts.year))].sort((a,b) => Number(b) - Number(a));
     const block = document.createElement('div');
-    block.className = 'hap-v40118-date-quick';
+    block.className = 'hap-v40119-date-quick';
     block.innerHTML = `
       <label>Mês
-        <select data-v40118-month>
+        <select data-v40119-month>
           <option value="">Todos os meses</option>
           ${DATE_FILTER_MONTHS.map(([value,label]) => `<option value="${value}">${label}</option>`).join('')}
         </select>
       </label>
       <label>Ano
-        <select data-v40118-year>
+        <select data-v40119-year>
           <option value="">Todos os anos</option>
           ${years.map(year => `<option value="${year}">${year}</option>`).join('')}
         </select>
       </label>`;
     search.parentNode.insertBefore(block, search);
 
-    const monthSelect = block.querySelector('[data-v40118-month]');
-    const yearSelect = block.querySelector('[data-v40118-year]');
+    const monthSelect = block.querySelector('[data-v40119-month]');
+    const yearSelect = block.querySelector('[data-v40119-year]');
 
     const applyMonthYear = () => {
       if (search.value) {
@@ -742,7 +742,7 @@
 
     monthSelect.addEventListener('change', applyMonthYear);
     yearSelect.addEventListener('change', applyMonthYear);
-    menu.dataset.v40118MonthYear = '1';
+    menu.dataset.v40119MonthYear = '1';
     return true;
   }
 
@@ -750,10 +750,11 @@
     document.querySelectorAll('.hap-xf-menu').forEach(decorateDateFilterMenu);
   }
 
-  // V40.0.118 — total dinâmico da coluna Montante na Base Consumo.
-  // O total é calculado sobre TODA a fotografia atual, não apenas sobre a página
-  // visível. Quando houver filtro, reutiliza a mesma base completa/cache acelerado
-  // já usado pelos filtros para evitar novas cargas sequenciais de ~62 mil linhas.
+  // V40.0.119 — total dinâmico da coluna Montante na Base Consumo.
+  // A V40.0.118 atualizava apenas o KPI e dependia do ciclo de renderização do
+  // HAP_XF. Em alguns fluxos o wrapper do filtro era instalado depois e o recálculo
+  // podia não acontecer. Agora o recálculo é ligado tanto ao carregamento quanto ao
+  // render da aba e também fica visível no rodapé da tabela.
   let baseConsumoDynamicTotalTimer = null;
   let baseConsumoDynamicTotalSeq = 0;
 
@@ -761,55 +762,113 @@
     return Number(value || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
   }
 
+  function sumBaseConsumoMontante(rows) {
+    return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+      const value = Number(row?.montante);
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+  }
+
+  function isBaseConsumoTab() {
+    try { return String(state?.tab || '') === 'base_consumo'; }
+    catch (_) { return false; }
+  }
+
   function getBaseConsumoTotalCard() {
-    try {
-      if (String(state?.tab || '') !== 'base_consumo') return null;
-    } catch (_) { return null; }
+    if (!isBaseConsumoTab()) return null;
     return Array.from(document.querySelectorAll('.kpi-card')).find(card =>
       String(card.querySelector('.label')?.textContent || '').trim().toLocaleLowerCase('pt-BR') === 'valor total'
     ) || null;
   }
 
-  async function updateBaseConsumoDynamicTotal() {
-    const card = getBaseConsumoTotalCard();
-    if (!card) return;
-    const valueEl = card.querySelector('.value');
-    if (!valueEl) return;
+  function getBaseConsumoFooter() {
+    if (!isBaseConsumoTab()) return null;
+    const tableCard = document.querySelector('.table-card');
+    const footer = tableCard?.nextElementSibling;
+    return footer && footer.querySelector ? footer : null;
+  }
 
-    let sub = card.querySelector('.v40118-consumo-total-sub');
-    if (!sub) {
-      sub = document.createElement('div');
-      sub.className = 'sub v40118-consumo-total-sub';
-      card.appendChild(sub);
+  function ensureBaseConsumoFooterTotal() {
+    const footer = getBaseConsumoFooter();
+    if (!footer) return null;
+    let el = footer.querySelector('[data-v40119-consumo-total]');
+    if (el) return el;
+    el = document.createElement('span');
+    el.dataset.v40119ConsumoTotal = '1';
+    el.style.fontWeight = '800';
+    el.style.color = 'var(--azul)';
+    el.style.marginLeft = '14px';
+    el.style.marginRight = 'auto';
+    const first = footer.firstElementChild;
+    if (first?.nextSibling) footer.insertBefore(el, first.nextSibling);
+    else if (first) footer.appendChild(el);
+    else footer.prepend(el);
+    return el;
+  }
+
+  function paintBaseConsumoDynamicTotal({ total, count, active, loading=false, error=false }) {
+    const formatted = brlDynamic(total);
+    const card = getBaseConsumoTotalCard();
+    if (card) {
+      const valueEl = card.querySelector('.value');
+      if (valueEl && !loading && !error && valueEl.textContent !== formatted) valueEl.textContent = formatted;
+      let sub = card.querySelector('.v40119-consumo-total-sub');
+      if (!sub) {
+        sub = document.createElement('div');
+        sub.className = 'sub v40119-consumo-total-sub';
+        card.appendChild(sub);
+      }
+      const text = loading
+        ? 'Calculando total dos filtros…'
+        : error
+          ? 'Não foi possível recalcular o total agora.'
+          : active
+            ? `${Number(count || 0).toLocaleString('pt-BR')} lançamentos no resultado filtrado`
+            : 'Total da coluna Montante';
+      if (sub.textContent !== text) sub.textContent = text;
     }
+
+    const footerTotal = ensureBaseConsumoFooterTotal();
+    if (footerTotal) {
+      const text = loading
+        ? 'Total Montante: calculando…'
+        : error
+          ? 'Total Montante: indisponível'
+          : `${active ? 'Total Montante filtrado' : 'Total Montante'}: ${formatted}`;
+      if (footerTotal.textContent !== text) footerTotal.textContent = text;
+    }
+  }
+
+  async function updateBaseConsumoDynamicTotal() {
+    if (!isBaseConsumoTab()) return;
 
     const xf = window.HAP_XF;
     const active = !!xf?.hasActive?.('control-consumo');
     if (!active) {
       let total = 0;
-      try { total = Number(state?.consumoResumo?.valor_total || 0); } catch (_) {}
-      const formatted = brlDynamic(total);
-      if (valueEl.textContent !== formatted) valueEl.textContent = formatted;
-      const text = 'Total da coluna Montante · atualiza conforme os filtros';
-      if (sub.textContent !== text) sub.textContent = text;
+      let count = 0;
+      try {
+        total = Number(state?.consumoResumo?.valor_total || 0);
+        count = Number(state?.consumoTotal || 0);
+      } catch (_) {}
+      paintBaseConsumoDynamicTotal({ total, count, active:false });
       return;
     }
 
     const seq = ++baseConsumoDynamicTotalSeq;
-    if (sub.textContent !== 'Calculando total dos filtros…') sub.textContent = 'Calculando total dos filtros…';
+    paintBaseConsumoDynamicTotal({ total:0, count:0, active:true, loading:true });
     try {
       const loaded = await loadBaseConsumoFast('data_lancamento', false);
-      if (seq !== baseConsumoDynamicTotalSeq || !getBaseConsumoTotalCard()) return;
-      if (loaded?.error || !Array.isArray(loaded?.data)) throw loaded?.error || new Error('Base Consumo indisponível.');
+      if (seq !== baseConsumoDynamicTotalSeq || !isBaseConsumoTab()) return;
+      if (loaded?.error || !Array.isArray(loaded?.data)) {
+        throw loaded?.error || new Error('Base Consumo indisponível.');
+      }
       const filtered = xf?.apply ? xf.apply('control-consumo', loaded.data) : loaded.data;
-      const total = filtered.reduce((sum, row) => sum + (Number(row?.montante) || 0), 0);
-      const formatted = brlDynamic(total);
-      if (valueEl.textContent !== formatted) valueEl.textContent = formatted;
-      const text = `${filtered.length.toLocaleString('pt-BR')} lançamentos no resultado atual`;
-      if (sub.textContent !== text) sub.textContent = text;
+      const total = sumBaseConsumoMontante(filtered);
+      paintBaseConsumoDynamicTotal({ total, count:filtered.length, active:true });
     } catch (error) {
       console.warn(`[HAPCAPEX ${VERSION}] Falha ao calcular total dinâmico da Base Consumo.`, error);
-      if (sub.textContent !== 'Não foi possível recalcular o total agora.') sub.textContent = 'Não foi possível recalcular o total agora.';
+      paintBaseConsumoDynamicTotal({ total:0, count:0, active:true, error:true });
     }
   }
 
@@ -819,20 +878,45 @@
   }
 
   function installBaseConsumoDynamicTotalBridge() {
-    if (window.__HAP_V40118_CONSUMO_DYNAMIC_TOTAL_BRIDGE__) return true;
-    const current = window.renderBaseConsumoTab;
-    if (typeof current !== 'function') return false;
-    const wrapped = function() {
-      const result = current.apply(this, arguments);
-      scheduleBaseConsumoDynamicTotal(40);
-      return result;
-    };
-    wrapped.__hapV40118DynamicTotalWrapped = true;
-    wrapped.__hapV40118Original = current;
-    window.renderBaseConsumoTab = wrapped;
-    window.__HAP_V40118_CONSUMO_DYNAMIC_TOTAL_BRIDGE__ = true;
-    return true;
+    let installed = false;
+
+    const renderCurrent = window.renderBaseConsumoTab;
+    if (typeof renderCurrent === 'function' && !renderCurrent.__hapV40119DynamicTotalRenderWrapped) {
+      const wrappedRender = function() {
+        const result = renderCurrent.apply(this, arguments);
+        scheduleBaseConsumoDynamicTotal(60);
+        return result;
+      };
+      wrappedRender.__hapV40119DynamicTotalRenderWrapped = true;
+      wrappedRender.__hapV40119Original = renderCurrent;
+      window.renderBaseConsumoTab = wrappedRender;
+      installed = true;
+    }
+
+    const loadCurrent = window.loadBaseConsumoTab;
+    if (typeof loadCurrent === 'function' && !loadCurrent.__hapV40119DynamicTotalLoadWrapped) {
+      const wrappedLoad = async function() {
+        const result = await loadCurrent.apply(this, arguments);
+        scheduleBaseConsumoDynamicTotal(0);
+        return result;
+      };
+      wrappedLoad.__hapV40119DynamicTotalLoadWrapped = true;
+      wrappedLoad.__hapV40119Original = loadCurrent;
+      window.loadBaseConsumoTab = wrappedLoad;
+      installed = true;
+    }
+
+    return installed ||
+      !!window.renderBaseConsumoTab?.__hapV40119DynamicTotalRenderWrapped ||
+      !!window.loadBaseConsumoTab?.__hapV40119DynamicTotalLoadWrapped;
   }
+
+  // Fallback adicional: depois de confirmar/limpar filtros, agenda novo cálculo.
+  document.addEventListener('click', event => {
+    const target = event.target?.closest?.('.hap-xf-menu [data-apply], .hap-xf-unified-clear');
+    if (!target) return;
+    setTimeout(() => scheduleBaseConsumoDynamicTotal(0), 120);
+  }, true);
 
   function maintenanceFilterBridgeReady() {
     return typeof window.applyManFilter === 'function' &&
@@ -844,7 +928,7 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40118MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40119MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
@@ -862,19 +946,19 @@
         }
         return result;
       };
-      wrappedApply.__hapV40118MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40118Original = currentApply;
+      wrappedApply.__hapV40119MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40119Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40118MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40119MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40118MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40118Original = currentClear;
+      wrappedClear.__hapV40119MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40119Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
