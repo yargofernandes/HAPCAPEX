@@ -1,12 +1,13 @@
-/* HAPCAPEX V40.0.121 — Pre-auth guard do Controle de Capex
+/* HAPCAPEX V40.0.122 — Gerencial disponível ao Visualizador sem alterar as abas existentes
    - preserva as validações de sessão/perfil existentes;
-   - libera o Gerencial para perfil Visualizador em modo estritamente somente leitura;
-   - mantém CAPEX, Base O.I., Base Consumo e Transferências restritos ao Administrador;
-   - visualizador entra diretamente no Gerencial e não recebe ações de correção/edição.
+   - mantém CAPEX, Base O.I e Base Consumo disponíveis ao Visualizador conforme a governança V39.4;
+   - acrescenta a aba Gerencial ao perfil Visualizador;
+   - mantém Transferências/Auditoria fora da navegação do Visualizador;
+   - Gerencial permanece somente leitura para Visualizador.
 */
 (()=>{'use strict';
 if(window.HAP_CONTROL_PREAUTH_V40?.bootstrapped)return;
-const VERSION='40.0.121';
+const VERSION='40.0.122';
 
 function load(flag,needle,src,key){
   if(window[flag])return;
@@ -50,18 +51,27 @@ function isViewer(){
   try{return state?.role==='viewer';}catch(_){return false;}
 }
 
-function managerialNavOnly(){
-  let active=true;
+function managerialPill(){
+  let active=false;
   try{active=state?.tab==='gerencial';}catch(_){}
-  return `<div style="display:flex;gap:6px;"><span class="nav-pill ${active?'active':''}" onclick="switchTab('gerencial')">GERENCIAL</span></div>`;
+  return `<span class="nav-pill ${active?'active':''}" onclick="switchTab('gerencial')">GERENCIAL</span>`;
+}
+
+function appendManagerialToViewerNav(html){
+  if(!html||typeof html!=='string')return html;
+  if(html.includes("switchTab('gerencial')"))return html;
+  const pill=managerialPill();
+  if(/<\/div>\s*$/.test(html))return html.replace(/<\/div>\s*$/,pill+'</div>');
+  return `<div style="display:flex;gap:6px;">${html}${pill}</div>`;
 }
 
 function installViewerStyle(){
-  if(document.getElementById('hap-v40121-viewer-gerencial-style'))return;
+  if(document.getElementById('hap-v40122-viewer-gerencial-style'))return;
   const style=document.createElement('style');
-  style.id='hap-v40121-viewer-gerencial-style';
+  style.id='hap-v40122-viewer-gerencial-style';
   style.textContent=`
-    body.hap-v40121-viewer-gerencial .v4071-edit{display:none!important}
+    body.hap-v40122-viewer-gerencial .v4071-edit,
+    body.hap-v40122-viewer-gerencial [data-v4071-edit-oi]{display:none!important}
   `;
   (document.head||document.documentElement).appendChild(style);
 }
@@ -69,7 +79,7 @@ function installViewerStyle(){
 function enforceViewerReadOnlyUi(){
   if(!isViewer())return;
   installViewerStyle();
-  document.body?.classList?.add('hap-v40121-viewer-gerencial');
+  document.body?.classList?.add('hap-v40122-viewer-gerencial');
   document.querySelectorAll('.role-badge').forEach(el=>{
     if(String(el.textContent||'').trim().toLowerCase()==='admin')el.textContent='Visualizador';
   });
@@ -80,47 +90,17 @@ function enforceViewerReadOnlyUi(){
   });
 }
 
-function installViewerNavigationGuards(){
-  if(!isViewer())return;
-  installViewerStyle();
-  document.body?.classList?.add('hap-v40121-viewer-gerencial');
-
+function installViewerGerencialNavigation(){
   const currentNav=window.navHtml;
-  if(typeof currentNav==='function'&&!currentNav.__hapV40121ViewerNav){
-    const wrappedNav=function(){
-      if(isViewer())return managerialNavOnly();
-      return currentNav.apply(this,arguments);
-    };
-    wrappedNav.__hapV40121ViewerNav=true;
-    wrappedNav.__hapV40121Original=currentNav;
-    navHtml=window.navHtml=wrappedNav;
-  }
-
-  const currentSwitch=window.switchTab;
-  if(typeof currentSwitch==='function'&&!currentSwitch.__hapV40121ViewerSwitch){
-    const wrappedSwitch=function(tab){
-      if(isViewer()&&String(tab||'')!=='gerencial'){
-        state.tab='gerencial';
-        const manager=window.HAP_V4071_CONTROL_MANAGERIAL;
-        if(typeof manager?.loadManagerialTab==='function')return manager.loadManagerialTab();
-        return window.refreshCurrent?.();
-      }
-      return currentSwitch.apply(this,arguments);
-    };
-    wrappedSwitch.__hapV40121ViewerSwitch=true;
-    wrappedSwitch.__hapV40121Original=currentSwitch;
-    switchTab=window.switchTab=wrappedSwitch;
-  }
-}
-
-async function waitForManagerial(timeoutMs=6000){
-  const started=Date.now();
-  while(Date.now()-started<timeoutMs){
-    const manager=window.HAP_V4071_CONTROL_MANAGERIAL;
-    if(typeof manager?.loadManagerialTab==='function')return manager;
-    await new Promise(resolve=>setTimeout(resolve,50));
-  }
-  return null;
+  if(typeof currentNav!=='function'||currentNav.__hapV40122ViewerGerencialNav)return;
+  const wrappedNav=function(){
+    const html=currentNav.apply(this,arguments);
+    if(!isViewer())return html;
+    return appendManagerialToViewerNav(html);
+  };
+  wrappedNav.__hapV40122ViewerGerencialNav=true;
+  wrappedNav.__hapV40122Original=currentNav;
+  navHtml=window.navHtml=wrappedNav;
 }
 
 let viewerObserver=null;
@@ -129,19 +109,6 @@ function ensureViewerObserver(){
   viewerObserver=new MutationObserver(()=>enforceViewerReadOnlyUi());
   const root=document.body||document.documentElement;
   if(root)viewerObserver.observe(root,{childList:true,subtree:true});
-}
-
-async function openViewerManagerial(profile){
-  state.role='viewer';
-  state.fullName=profile.full_name||profile.email||state.session?.user?.email||'';
-  state.tab='gerencial';
-  installViewerNavigationGuards();
-  ensureViewerObserver();
-
-  const manager=await waitForManagerial();
-  if(!manager)throw new Error('Módulo Gerencial indisponível. Atualize a página e tente novamente.');
-  await manager.loadManagerialTab();
-  enforceViewerReadOnlyUi();
 }
 
 const guarded=async function(...args){
@@ -169,8 +136,13 @@ const guarded=async function(...args){
       return;
     }
     if(profile.role==='viewer'){
-      await openViewerManagerial(profile);
-      return;
+      // Instala o complemento ANTES da renderização normal do Viewer (V39.4).
+      // Assim as abas já existentes permanecem e apenas GERENCIAL é acrescentada.
+      installViewerGerencialNavigation();
+      ensureViewerObserver();
+      const result=await original.apply(this,args);
+      enforceViewerReadOnlyUi();
+      return result;
     }
     return original.apply(this,args);
   }catch(error){
@@ -183,14 +155,16 @@ const guarded=async function(...args){
   }
 };
 
-guarded.__hapV40121PreAuth=true;
+guarded.__hapV40122PreAuth=true;
 guarded.__hapOriginal=original;
 loadRoleAndData=window.loadRoleAndData=guarded;
 window.HAP_CONTROL_PREAUTH_V40={
   version:VERSION,
   bootstrapped:true,
   viewerManagerial:true,
+  viewerKeepsExistingTabs:true,
   get original(){return original},
+  appendManagerialToViewerNav,
   enforceViewerReadOnlyUi
 };
 })();
