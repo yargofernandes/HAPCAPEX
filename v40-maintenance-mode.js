@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.119 — Manutenção: governança da O.I. + filtros da Curva.
+/* HAPCAPEX V40.0.120 — Manutenção: governança da O.I. + filtros da Curva.
    Hotfix sobre V40.0.113:
    - corrige a leitura da governança no modal de edição usando o cliente Supabase real
      do Controle de CAPEX (binding global lexical `sb`, não apenas `window.sb`);
@@ -10,17 +10,18 @@
      automaticamente para a aba Manutenção, sem abrir planejamento individual;
    - elimina o loop de MutationObserver/RPC que podia travar a página ao digitar uma O.I.
      no aporte operacional;
-   - V40.0.119: preserva a aceleração dos filtros da Base Consumo com paginação concorrente e cache curto;
-   - V40.0.119: adiciona seleção rápida por Mês e Ano aos filtros de colunas do tipo Data;
-   - V40.0.119: corrige o total dinâmico da Base Consumo, atualizando após o carregamento/filtro e exibindo também no rodapé da tabela.
+   - V40.0.120: preserva a aceleração dos filtros da Base Consumo com paginação concorrente e cache curto;
+   - V40.0.120: adiciona seleção rápida por Mês e Ano aos filtros de colunas do tipo Data;
+   - V40.0.120: corrige o total dinâmico da Base Consumo, atualizando após o carregamento/filtro e exibindo também no rodapé da tabela.
+   - V40.0.120: torna os filtros Excel cumulativos/cascateados entre colunas da mesma tabela/aba, sem compartilhar filtros entre abas.
 */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40119_MAINTENANCE_MODE__) return;
-  window.__HAP_V40119_MAINTENANCE_MODE__ = true;
+  if (window.__HAP_V40120_MAINTENANCE_MODE__) return;
+  window.__HAP_V40120_MAINTENANCE_MODE__ = true;
 
-  const VERSION = '40.0.119';
+  const VERSION = '40.0.120';
   const MODE = 'manutencao';
   const LABEL = 'Manutenção — aba Manutenção, somente realizado';
   const EDIT_SELECTOR = '#v4023-edit-vai-curva';
@@ -56,8 +57,8 @@
     if (!select) return;
 
     // CRÍTICO: depois de decorado, não reescreve DOM. Evita loop de MutationObserver.
-    if (select.dataset.v40119MaintenancePatched === '1') return;
-    select.dataset.v40119MaintenancePatched = '1';
+    if (select.dataset.v40120MaintenancePatched === '1') return;
+    select.dataset.v40120MaintenancePatched = '1';
 
     addOption(select);
 
@@ -86,8 +87,8 @@
     if (!select) return null;
 
     // CRÍTICO: patch estritamente idempotente.
-    if (select.dataset.v40119MaintenancePatched === '1') return select;
-    select.dataset.v40119MaintenancePatched = '1';
+    if (select.dataset.v40120MaintenancePatched === '1') return select;
+    select.dataset.v40120MaintenancePatched = '1';
 
     addOption(select);
 
@@ -180,53 +181,53 @@
     const maintenanceNote = '<strong>Manutenção identificada automaticamente:</strong> esta O.I. já participa da Curva como Manutenção. O aporte será acrescentado ao Controle e mantido na aba Manutenção, <strong>sem datas, tipologia ou regra de planejamento individual</strong>.';
 
     if (active) {
-      if (backdrop.dataset.v40119MaintenanceAporte !== '1') {
-        backdrop.dataset.v40119MaintenanceAporte = '1';
+      if (backdrop.dataset.v40120MaintenanceAporte !== '1') {
+        backdrop.dataset.v40120MaintenanceAporte = '1';
       }
       if (next) {
-        if (!next.dataset.v40119OriginalText) next.dataset.v40119OriginalText = next.textContent || 'Registrar e planejar agora';
+        if (!next.dataset.v40120OriginalText) next.dataset.v40120OriginalText = next.textContent || 'Registrar e planejar agora';
         if (next.textContent !== maintenanceText) next.textContent = maintenanceText;
         if (next.title !== maintenanceTitle) next.title = maintenanceTitle;
       }
       if (later) {
-        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40119OriginalDisplay')) {
-          later.dataset.v40119OriginalDisplay = later.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(later.dataset, 'v40120OriginalDisplay')) {
+          later.dataset.v40120OriginalDisplay = later.style.display || '';
         }
         if (later.style.display !== 'none') later.style.display = 'none';
       }
       if (kpiOnly) {
-        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40119OriginalDisplay')) {
-          kpiOnly.dataset.v40119OriginalDisplay = kpiOnly.style.display || '';
+        if (!Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40120OriginalDisplay')) {
+          kpiOnly.dataset.v40120OriginalDisplay = kpiOnly.style.display || '';
         }
         if (kpiOnly.style.display !== 'none') kpiOnly.style.display = 'none';
       }
       if (note) {
-        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40119OriginalHtml')) {
-          note.dataset.v40119OriginalHtml = note.innerHTML;
+        if (!Object.prototype.hasOwnProperty.call(note.dataset, 'v40120OriginalHtml')) {
+          note.dataset.v40120OriginalHtml = note.innerHTML;
         }
         if (note.innerHTML !== maintenanceNote) note.innerHTML = maintenanceNote;
       }
       return;
     }
 
-    if (backdrop.dataset.v40119MaintenanceAporte !== '1') return;
-    delete backdrop.dataset.v40119MaintenanceAporte;
+    if (backdrop.dataset.v40120MaintenanceAporte !== '1') return;
+    delete backdrop.dataset.v40120MaintenanceAporte;
 
-    if (next?.dataset.v40119OriginalText) {
-      const originalText = next.dataset.v40119OriginalText;
+    if (next?.dataset.v40120OriginalText) {
+      const originalText = next.dataset.v40120OriginalText;
       if (next.textContent !== originalText) next.textContent = originalText;
       if (next.hasAttribute('title')) next.removeAttribute('title');
     }
-    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40119OriginalDisplay')) {
-      const display = later.dataset.v40119OriginalDisplay || '';
+    if (later && Object.prototype.hasOwnProperty.call(later.dataset, 'v40120OriginalDisplay')) {
+      const display = later.dataset.v40120OriginalDisplay || '';
       if (later.style.display !== display) later.style.display = display;
     }
-    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40119OriginalDisplay')) {
-      const display = kpiOnly.dataset.v40119OriginalDisplay || '';
+    if (kpiOnly && Object.prototype.hasOwnProperty.call(kpiOnly.dataset, 'v40120OriginalDisplay')) {
+      const display = kpiOnly.dataset.v40120OriginalDisplay || '';
       if (kpiOnly.style.display !== display) kpiOnly.style.display = display;
     }
-    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40119OriginalHtml')) {
-      const originalHtml = note.dataset.v40119OriginalHtml;
+    if (note && Object.prototype.hasOwnProperty.call(note.dataset, 'v40120OriginalHtml')) {
+      const originalHtml = note.dataset.v40120OriginalHtml;
       if (note.innerHTML !== originalHtml) note.innerHTML = originalHtml;
     }
   }
@@ -238,35 +239,35 @@
 
     const oi = String(oiInput.value || '').replace(/\D/g, '').trim();
     if (!/^\d{8}$/.test(oi)) {
-      delete backdrop.dataset.v40119AporteCheckedOi;
-      delete backdrop.dataset.v40119AporteGovernanceState;
+      delete backdrop.dataset.v40120AporteCheckedOi;
+      delete backdrop.dataset.v40120AporteGovernanceState;
       setMaintenanceAporteUi(backdrop, false);
       return null;
     }
 
-    if (!force && backdrop.dataset.v40119AporteCheckedOi === oi) {
-      const state = backdrop.dataset.v40119AporteGovernanceState;
+    if (!force && backdrop.dataset.v40120AporteCheckedOi === oi) {
+      const state = backdrop.dataset.v40120AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return state || null;
     }
 
-    const seq = String((Number(backdrop.dataset.v40119AporteLookupSeq || 0) + 1));
-    backdrop.dataset.v40119AporteLookupSeq = seq;
+    const seq = String((Number(backdrop.dataset.v40120AporteLookupSeq || 0) + 1));
+    backdrop.dataset.v40120AporteLookupSeq = seq;
     try {
       const governance = await getAporteGovernance(oi, force);
-      if (backdrop.dataset.v40119AporteLookupSeq !== seq) return governance;
+      if (backdrop.dataset.v40120AporteLookupSeq !== seq) return governance;
       if (String(oiInput.value || '').replace(/\D/g, '').trim() !== oi) return governance;
 
       const maintenance = isGovernedMaintenance(governance);
-      backdrop.dataset.v40119AporteCheckedOi = oi;
-      backdrop.dataset.v40119AporteGovernanceState = maintenance ? 'maintenance' : 'other';
+      backdrop.dataset.v40120AporteCheckedOi = oi;
+      backdrop.dataset.v40120AporteGovernanceState = maintenance ? 'maintenance' : 'other';
       setMaintenanceAporteUi(backdrop, maintenance);
       return governance;
     } catch (error) {
-      if (backdrop.dataset.v40119AporteLookupSeq === seq) {
-        delete backdrop.dataset.v40119AporteCheckedOi;
-        delete backdrop.dataset.v40119AporteGovernanceState;
+      if (backdrop.dataset.v40120AporteLookupSeq === seq) {
+        delete backdrop.dataset.v40120AporteCheckedOi;
+        delete backdrop.dataset.v40120AporteGovernanceState;
       }
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar governança do aporte da O.I. ${oi}.`, error);
       return null;
@@ -278,15 +279,15 @@
     const oiInput = box?.querySelector('#v36-a-oi');
     if (!box || !oiInput) return;
 
-    if (oiInput.dataset.v40119MaintenanceAporteBound !== '1') {
-      oiInput.dataset.v40119MaintenanceAporteBound = '1';
+    if (oiInput.dataset.v40120MaintenanceAporteBound !== '1') {
+      oiInput.dataset.v40120MaintenanceAporteBound = '1';
       let timer = null;
       const schedule = () => {
         clearTimeout(timer);
         const currentOi = String(oiInput.value || '').replace(/\D/g, '').trim();
-        if (backdrop.dataset.v40119AporteCheckedOi && backdrop.dataset.v40119AporteCheckedOi !== currentOi) {
-          delete backdrop.dataset.v40119AporteCheckedOi;
-          delete backdrop.dataset.v40119AporteGovernanceState;
+        if (backdrop.dataset.v40120AporteCheckedOi && backdrop.dataset.v40120AporteCheckedOi !== currentOi) {
+          delete backdrop.dataset.v40120AporteCheckedOi;
+          delete backdrop.dataset.v40120AporteGovernanceState;
           setMaintenanceAporteUi(backdrop, false);
         }
         if (!/^\d{8}$/.test(currentOi)) return;
@@ -302,8 +303,8 @@
       return;
     }
 
-    if (backdrop.dataset.v40119AporteCheckedOi === currentOi) {
-      const state = backdrop.dataset.v40119AporteGovernanceState;
+    if (backdrop.dataset.v40120AporteCheckedOi === currentOi) {
+      const state = backdrop.dataset.v40120AporteGovernanceState;
       if (state === 'maintenance') setMaintenanceAporteUi(backdrop, true);
       else if (state === 'other') setMaintenanceAporteUi(backdrop, false);
       return;
@@ -311,11 +312,11 @@
 
     // Uma única consulta por O.I. digitada. O MutationObserver pode revarrer o modal,
     // mas não dispara novas RPCs nem reescreve o DOM quando o estado já foi confirmado.
-    if (backdrop.dataset.v40119AporteLookupPending !== currentOi) {
-      backdrop.dataset.v40119AporteLookupPending = currentOi;
+    if (backdrop.dataset.v40120AporteLookupPending !== currentOi) {
+      backdrop.dataset.v40120AporteLookupPending = currentOi;
       void refreshOperationalAporteGovernance(backdrop).finally(() => {
-        if (backdrop.dataset.v40119AporteLookupPending === currentOi) {
-          delete backdrop.dataset.v40119AporteLookupPending;
+        if (backdrop.dataset.v40120AporteLookupPending === currentOi) {
+          delete backdrop.dataset.v40120AporteLookupPending;
         }
       });
     }
@@ -367,20 +368,20 @@
   }
 
   function replayAporteClick(button) {
-    button.dataset.v40119AporteBypass = '1';
+    button.dataset.v40120AporteBypass = '1';
     button.disabled = false;
     queueMicrotask(() => button.click());
   }
 
   function installAporteMaintenanceInterceptor() {
-    if (window.__HAP_V40119_APORTE_MAINTENANCE_INTERCEPTOR__) return;
-    window.__HAP_V40119_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
+    if (window.__HAP_V40120_APORTE_MAINTENANCE_INTERCEPTOR__) return;
+    window.__HAP_V40120_APORTE_MAINTENANCE_INTERCEPTOR__ = true;
 
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target.closest('#v36-a-next,#v374-save-later') : null;
       if (!target) return;
-      if (target.dataset.v40119AporteBypass === '1') {
-        delete target.dataset.v40119AporteBypass;
+      if (target.dataset.v40120AporteBypass === '1') {
+        delete target.dataset.v40120AporteBypass;
         return;
       }
 
@@ -413,7 +414,7 @@
           // Se a consulta de governança falhar, preserva o fluxo anterior; se a gravação falhar,
           // o próprio formulário já exibiu o erro e não deve abrir planejamento genérico.
           if (document.body.contains(backdrop)) {
-            const isMaintenanceUi = backdrop.dataset.v40119MaintenanceAporte === '1';
+            const isMaintenanceUi = backdrop.dataset.v40120MaintenanceAporte === '1';
             if (!isMaintenanceUi) {
               target.textContent = originalText;
               replayAporteClick(target);
@@ -432,8 +433,8 @@
     if (!select || !id || !client) return;
 
     const token = String(id);
-    if (select.dataset.v40119GovernanceLoaded === token) return;
-    select.dataset.v40119GovernanceLoaded = token;
+    if (select.dataset.v40120GovernanceLoaded === token) return;
+    select.dataset.v40120GovernanceLoaded = token;
 
     try {
       const { data, error } = await client.rpc('obter_governanca_oi_v4027', { p_id: id });
@@ -454,7 +455,7 @@
         select.dispatchEvent(new Event('change', { bubbles: true }));
       }
     } catch (error) {
-      delete select.dataset.v40119GovernanceLoaded;
+      delete select.dataset.v40120GovernanceLoaded;
       console.warn(`[HAPCAPEX ${VERSION}] Não foi possível confirmar a governança da O.I.`, error);
     }
   }
@@ -486,21 +487,21 @@
   function wrapEditOi() {
     const current = window.editarOi;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40119MaintenanceWrapped) return true;
+    if (current.__hapV40120MaintenanceWrapped) return true;
 
     const wrapped = async function(id) {
       const result = await current.apply(this, arguments);
       scheduleEditPatch(id);
       return result;
     };
-    wrapped.__hapV40119MaintenanceWrapped = true;
-    wrapped.__hapV40119Original = current;
+    wrapped.__hapV40120MaintenanceWrapped = true;
+    wrapped.__hapV40120Original = current;
     window.editarOi = wrapped;
     return true;
   }
 
 
-  // V40.0.119 — a Base Consumo possui dezenas de milhares de lançamentos.
+  // V40.0.120 — a Base Consumo possui dezenas de milhares de lançamentos.
   // O HAP_XF precisa da base completa para aplicar os filtros de cabeçalho, mas o
   // fetchAllRows legado fazia as páginas de 1.000 linhas de forma estritamente
   // sequencial. Com ~62 mil linhas, o primeiro filtro podia parecer travado.
@@ -599,7 +600,7 @@
   function installBaseConsumoFilterAcceleration() {
     const current = window.fetchAllRows;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40119BaseConsumoFast) return true;
+    if (current.__hapV40120BaseConsumoFast) return true;
 
     const wrapped = async function(viewName, orderCol, ascending) {
       if (String(viewName || '') !== BASE_CONSUMO_FAST_VIEW) {
@@ -614,8 +615,8 @@
       }
       return current.apply(this, arguments);
     };
-    wrapped.__hapV40119BaseConsumoFast = true;
-    wrapped.__hapV40119Original = current;
+    wrapped.__hapV40120BaseConsumoFast = true;
+    wrapped.__hapV40120Original = current;
     window.fetchAllRows = wrapped;
     return true;
   }
@@ -623,7 +624,7 @@
   function installBaseConsumoImportInvalidation() {
     const current = window.importarArquivoBaseConsumo;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40119BaseConsumoInvalidate) return true;
+    if (current.__hapV40120BaseConsumoInvalidate) return true;
 
     const wrapped = async function() {
       invalidateBaseConsumoFastCache();
@@ -633,13 +634,13 @@
         invalidateBaseConsumoFastCache();
       }
     };
-    wrapped.__hapV40119BaseConsumoInvalidate = true;
-    wrapped.__hapV40119Original = current;
+    wrapped.__hapV40120BaseConsumoInvalidate = true;
+    wrapped.__hapV40120Original = current;
     window.importarArquivoBaseConsumo = wrapped;
     return true;
   }
 
-  // V40.0.119 — atalhos de Mês/Ano nos filtros de data do HAP_XF.
+  // V40.0.120 — atalhos de Mês/Ano nos filtros de data do HAP_XF.
   // O núcleo do filtro permanece intocado: os atalhos apenas marcam/desmarcam os
   // mesmos checkboxes de datas já usados pelo filtro estilo Excel e o usuário
   // confirma normalmente pelo botão OK.
@@ -662,20 +663,20 @@
   }
 
   function ensureDateFilterStyle() {
-    if (document.getElementById('hap-v40119-date-month-year-style')) return;
+    if (document.getElementById('hap-v40120-date-month-year-style')) return;
     const style = document.createElement('style');
-    style.id = 'hap-v40119-date-month-year-style';
+    style.id = 'hap-v40120-date-month-year-style';
     style.textContent = `
-      .hap-v40119-date-quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:6px 0 7px;padding:8px;background:#f7f9fc;border:1px solid #d9e0e9;border-radius:7px}
-      .hap-v40119-date-quick label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:10px;font-weight:800;color:#5a6882;text-transform:uppercase;letter-spacing:.03em}
-      .hap-v40119-date-quick select{width:100%;min-width:0;padding:7px 8px;border:1px solid #cbd5e3;border-radius:6px;background:#fff;color:#1a2233;font:12px 'Segoe UI',Arial,sans-serif;text-transform:none;letter-spacing:0}
-      @media(max-width:520px){.hap-v40119-date-quick{grid-template-columns:1fr}}
+      .hap-v40120-date-quick{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:6px 0 7px;padding:8px;background:#f7f9fc;border:1px solid #d9e0e9;border-radius:7px}
+      .hap-v40120-date-quick label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:10px;font-weight:800;color:#5a6882;text-transform:uppercase;letter-spacing:.03em}
+      .hap-v40120-date-quick select{width:100%;min-width:0;padding:7px 8px;border:1px solid #cbd5e3;border-radius:6px;background:#fff;color:#1a2233;font:12px 'Segoe UI',Arial,sans-serif;text-transform:none;letter-spacing:0}
+      @media(max-width:520px){.hap-v40120-date-quick{grid-template-columns:1fr}}
     `;
     (document.head || document.documentElement).appendChild(style);
   }
 
   function decorateDateFilterMenu(menu) {
-    if (!menu || menu.dataset.v40119MonthYear === '1') return false;
+    if (!menu || menu.dataset.v40120MonthYear === '1') return false;
     const condition = menu.querySelector('select[data-cond]');
     const dateInput = menu.querySelector('input[data-a][type="date"]');
     const search = menu.querySelector('.hap-xf-search');
@@ -693,24 +694,24 @@
     ensureDateFilterStyle();
     const years = [...new Set(parsedRows.map(item => item.parts.year))].sort((a,b) => Number(b) - Number(a));
     const block = document.createElement('div');
-    block.className = 'hap-v40119-date-quick';
+    block.className = 'hap-v40120-date-quick';
     block.innerHTML = `
       <label>Mês
-        <select data-v40119-month>
+        <select data-v40120-month>
           <option value="">Todos os meses</option>
           ${DATE_FILTER_MONTHS.map(([value,label]) => `<option value="${value}">${label}</option>`).join('')}
         </select>
       </label>
       <label>Ano
-        <select data-v40119-year>
+        <select data-v40120-year>
           <option value="">Todos os anos</option>
           ${years.map(year => `<option value="${year}">${year}</option>`).join('')}
         </select>
       </label>`;
     search.parentNode.insertBefore(block, search);
 
-    const monthSelect = block.querySelector('[data-v40119-month]');
-    const yearSelect = block.querySelector('[data-v40119-year]');
+    const monthSelect = block.querySelector('[data-v40120-month]');
+    const yearSelect = block.querySelector('[data-v40120-year]');
 
     const applyMonthYear = () => {
       if (search.value) {
@@ -742,7 +743,7 @@
 
     monthSelect.addEventListener('change', applyMonthYear);
     yearSelect.addEventListener('change', applyMonthYear);
-    menu.dataset.v40119MonthYear = '1';
+    menu.dataset.v40120MonthYear = '1';
     return true;
   }
 
@@ -750,7 +751,7 @@
     document.querySelectorAll('.hap-xf-menu').forEach(decorateDateFilterMenu);
   }
 
-  // V40.0.119 — total dinâmico da coluna Montante na Base Consumo.
+  // V40.0.120 — total dinâmico da coluna Montante na Base Consumo.
   // A V40.0.118 atualizava apenas o KPI e dependia do ciclo de renderização do
   // HAP_XF. Em alguns fluxos o wrapper do filtro era instalado depois e o recálculo
   // podia não acontecer. Agora o recálculo é ligado tanto ao carregamento quanto ao
@@ -791,10 +792,10 @@
   function ensureBaseConsumoFooterTotal() {
     const footer = getBaseConsumoFooter();
     if (!footer) return null;
-    let el = footer.querySelector('[data-v40119-consumo-total]');
+    let el = footer.querySelector('[data-v40120-consumo-total]');
     if (el) return el;
     el = document.createElement('span');
-    el.dataset.v40119ConsumoTotal = '1';
+    el.dataset.v40120ConsumoTotal = '1';
     el.style.fontWeight = '800';
     el.style.color = 'var(--azul)';
     el.style.marginLeft = '14px';
@@ -812,10 +813,10 @@
     if (card) {
       const valueEl = card.querySelector('.value');
       if (valueEl && !loading && !error && valueEl.textContent !== formatted) valueEl.textContent = formatted;
-      let sub = card.querySelector('.v40119-consumo-total-sub');
+      let sub = card.querySelector('.v40120-consumo-total-sub');
       if (!sub) {
         sub = document.createElement('div');
-        sub.className = 'sub v40119-consumo-total-sub';
+        sub.className = 'sub v40120-consumo-total-sub';
         card.appendChild(sub);
       }
       const text = loading
@@ -881,34 +882,34 @@
     let installed = false;
 
     const renderCurrent = window.renderBaseConsumoTab;
-    if (typeof renderCurrent === 'function' && !renderCurrent.__hapV40119DynamicTotalRenderWrapped) {
+    if (typeof renderCurrent === 'function' && !renderCurrent.__hapV40120DynamicTotalRenderWrapped) {
       const wrappedRender = function() {
         const result = renderCurrent.apply(this, arguments);
         scheduleBaseConsumoDynamicTotal(60);
         return result;
       };
-      wrappedRender.__hapV40119DynamicTotalRenderWrapped = true;
-      wrappedRender.__hapV40119Original = renderCurrent;
+      wrappedRender.__hapV40120DynamicTotalRenderWrapped = true;
+      wrappedRender.__hapV40120Original = renderCurrent;
       window.renderBaseConsumoTab = wrappedRender;
       installed = true;
     }
 
     const loadCurrent = window.loadBaseConsumoTab;
-    if (typeof loadCurrent === 'function' && !loadCurrent.__hapV40119DynamicTotalLoadWrapped) {
+    if (typeof loadCurrent === 'function' && !loadCurrent.__hapV40120DynamicTotalLoadWrapped) {
       const wrappedLoad = async function() {
         const result = await loadCurrent.apply(this, arguments);
         scheduleBaseConsumoDynamicTotal(0);
         return result;
       };
-      wrappedLoad.__hapV40119DynamicTotalLoadWrapped = true;
-      wrappedLoad.__hapV40119Original = loadCurrent;
+      wrappedLoad.__hapV40120DynamicTotalLoadWrapped = true;
+      wrappedLoad.__hapV40120Original = loadCurrent;
       window.loadBaseConsumoTab = wrappedLoad;
       installed = true;
     }
 
     return installed ||
-      !!window.renderBaseConsumoTab?.__hapV40119DynamicTotalRenderWrapped ||
-      !!window.loadBaseConsumoTab?.__hapV40119DynamicTotalLoadWrapped;
+      !!window.renderBaseConsumoTab?.__hapV40120DynamicTotalRenderWrapped ||
+      !!window.loadBaseConsumoTab?.__hapV40120DynamicTotalLoadWrapped;
   }
 
   // Fallback adicional: depois de confirmar/limpar filtros, agenda novo cálculo.
@@ -917,6 +918,293 @@
     if (!target) return;
     setTimeout(() => scheduleBaseConsumoDynamicTotal(0), 120);
   }, true);
+
+  // V40.0.120 — filtros cumulativos/cascateados no padrão Excel.
+  // Cada conjunto HAP_XF continua isolado pelo seu próprio `id` (aba/tabela),
+  // mas a lista de valores de uma coluna considera os filtros já ativos nas
+  // OUTRAS colunas daquele mesmo conjunto. Assim, ao abrir novamente uma coluna
+  // já filtrada, ela continua mostrando as opções permitidas pelas demais colunas,
+  // exatamente como o AutoFiltro do Excel.
+  let cumulativeExcelRefreshDone = false;
+  const cumulativeShadow = new Map();
+  let cumulativeMenuContext = null;
+  let cumulativeEventsInstalled = false;
+
+  function cumulativeState(id) {
+    const key = String(id || '');
+    if (!cumulativeShadow.has(key)) cumulativeShadow.set(key, new Map());
+    return cumulativeShadow.get(key);
+  }
+
+  function cumulativeNormalizeText(value) {
+    return String(value ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function cumulativeConditionMatch(api, type, value, filter) {
+    if (!filter?.op) return true;
+    if (type === 'number') {
+      const v = api.parseNumber?.(value);
+      const a = api.parseNumber?.(filter.a);
+      const b = api.parseNumber?.(filter.b);
+      if (v === null || v === undefined || a === null || a === undefined) return false;
+      if (filter.op === 'eq') return Math.abs(v - a) < 0.0000001;
+      if (filter.op === 'neq') return Math.abs(v - a) >= 0.0000001;
+      if (filter.op === 'gt') return v > a;
+      if (filter.op === 'gte') return v >= a;
+      if (filter.op === 'lt') return v < a;
+      if (filter.op === 'lte') return v <= a;
+      if (filter.op === 'between') return b !== null && b !== undefined && v >= Math.min(a, b) && v <= Math.max(a, b);
+      return true;
+    }
+    if (type === 'date') {
+      const v = api.parseDate?.(value);
+      const a = api.parseDate?.(filter.a);
+      const b = api.parseDate?.(filter.b);
+      if (!v || !a) return false;
+      if (filter.op === 'eq') return v === a;
+      if (filter.op === 'neq') return v !== a;
+      if (filter.op === 'gt') return v > a;
+      if (filter.op === 'gte') return v >= a;
+      if (filter.op === 'lt') return v < a;
+      if (filter.op === 'lte') return v <= a;
+      if (filter.op === 'between') return !!b && v >= Math.min(a, b) && v <= Math.max(a, b);
+      return true;
+    }
+    return true;
+  }
+
+  function cumulativeApplyOtherColumns(api, id, targetKey, rows, columns) {
+    const filters = cumulativeState(id);
+    if (!filters.size) return [...rows];
+    const columnMap = new Map((columns || []).map(col => [String(col?.key || ''), col]));
+
+    return (rows || []).filter(row => {
+      for (const [key, filter] of filters.entries()) {
+        if (key === String(targetKey || '')) continue;
+        const col = columnMap.get(key);
+        if (!col) continue;
+        let value = null;
+        try { value = typeof col.get === 'function' ? col.get(row) : row?.[col.key]; }
+        catch (_) { value = null; }
+        const type = col.type || 'text';
+        if (filter.selected instanceof Set) {
+          const canonical = api.canon?.(type, value);
+          if (!filter.selected.has(canonical)) return false;
+        }
+        if (!cumulativeConditionMatch(api, type, value, filter)) return false;
+      }
+      return true;
+    });
+  }
+
+  async function cumulativeRowsFor(id, fallbackRows) {
+    if (id === 'control-consumo') {
+      try {
+        const loaded = await loadBaseConsumoFast('data_lancamento', false);
+        if (!loaded?.error && Array.isArray(loaded?.data)) return loaded.data;
+      } catch (error) {
+        console.warn(`[HAPCAPEX ${VERSION}] Não foi possível usar a base completa no filtro cumulativo da Base Consumo.`, error);
+      }
+    }
+    return Array.isArray(fallbackRows) ? fallbackRows : [];
+  }
+
+  function cumulativeValuesProvider(originalApi, id, rows, columns) {
+    return async function(key, col) {
+      const allRows = await cumulativeRowsFor(id, rows);
+      const available = cumulativeApplyOtherColumns(originalApi, id, key, allRows, columns);
+      const target = col || (columns || []).find(item => item?.key === key);
+      if (!target) return [];
+      return available.map(row => {
+        try {
+          return typeof target.get === 'function' ? target.get(row) : row?.[target.key];
+        } catch (_) {
+          return null;
+        }
+      });
+    };
+  }
+
+  function captureCumulativeFilterFromMenu(menu, context) {
+    if (!menu || !context?.id || !context?.key) return;
+    const store = cumulativeState(context.id);
+    const previous = store.get(context.key);
+    const search = menu.querySelector('.hap-xf-search');
+    const hasQuery = !!cumulativeNormalizeText(search?.value);
+    const itemInputs = [...menu.querySelectorAll('[data-item] input[data-value]')];
+    const sourceInputs = hasQuery
+      ? itemInputs.filter(input => input.closest('[data-item]')?.style.display !== 'none')
+      : itemInputs;
+    const checked = new Set(sourceInputs.filter(input => input.checked).map(input => {
+      try { return decodeURIComponent(input.dataset.value || ''); }
+      catch (_) { return input.dataset.value || ''; }
+    }));
+
+    const addCurrent = menu.querySelector('[data-add-current]');
+    if (hasQuery && addCurrent?.checked && previous?.selected instanceof Set) {
+      previous.selected.forEach(value => checked.add(value));
+    }
+
+    const allCanon = new Set(itemInputs.map(input => {
+      try { return decodeURIComponent(input.dataset.value || ''); }
+      catch (_) { return input.dataset.value || ''; }
+    }));
+    const sameAll = checked.size === allCanon.size && [...allCanon].every(value => checked.has(value));
+
+    const condition = menu.querySelector('[data-cond]');
+    const op = condition?.value || '';
+    const a = menu.querySelector('[data-a]')?.value || '';
+    const b = menu.querySelector('[data-b]')?.value || '';
+    const next = { selected: sameAll ? null : checked, op, a, b };
+
+    if (!(next.selected instanceof Set) && !next.op) store.delete(context.key);
+    else store.set(context.key, next);
+  }
+
+  function installCumulativeMenuEvents() {
+    if (cumulativeEventsInstalled) return;
+    cumulativeEventsInstalled = true;
+
+    document.addEventListener('click', event => {
+      const filterButton = event.target?.closest?.('.hap-xf-btn[data-hap-xf-id][data-key]');
+      if (filterButton) {
+        cumulativeMenuContext = {
+          id: filterButton.dataset.hapXfId || '',
+          key: filterButton.dataset.key || ''
+        };
+        return;
+      }
+
+      const menu = event.target?.closest?.('.hap-xf-menu');
+      if (!menu || !cumulativeMenuContext) return;
+      if (event.target?.closest?.('[data-apply]')) {
+        captureCumulativeFilterFromMenu(menu, cumulativeMenuContext);
+      } else if (event.target?.closest?.('[data-clear]')) {
+        cumulativeState(cumulativeMenuContext.id).delete(cumulativeMenuContext.key);
+      }
+    }, true);
+  }
+
+  function installCumulativeExcelFilters() {
+    const current = window.HAP_XF;
+    if (!current?.bind || !current?.apply) return false;
+    if (current.__hapV40120Cumulative) return true;
+
+    const originalApi = current;
+    const originalBind = originalApi.bind.bind(originalApi);
+    const originalClear = originalApi.clear?.bind(originalApi);
+    const originalClearColumn = originalApi.clearColumn?.bind(originalApi);
+    const originalClearPrefix = originalApi.clearPrefix?.bind(originalApi);
+
+    const wrappedBind = function(options = {}) {
+      const id = String(options?.id || '');
+      const rows = Array.isArray(options?.rows) ? options.rows : [];
+      const columns = Array.isArray(options?.columns) ? options.columns : [];
+      if (!id || !columns.length) return originalBind(options);
+
+      const next = {
+        ...options,
+        valuesProvider: cumulativeValuesProvider(originalApi, id, rows, columns)
+      };
+      const result = originalBind(next);
+
+      // Identifica cada botão com o id do seu conjunto para conseguirmos manter
+      // um espelho independente dos filtros por aba/tabela.
+      if (options?.table) {
+        const table = typeof options.table === 'string' ? document.querySelector(options.table) : options.table;
+        columns.forEach(col => {
+          const button = table?.querySelector?.(`.hap-xf-btn[data-key="${CSS.escape(String(col.key || ''))}"]`);
+          if (button) button.dataset.hapXfId = id;
+        });
+      }
+      return result;
+    };
+
+    const wrappedBindDom = function(options = {}) {
+      let table = options?.table;
+      if (typeof table === 'string') table = document.querySelector(table);
+      if (!table) return;
+      const body = table.tBodies?.[0];
+      if (!body) return;
+
+      const id = String(options?.id || '');
+      const domRows = [...body.rows]
+        .filter(tr => !tr.querySelector('.empty-state'))
+        .map((tr, i) => ({ tr, i }));
+      const columns = (options?.columns || []).map(c => ({
+        ...c,
+        get: row => {
+          const text = row?.tr?.cells?.[c.index]?.innerText || '';
+          if (c.type === 'number') return originalApi.parseNumber?.(text) ?? text;
+          if (c.type === 'date') return originalApi.parseDate?.(text) ?? text;
+          return text;
+        }
+      }));
+
+      const render = () => {
+        const visible = originalApi.apply ? originalApi.apply(id, domRows) : domRows;
+        const visibleSet = new Set(visible);
+        domRows.forEach(row => { row.tr.style.display = visibleSet.has(row) ? '' : 'none'; });
+        visible.forEach(row => body.appendChild(row.tr));
+
+        const countTarget = typeof options?.countEl === 'string'
+          ? document.querySelector(options.countEl)
+          : options?.countEl;
+        if (countTarget) countTarget.textContent = `${visible.length} de ${domRows.length}`;
+        if (options?.summaryEl) originalApi.mountSummary?.(options.summaryEl, id);
+
+        wrappedBind({ id, table, rows: domRows, columns, onChange: render });
+      };
+      render();
+    };
+
+    const wrappedClear = function(id, options) {
+      cumulativeState(id).clear();
+      return originalClear ? originalClear(id, options) : undefined;
+    };
+    const wrappedClearColumn = function(id, key, options) {
+      cumulativeState(id).delete(String(key || ''));
+      return originalClearColumn ? originalClearColumn(id, key, options) : undefined;
+    };
+    const wrappedClearPrefix = function(prefix, options) {
+      const pfx = String(prefix || '');
+      [...cumulativeShadow.keys()].forEach(id => {
+        if (id.startsWith(pfx)) cumulativeShadow.get(id)?.clear();
+      });
+      return originalClearPrefix ? originalClearPrefix(prefix, options) : undefined;
+    };
+
+    const wrappedApi = Object.freeze({
+      ...originalApi,
+      bind: wrappedBind,
+      bindDom: wrappedBindDom,
+      clear: wrappedClear,
+      clearColumn: wrappedClearColumn,
+      clearPrefix: wrappedClearPrefix,
+      __hapV40120Cumulative: true,
+      cumulativeVersion: VERSION
+    });
+    window.HAP_XF = wrappedApi;
+    installCumulativeMenuEvents();
+
+    if (!cumulativeExcelRefreshDone) {
+      cumulativeExcelRefreshDone = true;
+      setTimeout(() => {
+        try {
+          const tab = String(state?.tab || '');
+          if (tab === 'base_consumo') window.renderBaseConsumoTab?.();
+          else if (tab === 'base_oi') window.renderBaseOiTab?.();
+          else if (tab === 'transferencias') window.renderTransferenciasTab?.();
+          else if (tab === 'capex') window.renderCapexTab?.();
+        } catch (_) {}
+        try { window.applyFilter?.(); } catch (_) {}
+        try { window.applyManFilter?.(); } catch (_) {}
+        try { window.renderContent?.(); } catch (_) {}
+      }, 0);
+    }
+
+    return true;
+  }
 
   function maintenanceFilterBridgeReady() {
     return typeof window.applyManFilter === 'function' &&
@@ -928,7 +1216,7 @@
     if (!maintenanceFilterBridgeReady()) return false;
 
     const currentApply = window.applyManFilter;
-    if (!currentApply.__hapV40119MaintenanceFilterWrapped) {
+    if (!currentApply.__hapV40120MaintenanceFilterWrapped) {
       const wrappedApply = function() {
         const result = currentApply.apply(this, arguments);
         try {
@@ -946,19 +1234,19 @@
         }
         return result;
       };
-      wrappedApply.__hapV40119MaintenanceFilterWrapped = true;
-      wrappedApply.__hapV40119Original = currentApply;
+      wrappedApply.__hapV40120MaintenanceFilterWrapped = true;
+      wrappedApply.__hapV40120Original = currentApply;
       window.applyManFilter = wrappedApply;
     }
 
     const currentClear = window.clearAllManFilters;
-    if (typeof currentClear === 'function' && !currentClear.__hapV40119MaintenanceClearWrapped) {
+    if (typeof currentClear === 'function' && !currentClear.__hapV40120MaintenanceClearWrapped) {
       const wrappedClear = function() {
         try { window.HAP_XF?.clear?.('curve-maintenance', { silent: true }); } catch (_) {}
         return currentClear.apply(this, arguments);
       };
-      wrappedClear.__hapV40119MaintenanceClearWrapped = true;
-      wrappedClear.__hapV40119Original = currentClear;
+      wrappedClear.__hapV40120MaintenanceClearWrapped = true;
+      wrappedClear.__hapV40120Original = currentClear;
       window.clearAllManFilters = wrappedClear;
     }
 
@@ -977,6 +1265,7 @@
       installBaseConsumoFilterAcceleration();
       installBaseConsumoImportInvalidation();
       installBaseConsumoDynamicTotalBridge();
+      installCumulativeExcelFilters();
       decorateDateFilterMenus();
       installMaintenanceFilterBridge();
     });
@@ -988,6 +1277,7 @@
     installBaseConsumoFilterAcceleration();
     installBaseConsumoImportInvalidation();
     installBaseConsumoDynamicTotalBridge();
+    installCumulativeExcelFilters();
     decorateDateFilterMenus();
     scheduleBaseConsumoDynamicTotal(0);
     observer.observe(document.body, { childList: true, subtree: true });
@@ -999,6 +1289,7 @@
       installBaseConsumoFilterAcceleration();
       installBaseConsumoImportInvalidation();
       installBaseConsumoDynamicTotalBridge();
+      installCumulativeExcelFilters();
       installMaintenanceFilterBridge();
       if (attempts > 600) clearInterval(retry);
     }, 100);
@@ -1017,6 +1308,7 @@
         installBaseConsumoFilterAcceleration();
         installBaseConsumoImportInvalidation();
         installBaseConsumoDynamicTotalBridge();
+        installCumulativeExcelFilters();
         decorateDateFilterMenus();
         scheduleBaseConsumoDynamicTotal(0);
         installMaintenanceFilterBridge();
