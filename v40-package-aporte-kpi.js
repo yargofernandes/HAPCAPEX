@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.125 — Aporte Extra consolidado em pacote da Curva
+/* HAPCAPEX V40.0.126 — Aporte Extra consolidado em pacote da Curva
    Regras:
    - preserva o fluxo V40.0.52 para aportes pendentes já consolidados;
    - no planejamento de um NOVO aporte operacional, permite escolher "Consolidar em pacote existente";
@@ -9,10 +9,12 @@
 (() => {
   'use strict';
 
-  if (window.__HAP_V40052_PACKAGE_APORTE_KPI__) return;
+  if (window.__HAP_V40126_PACKAGE_APORTE_KPI__) return;
+  window.__HAP_V40126_PACKAGE_APORTE_KPI__ = true;
+  // Compatibilidade com referências antigas do módulo V40.0.52.
   window.__HAP_V40052_PACKAGE_APORTE_KPI__ = true;
 
-  const VERSION = '40.0.125';
+  const VERSION = '40.0.126';
   const operationalDrafts = new Map();
   let packageCache = null;
   let packagePromise = null;
@@ -64,16 +66,48 @@
     return { oi, value, mes, name, obs, capturedAt: Date.now() };
   }
 
+  function scheduleDecorate() {
+    [0, 80, 250, 700, 1500].forEach(delay => {
+      setTimeout(() => {
+        try { decorate(document); } catch (err) {
+          console.warn(`[HAPCAPEX ${VERSION}] Falha ao reaplicar opção de pacote`, err);
+        }
+      }, delay);
+    });
+  }
+
   function installPlanNowCapture() {
     if (captureInstalled) return;
     captureInstalled = true;
     document.addEventListener('click', event => {
-      const button = event.target?.closest?.('#v36-a-next');
-      if (!button) return;
-      const box = button.closest('.modal-box');
-      if (!box || norm(box.querySelector('h2')?.textContent) !== 'REGISTRAR APORTE OPERACIONAL') return;
-      const draft = readOperationalDraft(box);
-      if (draft) operationalDrafts.set(draft.oi, draft);
+      const operationalButton = event.target?.closest?.('#v36-a-next');
+      if (operationalButton) {
+        const box = operationalButton.closest('.modal-box');
+        if (box && norm(box.querySelector('h2')?.textContent) === 'REGISTRAR APORTE OPERACIONAL') {
+          const draft = readOperationalDraft(box);
+          if (draft) {
+            operationalDrafts.set(draft.oi, draft);
+            window.__HAP_V40126_LAST_APORTE_DRAFT__ = draft;
+            window.__HAP_V40126_LAST_PENDING_MOVEMENT__ = null;
+            // O planejamento é aberto após chamadas assíncronas. Além do observer,
+            // reaplica a decoração em janelas progressivas para eliminar condição de corrida.
+            scheduleDecorate();
+          }
+        }
+      }
+
+      const pendingButton = event.target?.closest?.('.v36-plan-pending[data-id],.v36-plan-mov[data-id]');
+      if (pendingButton?.dataset?.id) {
+        const row = pendingButton.closest('.v36-queue-item,.v36-movement-row');
+        const oi = String(row?.textContent || '').match(/\b\d{8}\b/)?.[0] || null;
+        window.__HAP_V40126_LAST_PENDING_MOVEMENT__ = {
+          id: pendingButton.dataset.id,
+          oi,
+          capturedAt: Date.now()
+        };
+        window.__HAP_V40126_LAST_APORTE_DRAFT__ = null;
+        scheduleDecorate();
+      }
     }, true);
   }
 
@@ -235,6 +269,61 @@
     return status;
   }
 
+  function parseMoneyText(value) {
+    const text = String(value || '').replace(/[^0-9,.-]/g,'').trim();
+    if (!text) return 0;
+    const normalized = text.includes(',')
+      ? text.replace(/\./g,'').replace(',','.')
+      : text;
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function readPlanningValue(box) {
+    const card = [...box.querySelectorAll('.v36-plan-card')].find(card =>
+      norm(card.querySelector('span')?.textContent).includes('APORTE')
+    );
+    return parseMoneyText(card?.querySelector('strong')?.textContent || '');
+  }
+
+  async function resolvePlanningSource(box) {
+    const oi = readPlanningOi(box);
+    const value = readPlanningValue(box);
+    if (!/^\d{8}$/.test(oi) || !(value > 0)) return null;
+
+    const draft = operationalDrafts.get(oi) ||
+      ((window.__HAP_V40126_LAST_APORTE_DRAFT__?.oi === oi)
+        ? window.__HAP_V40126_LAST_APORTE_DRAFT__ : null);
+    if (draft && Date.now() - draft.capturedAt <= 15 * 60 * 1000) {
+      return { source:'new', oi, value:draft.value, draft };
+    }
+
+    const pending = window.__HAP_V40126_LAST_PENDING_MOVEMENT__;
+    if (pending?.id && Date.now() - Number(pending.capturedAt || 0) <= 15 * 60 * 1000 && (!pending.oi || pending.oi === oi)) {
+      return { source:'pending', oi, value, movementId:pending.id };
+    }
+
+    // Fallback seguro para refresh/reabertura: localiza um único aporte pendente
+    // pela O.I. e valor exibidos no próprio modal. Nunca cria um novo aporte aqui.
+    try {
+      if (typeof sb === 'undefined') return null;
+      const { data, error } = await sb.rpc('localizar_aporte_pendente_v40126', {
+        p_ordem_interna: oi,
+        p_valor: value
+      });
+      if (error) throw error;
+      if (data?.encontrado && data?.movimento_id) {
+        return { source:'pending', oi, value:Number(data.valor || value), movementId:data.movimento_id, pending:data };
+      }
+      if (data?.ambiguo) {
+        return { source:'ambiguous', oi, value, message:data.mensagem || 'Há mais de um aporte pendente compatível.' };
+      }
+    } catch (err) {
+      console.warn(`[HAPCAPEX ${VERSION}] Não foi possível localizar aporte pendente`, err);
+    }
+    return null;
+  }
+
   function renderPackageCapexSummary(box, pkg, aporteValue, packageMode) {
     const cards = [...box.querySelectorAll('.v36-plan-card')];
     const target = cards[2];
@@ -257,16 +346,14 @@
   }
 
   async function applyPackageMode(backdrop, box, panel) {
-    const oi = readPlanningOi(box);
-    const draft = operationalDrafts.get(oi);
     const errorBox = box.querySelector('#v36-plan-error');
     const select = panel.querySelector('#v40125-package-select');
     const confirm = panel.querySelector('#v40125-package-confirm');
     const save = box.querySelector('#v36-p-save');
+    const context = panel.__hapPackageContext || await resolvePlanningSource(box);
 
-    if (!draft) {
-      if (errorBox) errorBox.innerHTML =
-        '<div class="error-msg">Não foi possível recuperar os dados originais deste aporte. Volte e abra novamente o planejamento a partir do formulário do aporte.</div>';
+    if (!context || context.source === 'ambiguous') {
+      if (errorBox) errorBox.innerHTML = `<div class="error-msg">${esc(context?.message || 'Não foi possível identificar com segurança a origem deste aporte. Volte e abra novamente o aporte.')}</div>`;
       return;
     }
     if (!select?.value) {
@@ -285,15 +372,19 @@
       return;
     }
 
+    const planningName = String(box.querySelector('#v36-p-name')?.value || context.draft?.name || context.pending?.nome || '').trim();
+    const alreadyInControl = context.source === 'pending';
     const ok = window.confirm(
       `Consolidar este aporte no pacote da Curva?\n\n` +
-      `O.I.: ${draft.oi}\n` +
-      `Obra: ${draft.name || '—'}\n` +
-      `Valor: ${money(draft.value)}\n` +
+      `O.I.: ${context.oi}\n` +
+      `Obra: ${planningName || '—'}\n` +
+      `Valor: ${money(context.value)}\n` +
       `Pacote: ${pkg.nome_curva || pkg.nome || '—'}\n\n` +
       `O que será feito:\n` +
-      `• o Montante e o Saldo da O.I. serão aumentados no Controle;\n` +
-      `• o CAPEX do pacote receberá ${money(draft.value)};\n` +
+      (alreadyInControl
+        ? `• o aporte já registrado no Controle será preservado, sem somar o valor novamente;\n`
+        : `• o Montante e o Saldo da O.I. serão aumentados no Controle;\n`) +
+      `• o CAPEX do pacote receberá ${money(context.value)};\n` +
       `• o aporte entrará no KPI/histórico de Aportes Extras;\n` +
       `• a O.I. será marcada como participante do pacote;\n` +
       `• NÃO será criada uma obra individual na Curva.`
@@ -307,27 +398,39 @@
     }
 
     try {
-      const { data, error } = await sb.rpc('registrar_aporte_operacional_pacote_v40124', {
-        p_ordem_interna: draft.oi,
-        p_valor: draft.value,
-        p_mes: draft.mes,
-        p_nome: draft.name || null,
-        p_observacao: draft.obs || null,
-        p_pacote_destino_id: pkg.id
-      });
-      if (error) throw error;
+      let response;
+      if (context.source === 'pending') {
+        response = await sb.rpc('aplicar_aporte_pendente_pacote_v40126', {
+          p_movimento_id: context.movementId,
+          p_pacote_destino_id: pkg.id
+        });
+      } else {
+        const draft = context.draft;
+        response = await sb.rpc('registrar_aporte_operacional_pacote_v40124', {
+          p_ordem_interna: draft.oi,
+          p_valor: draft.value,
+          p_mes: draft.mes,
+          p_nome: draft.name || null,
+          p_observacao: draft.obs || null,
+          p_pacote_destino_id: pkg.id
+        });
+      }
+      if (response.error) throw response.error;
+      const data = response.data || {};
 
-      operationalDrafts.delete(draft.oi);
+      operationalDrafts.delete(context.oi);
+      window.__HAP_V40126_LAST_APORTE_DRAFT__ = null;
+      window.__HAP_V40126_LAST_PENDING_MOVEMENT__ = null;
       backdrop.remove();
       await refreshAfterPackageAporte();
 
-      const result = data || {};
       window.alert(
         `Aporte consolidado no pacote com sucesso.\n\n` +
-        `O.I.: ${draft.oi}\n` +
-        `Valor: ${money(result.valor_aporte || draft.value)}\n` +
-        `Pacote: ${result.pacote_nome || pkg.nome_curva || pkg.nome || '—'}\n` +
-        `CAPEX do pacote: ${money(result.curva_capex_antes || pkg.capex_atual || 0)} → ${money(result.curva_capex_depois || (Number(pkg.capex_atual || 0) + draft.value))}\n\n` +
+        `O.I.: ${context.oi}\n` +
+        `Valor: ${money(data.valor_aporte || context.value)}\n` +
+        `Pacote: ${data.pacote_nome || pkg.nome_curva || pkg.nome || '—'}\n` +
+        `CAPEX do pacote: ${money(data.curva_capex_antes || pkg.capex_atual || 0)} → ${money(data.curva_capex_depois || (Number(pkg.capex_atual || 0) + context.value))}\n\n` +
+        (alreadyInControl ? `O valor do Controle não foi somado novamente.\n` : '') +
         `Nenhuma obra individual foi criada na Curva.`
       );
     } catch (err) {
@@ -344,15 +447,20 @@
     const box = backdrop?.querySelector('.modal-box');
     if (!isNewAportePlanning(box) || box.dataset.v40125PackageChoice === '1' || !isAdmin()) return;
 
-    const oi = readPlanningOi(box);
-    const draft = operationalDrafts.get(oi);
-    if (!draft || Date.now() - draft.capturedAt > 15 * 60 * 1000) return;
+    const context = await resolvePlanningSource(box);
+    if (!context) return;
+
+    const errorBox = box.querySelector('#v36-plan-error');
+    if (context.source === 'ambiguous') {
+      if (errorBox) errorBox.innerHTML = `<div class="error-msg">${esc(context.message)}</div>`;
+      return;
+    }
 
     box.dataset.v40125PackageChoice = '1';
 
-    const errorBox = box.querySelector('#v36-plan-error');
     const panel = document.createElement('div');
     panel.className = 'v40125-package-panel';
+    panel.__hapPackageContext = context;
     panel.innerHTML = `
       <div class="v40125-title">Destino na Curva</div>
       <div class="v40125-choice-row">
@@ -409,7 +517,10 @@
         hint.textContent = '';
         return;
       }
-      hint.textContent = `${pkg.nome_curva || pkg.nome || 'Pacote'} · CAPEX atual: ${money(pkg.capex_atual || 0)} · após este aporte: ${money(Number(pkg.capex_atual || 0) + draft.value)}`;
+      const prefix = context.source === 'pending'
+        ? 'Aporte já registrado no Controle · '
+        : '';
+      hint.textContent = `${prefix}${pkg.nome_curva || pkg.nome || 'Pacote'} · CAPEX atual: ${money(pkg.capex_atual || 0)} · após este aporte: ${money(Number(pkg.capex_atual || 0) + context.value)}`;
     };
 
     const setMode = mode => {
@@ -421,7 +532,7 @@
       packageFields.style.display = packageMode ? 'block' : 'none';
       [nameField, dateGrid, ruleGrid, monthWrap, normalConfirm].forEach(el => setDisplay(el, !packageMode));
       if (save) save.textContent = packageMode ? 'Consolidar aporte no pacote' : 'Confirmar e aplicar';
-      renderPackageCapexSummary(box, currentPkg(), draft.value, packageMode);
+      renderPackageCapexSummary(box, currentPkg(), context.value, packageMode);
       if (packageMode) updateHint();
       if (errorBox) errorBox.innerHTML = '';
     };
@@ -431,7 +542,7 @@
     });
     select.addEventListener('change', () => {
       updateHint();
-      if (box.dataset.v40125PackageMode === '1') renderPackageCapexSummary(box, currentPkg(), draft.value, true);
+      if (box.dataset.v40125PackageMode === '1') renderPackageCapexSummary(box, currentPkg(), context.value, true);
     });
     updateHint();
 
@@ -533,7 +644,6 @@
   function start() {
     decorate(document);
 
-    const app = document.getElementById('app');
     const observer = new MutationObserver(mutations => {
       mutations.forEach(mutation => {
         mutation.addedNodes.forEach(node => {
@@ -543,14 +653,19 @@
       document.querySelectorAll('.modal-backdrop').forEach(modal => decorate(modal));
       decoratePlanningTable();
     });
-    observer.observe(app || document.documentElement, { childList:true, subtree:true });
+
+    // Os modais V36 são anexados diretamente ao document.body, como irmãos de #app.
+    // Observar somente #app fazia a V40.0.125 nunca enxergar o modal de planejamento.
+    observer.observe(document.documentElement, { childList:true, subtree:true });
 
     window.HAP_V40052_PACKAGE_APORTE_KPI = {
       version: VERSION,
       refresh: () => decorate(document),
       listPackages,
-      operationalDrafts
+      operationalDrafts,
+      observerScope: 'document.documentElement'
     };
+    window.HAP_V40126_PACKAGE_APORTE_KPI = window.HAP_V40052_PACKAGE_APORTE_KPI;
   }
 
   if (document.readyState === 'loading') {

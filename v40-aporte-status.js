@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.125 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.126 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -192,8 +192,8 @@
   }
 
   function loadPackageAporteChoice(){
-    loadScriptOnce('__HAP_V40125_PACKAGE_APORTE_LOADER__','script[data-hap-v40125-package-aporte]',
-      './v40-package-aporte-kpi.js?v=40.0.125','hapV40125PackageAporte');
+    loadScriptOnce('__HAP_V40126_PACKAGE_APORTE_LOADER__','script[data-hap-v40126-package-aporte]',
+      './v40-package-aporte-kpi.js?v=40.0.126','hapV40126PackageAporte');
   }
 
   window.addEventListener('hapcapex:curve-ready',runSoon);
