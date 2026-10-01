@@ -1,13 +1,12 @@
-/* HAPCAPEX V40.0.122 — Gerencial disponível ao Visualizador sem alterar as abas existentes
-   - preserva as validações de sessão/perfil existentes;
-   - mantém CAPEX, Base O.I e Base Consumo disponíveis ao Visualizador conforme a governança V39.4;
-   - acrescenta a aba Gerencial ao perfil Visualizador;
-   - mantém Transferências/Auditoria fora da navegação do Visualizador;
-   - Gerencial permanece somente leitura para Visualizador.
+/* HAPCAPEX V40.0.123 — Gerencial Viewer + relatórios operacionais
+   - preserva a correção V40.0.122 do Gerencial para Visualizador;
+   - adiciona total dinâmico explícito à coluna Valor em Transferências;
+   - adiciona exportação Excel completa/filtrada na Base Consumo;
+   - adiciona exportação Excel completa/filtrada em Transferências.
 */
 (()=>{'use strict';
 if(window.HAP_CONTROL_PREAUTH_V40?.bootstrapped)return;
-const VERSION='40.0.122';
+const VERSION='40.0.123';
 
 function load(flag,needle,src,key){
   if(window[flag])return;
@@ -136,8 +135,6 @@ const guarded=async function(...args){
       return;
     }
     if(profile.role==='viewer'){
-      // Instala o complemento ANTES da renderização normal do Viewer (V39.4).
-      // Assim as abas já existentes permanecem e apenas GERENCIAL é acrescentada.
       installViewerGerencialNavigation();
       ensureViewerObserver();
       const result=await original.apply(this,args);
@@ -166,5 +163,334 @@ window.HAP_CONTROL_PREAUTH_V40={
   get original(){return original},
   appendManagerialToViewerNav,
   enforceViewerReadOnlyUi
+};
+})();
+
+/* V40.0.123 — Totais e exportações do Controle de CAPEX. */
+(()=>{'use strict';
+if(window.__HAP_V40123_CONTROL_REPORTS__)return;
+window.__HAP_V40123_CONTROL_REPORTS__=true;
+const VERSION='40.0.123';
+const CONSUMO_ID='control-consumo';
+const TRANSFER_ID='control-transfer';
+const PAGE=1000;
+const CONCURRENCY=8;
+let consumoCache=null;
+let consumoLoading=null;
+
+function getClient(){
+  try{if(typeof sb!=='undefined'&&sb?.from)return sb;}catch(_){}
+  return window.sb?.from?window.sb:null;
+}
+function getState(){try{return typeof state!=='undefined'?state:null;}catch(_){return null;}}
+function getXf(){return window.HAP_XF||null;}
+function brlValue(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});}
+function norm(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();}
+function sum(rows,key){return (rows||[]).reduce((s,r)=>{const v=Number(r?.[key]);return s+(Number.isFinite(v)?v:0);},0);}
+function nowStamp(){
+  const d=new Date(),p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+function generatedAt(){return new Date().toLocaleString('pt-BR');}
+function parseDateCell(value){
+  const m=String(value||'').slice(0,10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m)return value||'';
+  return new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),12,0,0,0);
+}
+function filterSummary(){
+  const chips=[...document.querySelectorAll('.hap-xf-toolbar-summary .hap-xf-chip')]
+    .map(el=>String(el.textContent||'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  return chips.length?chips.join(' | '):'Sem filtros';
+}
+function isFiltered(id){
+  try{return !!getXf()?.hasActive?.(id);}catch(_){return false;}
+}
+function applyFilters(id,rows){
+  try{return getXf()?.apply?[...getXf().apply(id,rows)]:[...(rows||[])];}
+  catch(error){console.warn(`[HAPCAPEX ${VERSION}] Falha ao aplicar filtros na exportação.`,error);return [...(rows||[])];}
+}
+function currentToolbar(){
+  const table=document.querySelector('.table-card table');
+  const card=table?.closest?.('.table-card');
+  if(card?.previousElementSibling?.classList?.contains('toolbar'))return card.previousElementSibling;
+  return document.querySelector('.toolbar');
+}
+function ensureExportButton(kind){
+  const st=getState();
+  const expected=kind==='consumo'?'base_consumo':'transferencias';
+  if(String(st?.tab||'')!==expected)return null;
+  const toolbar=currentToolbar();
+  if(!toolbar)return null;
+  const id=kind==='consumo'?'v40123-export-consumo':'v40123-export-transfer';
+  let btn=document.getElementById(id);
+  if(btn)return btn;
+  btn=document.createElement('button');
+  btn.type='button';btn.id=id;btn.className='btn btn-secondary';
+  btn.textContent='↓ Exportar Excel';
+  btn.title='Sem filtros, exporta o relatório completo. Com filtros, exporta somente o resultado filtrado.';
+  btn.addEventListener('click',()=>void exportReport(kind,btn));
+  const clear=[...toolbar.querySelectorAll('button')].find(b=>String(b.textContent||'').trim().toLocaleLowerCase('pt-BR')==='limpar filtros');
+  if(clear)toolbar.insertBefore(btn,clear);else toolbar.appendChild(btn);
+  return btn;
+}
+
+async function loadConsumoAll(force=false){
+  if(force)consumoCache=null;
+  if(consumoCache)return consumoCache;
+  if(consumoLoading)return consumoLoading;
+  const client=getClient();
+  if(!client)throw new Error('Supabase indisponível.');
+  consumoLoading=(async()=>{
+    const cols='id,ordem_interna,descricao,categoria_valor,categoria_resumo,montante,data_lancamento,fornecedor,fornecedor_nome,oi_nao_encontrada';
+    const make=(count=false)=>client.from('vw_controle_base_consumo').select(cols,count?{count:'exact'}:undefined)
+      .order('data_lancamento',{ascending:false}).order('id',{ascending:true});
+    const first=await make(true).range(0,PAGE-1);
+    if(first.error)throw first.error;
+    const rows=[...(first.data||[])];
+    const total=Number(first.count??rows.length);
+    if(total>rows.length){
+      const pages=Math.ceil(total/PAGE);
+      for(let p=1;p<pages;p+=CONCURRENCY){
+        const jobs=[];
+        for(let n=p;n<Math.min(p+CONCURRENCY,pages);n++){
+          const from=n*PAGE,to=Math.min(total-1,from+PAGE-1);
+          jobs.push(make(false).range(from,to));
+        }
+        const batch=await Promise.all(jobs);
+        for(const result of batch){if(result.error)throw result.error;rows.push(...(result.data||[]));}
+      }
+    }
+    if(Number.isFinite(total)&&rows.length!==total)throw new Error(`Base Consumo incompleta: ${rows.length} de ${total} linhas.`);
+    consumoCache=rows;
+    return rows;
+  })().finally(()=>{consumoLoading=null;});
+  return consumoLoading;
+}
+
+async function getTransferAll(){
+  const st=getState();
+  if(Array.isArray(st?.transferRows)&&st.transferRows.length)return [...st.transferRows];
+  if(typeof window.fetchAllRows==='function'){
+    const result=await window.fetchAllRows('vw_controle_transferencias','data',false);
+    if(result?.error)throw result.error;
+    return result?.data||[];
+  }
+  const client=getClient();
+  if(!client)throw new Error('Supabase indisponível.');
+  const {data,error}=await client.from('vw_controle_transferencias').select('*').order('data',{ascending:false});
+  if(error)throw error;
+  return data||[];
+}
+
+function setCols(ws,widths){ws['!cols']=widths.map(w=>({wch:w}));}
+function formatCol(ws,colIndex,format){
+  if(!ws?.['!ref'])return;
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  for(let r=1;r<=range.e.r;r++){
+    const addr=XLSX.utils.encode_cell({r,c:colIndex});
+    if(ws[addr])ws[addr].z=format;
+  }
+}
+function finishSheet(ws,{moneyCols=[],dateCols=[],widths=[]}={}){
+  if(ws?.['!ref'])ws['!autofilter']={ref:ws['!ref']};
+  moneyCols.forEach(c=>formatCol(ws,c,'R$ #,##0.00;[Red]-R$ #,##0.00'));
+  dateCols.forEach(c=>formatCol(ws,c,'dd/mm/yyyy'));
+  if(widths.length)setCols(ws,widths);
+}
+function summarySheet(rows){
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  setCols(ws,[32,72]);
+  return ws;
+}
+function writeWorkbook(wb,name){
+  if(!window.XLSX?.writeFile)throw new Error('Biblioteca de Excel indisponível. Atualize a página e tente novamente.');
+  XLSX.writeFile(wb,name,{compression:true});
+}
+
+function buildConsumoWorkbook(rows,filtered,filters){
+  const realized=(rows||[]).filter(r=>norm(r?.categoria_resumo)==='REALIZADO');
+  const committed=(rows||[]).filter(r=>norm(r?.categoria_resumo)==='COMPROMISSADO');
+  const vReal=sum(realized,'montante'),vComp=sum(committed,'montante');
+  const wb=XLSX.utils.book_new();
+  const resumo=summarySheet([
+    ['Relatório','Base Consumo'],
+    ['Gerado em',generatedAt()],
+    ['Escopo',filtered?'Resultado filtrado':'Relatório completo'],
+    ['Filtros / ordenação',filters],
+    ['Lançamentos',rows.length],
+    ['Realizado',vReal],
+    ['Compromissado pendente',vComp],
+    ['Compromissado total (Realizado + Compromissado)',vReal+vComp],
+    ['Montante total',sum(rows,'montante')]
+  ]);
+  ['B6','B7','B8','B9'].forEach(a=>{if(resumo[a])resumo[a].z='R$ #,##0.00;[Red]-R$ #,##0.00';});
+  XLSX.utils.book_append_sheet(wb,resumo,'Resumo');
+  const data=(rows||[]).map(r=>({
+    'OI':r.ordem_interna||'',
+    'Descrição':r.descricao||'',
+    'Categoria':r.categoria_valor||'',
+    'Resumo':r.categoria_resumo||'',
+    'Montante':Number(r.montante||0),
+    'Data':parseDateCell(r.data_lancamento),
+    'Fornecedor':r.fornecedor_nome||r.fornecedor||'',
+    'Código Fornecedor':r.fornecedor||'',
+    'OI não encontrada':r.oi_nao_encontrada?'Sim':'Não'
+  }));
+  const ws=XLSX.utils.json_to_sheet(data,{cellDates:true});
+  finishSheet(ws,{moneyCols:[4],dateCols:[5],widths:[13,46,22,18,16,13,38,19,18]});
+  XLSX.utils.book_append_sheet(wb,ws,'Base Consumo');
+  return wb;
+}
+function buildTransferWorkbook(rows,filtered,filters){
+  const wb=XLSX.utils.book_new();
+  const resumo=summarySheet([
+    ['Relatório','Transferências'],
+    ['Gerado em',generatedAt()],
+    ['Escopo',filtered?'Resultado filtrado':'Relatório completo'],
+    ['Filtros / ordenação',filters],
+    ['Transferências',rows.length],
+    ['Valor total transferido',sum(rows,'valor')]
+  ]);
+  if(resumo['B6'])resumo['B6'].z='R$ #,##0.00;[Red]-R$ #,##0.00';
+  XLSX.utils.book_append_sheet(wb,resumo,'Resumo');
+  const data=(rows||[]).map(r=>({
+    'Nº documento':r.numero_documento||'',
+    'OI origem':r.oi_origem||'',
+    'Obra origem':r.obra_origem_nome||'',
+    'OI destino':r.oi_destino||'',
+    'Obra destino':r.obra_destino_nome||'',
+    'Valor':Number(r.valor||0),
+    'Data':parseDateCell(r.data),
+    'Justificativa':r.justificativa||'',
+    'Entre pacotes diferentes':r.autorizado_diferenca?'Sim':'Não'
+  }));
+  const ws=XLSX.utils.json_to_sheet(data,{cellDates:true});
+  finishSheet(ws,{moneyCols:[5],dateCols:[6],widths:[17,13,42,13,42,16,13,52,23]});
+  XLSX.utils.book_append_sheet(wb,ws,'Transferências');
+  return wb;
+}
+
+async function exportReport(kind,btn){
+  if(!window.XLSX)throw new Error('Biblioteca XLSX não carregada.');
+  const old=btn?.textContent||'↓ Exportar Excel';
+  if(btn){btn.disabled=true;btn.textContent='Gerando Excel…';}
+  try{
+    if(kind==='consumo'){
+      const all=await loadConsumoAll();
+      const rows=applyFilters(CONSUMO_ID,all);
+      const filtered=isFiltered(CONSUMO_ID)||rows.length!==all.length;
+      const wb=buildConsumoWorkbook(rows,filtered,filterSummary());
+      writeWorkbook(wb,`HAPCAPEX_Base_Consumo_${nowStamp()}_${filtered?'FILTRADO':'COMPLETO'}.xlsx`);
+    }else{
+      const all=await getTransferAll();
+      const rows=applyFilters(TRANSFER_ID,all);
+      const filtered=isFiltered(TRANSFER_ID)||rows.length!==all.length;
+      const wb=buildTransferWorkbook(rows,filtered,filterSummary());
+      writeWorkbook(wb,`HAPCAPEX_Transferencias_${nowStamp()}_${filtered?'FILTRADO':'COMPLETO'}.xlsx`);
+    }
+  }catch(error){
+    console.error(`[HAPCAPEX ${VERSION}] Falha ao exportar ${kind}.`,error);
+    alert('Não foi possível gerar o Excel: '+(error?.message||String(error)));
+  }finally{
+    if(kind==='consumo')consumoCache=null;
+    if(btn){btn.disabled=false;btn.textContent=old;}
+  }
+}
+
+function transferVisibleRows(){
+  const st=getState();
+  const base=Array.isArray(st?.transferRows)?st.transferRows:[];
+  return applyFilters(TRANSFER_ID,base);
+}
+function decorateTransferTotal(){
+  const st=getState();
+  if(String(st?.tab||'')!=='transferencias')return;
+  const rows=transferVisibleRows();
+  const total=sum(rows,'valor');
+  const active=isFiltered(TRANSFER_ID);
+  const cards=[...document.querySelectorAll('.kpi-card')];
+  const totalCard=cards.find(c=>norm(c.querySelector('.label')?.textContent)==='TOTAL TRANSFERIDO');
+  const qtyCard=cards.find(c=>norm(c.querySelector('.label')?.textContent)==='QTDE DE TRANSFERENCIAS');
+  if(totalCard?.querySelector('.value'))totalCard.querySelector('.value').textContent=brlValue(total);
+  if(qtyCard?.querySelector('.value'))qtyCard.querySelector('.value').textContent=rows.length.toLocaleString('pt-BR');
+  const card=document.querySelector('.table-card');
+  if(!card)return;
+  let bar=card.nextElementSibling;
+  if(!bar?.matches?.('[data-v40123-transfer-total]')){
+    bar=document.createElement('div');
+    bar.dataset.v40123TransferTotal='1';
+    bar.style.cssText='display:flex;justify-content:flex-end;gap:10px;align-items:center;margin-top:8px;padding:7px 10px;font-size:12px;color:var(--texto-suave);';
+    card.insertAdjacentElement('afterend',bar);
+  }
+  bar.innerHTML=`<span>${rows.length.toLocaleString('pt-BR')} transferência${rows.length===1?'':'s'}</span><strong style="color:var(--azul);">${active?'Total Valor filtrado':'Total Valor'}: ${brlValue(total)}</strong>`;
+}
+
+function decorateCurrent(){
+  const tab=String(getState()?.tab||'');
+  if(tab==='base_consumo')ensureExportButton('consumo');
+  if(tab==='transferencias'){
+    ensureExportButton('transfer');
+    decorateTransferTotal();
+  }
+}
+function wrapRender(name,kind){
+  const current=window[name];
+  if(typeof current!=='function')return false;
+  if(current.__hapV40123Reports)return true;
+  const wrapped=function(){
+    const result=current.apply(this,arguments);
+    queueMicrotask(()=>{
+      try{
+        if(kind==='consumo')ensureExportButton('consumo');
+        else{ensureExportButton('transfer');decorateTransferTotal();}
+      }catch(error){console.warn(`[HAPCAPEX ${VERSION}] Falha ao decorar ${kind}.`,error);}
+    });
+    return result;
+  };
+  wrapped.__hapV40123Reports=true;
+  wrapped.__hapV40123Original=current;
+  window[name]=wrapped;
+  try{if(name==='renderBaseConsumoTab')renderBaseConsumoTab=wrapped;if(name==='renderTransferenciasTab')renderTransferenciasTab=wrapped;}catch(_){}
+  return true;
+}
+function wrapConsumoImport(){
+  const current=window.importarArquivoBaseConsumo;
+  if(typeof current!=='function')return false;
+  if(current.__hapV40123ReportsCache)return true;
+  const wrapped=async function(){
+    consumoCache=null;
+    try{return await current.apply(this,arguments);}
+    finally{consumoCache=null;}
+  };
+  wrapped.__hapV40123ReportsCache=true;
+  wrapped.__hapV40123Original=current;
+  window.importarArquivoBaseConsumo=wrapped;
+  try{importarArquivoBaseConsumo=wrapped;}catch(_){}
+  return true;
+}
+function install(){
+  wrapRender('renderBaseConsumoTab','consumo');
+  wrapRender('renderTransferenciasTab','transfer');
+  wrapConsumoImport();
+  decorateCurrent();
+}
+
+install();
+let tries=0;
+const timer=setInterval(()=>{install();if(++tries>300)clearInterval(timer);},100);
+let obsTimer=0;
+const observer=new MutationObserver(()=>{
+  clearTimeout(obsTimer);
+  obsTimer=setTimeout(decorateCurrent,25);
+});
+const root=document.body||document.documentElement;
+if(root)observer.observe(root,{childList:true,subtree:true});
+
+window.HAP_V40123_CONTROL_REPORTS={
+  version:VERSION,
+  exportBaseConsumo:()=>exportReport('consumo',document.getElementById('v40123-export-consumo')),
+  exportTransferencias:()=>exportReport('transfer',document.getElementById('v40123-export-transfer')),
+  refresh:decorateCurrent,
+  invalidateConsumoCache(){consumoCache=null;}
 };
 })();
