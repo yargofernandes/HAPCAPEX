@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.75 — Estado visual de Aporte Extra + loaders funcionais. */
+/* HAPCAPEX V40.0.125 — Estado visual de Aporte Extra + loaders funcionais. */
 (() => {
   'use strict';
 
@@ -166,8 +166,6 @@
       './v40-maintenance-realized-policy.js?v=40.0.69','hapV4068MaintRealized');
   }
 
-
-
   function loadTransferFilters(){
     loadScriptOnce('__HAP_V4041_TRANSFER_FILTERS_LOADER__','script[data-hap-v4041-transfer-filters]',
       './v40-transfer-filters.js?v=40.0.41','hapV4041TransferFilters');
@@ -193,6 +191,11 @@
       './v40-aporte-kpi-only.js?v=40.0.67','hapV4066AporteKpiOnly');
   }
 
+  function loadPackageAporteChoice(){
+    loadScriptOnce('__HAP_V40125_PACKAGE_APORTE_LOADER__','script[data-hap-v40125-package-aporte]',
+      './v40-package-aporte-kpi.js?v=40.0.125','hapV40125PackageAporte');
+  }
+
   window.addEventListener('hapcapex:curve-ready',runSoon);
   window.addEventListener('visibilitychange',()=>{ if(!document.hidden) runSoon(); });
 
@@ -211,4 +214,5 @@
   loadLinkedOiMode();
   loadGlobalAudit();
   loadAporteKpiOnly();
+  loadPackageAporteChoice();
 })();
