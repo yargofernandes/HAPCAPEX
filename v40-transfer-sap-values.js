@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.127 — Valores SAP + Transferências somente leitura para Visualizador
+/* HAPCAPEX V40.0.128 — Valores SAP + Transferências somente leitura para Visualizador
    - preserva a conversão pt-BR dos valores SAP (V40.0.49);
    - libera a aba Transferências ao perfil Visualizador;
    - Visualizador pode consultar e filtrar, sem ações operacionais;
@@ -10,7 +10,7 @@
   if (window.__HAP_V40049_TRANSFER_SAP_VALUES__) return;
   window.__HAP_V40049_TRANSFER_SAP_VALUES__ = true;
 
-  const VERSION = '40.0.127';
+  const VERSION = '40.0.128';
   const SELECTOR = '.linha-transf input[id^="t-valor-"]';
 
   function parseSapMoney(value) {
@@ -163,14 +163,14 @@
   console.info(`[HAPCAPEX ${VERSION}] Valores SAP em Transferências ativo.`);
 })();
 
-/* V40.0.127 — Transferências em modo consulta para Visualizador. */
+/* V40.0.128 — Transferências em modo consulta para Visualizador, sem mensagens técnicas. */
 (() => {
   'use strict';
 
   if (window.__HAP_V40127_VIEWER_TRANSFER_READONLY__) return;
   window.__HAP_V40127_VIEWER_TRANSFER_READONLY__ = true;
 
-  const VERSION = '40.0.127';
+  const VERSION = '40.0.128';
   const STYLE_ID = 'hap-v40127-viewer-transfer-readonly-style';
   const OPERATIONAL_SELECTORS = [
     '#importar-transf-btn',
@@ -200,11 +200,9 @@
     style.id = STYLE_ID;
     style.textContent = `
       body.hap-v40127-viewer-transfer ${OPERATIONAL_SELECTORS}{display:none!important}
-      body.hap-v40127-viewer-transfer .v40127-viewer-transfer-note{
-        display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid #c9d8ea;
-        background:#f4f8fd;border-radius:9px;color:#36556f;font-size:11px;font-weight:700;
-        margin:0 0 10px 0
-      }
+      body.hap-v40128-viewer-clean .v40127-viewer-transfer-note,
+      body.hap-v40128-viewer-clean [data-v390-viewer-note],
+      body.hap-v40128-viewer-clean .v394-viewer-allowed{display:none!important}
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -285,14 +283,31 @@
     headRow.cells[idx]?.remove();
   }
 
-  function ensureReadOnlyNote() {
-    if (!isViewer() || !isTransferTab()) return;
-    const tableCard = document.querySelector('.table-card');
-    if (!tableCard || document.querySelector('.v40127-viewer-transfer-note')) return;
-    const note = document.createElement('div');
-    note.className = 'v40127-viewer-transfer-note';
-    note.textContent = 'Modo Visualizador: consulta e filtros liberados; alterações de transferências permanecem bloqueadas.';
-    tableCard.parentNode?.insertBefore(note, tableCard);
+  function cleanViewerText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  function removeViewerTechnicalMessages() {
+    if (!isViewer()) return;
+    document.body?.classList?.add('hap-v40128-viewer-clean');
+
+    // Mensagens de permissão são úteis para suporte, não para a experiência do gestor.
+    document.querySelectorAll('.v40127-viewer-transfer-note,[data-v390-viewer-note],.v394-viewer-allowed')
+      .forEach(el => el.remove());
+
+    // Pendências cadastrais/técnicas continuam visíveis ao Administrador, mas não ao Visualizador.
+    document.querySelectorAll('.v4071-pending').forEach(section => {
+      const text = cleanViewerText(section.textContent);
+      if (
+        text.includes('OIS COM CLASSIFICACAO INCOMPLETA') ||
+        text.includes('TRANSFERENCIAS HISTORICAS SEM PACOTE IDENTIFICAVEL')
+      ) section.remove();
+    });
   }
 
   function enforceViewerTransferUi() {
@@ -302,6 +317,7 @@
     const active = isViewer() && isTransferTab();
     body.classList.toggle('hap-v40127-viewer-transfer', active);
     if (!isViewer()) return;
+    removeViewerTechnicalMessages();
 
     document.querySelectorAll('.role-badge').forEach(el => {
       if (String(el.textContent || '').trim().toLowerCase() === 'admin') el.textContent = 'Visualizador';
@@ -312,7 +328,6 @@
     // O botão de exportação permanece no DOM apenas para impedir o módulo de relatórios
     // de recriá-lo continuamente; o CSS o mantém invisível ao Visualizador.
     removeActionColumn();
-    ensureReadOnlyNote();
     ensureMobileTransferButton();
   }
 
@@ -417,7 +432,8 @@
     version: VERSION,
     enabled: true,
     readOnly: true,
-    refresh: enforceViewerTransferUi
+    refresh: enforceViewerTransferUi,
+    cleanViewerMessages: removeViewerTechnicalMessages
   });
 
   console.info(`[HAPCAPEX ${VERSION}] Transferências liberadas em modo somente leitura para Visualizador.`);
