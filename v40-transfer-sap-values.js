@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.128 — Valores SAP + Transferências somente leitura para Visualizador
+/* HAPCAPEX V40.0.129 — Valores SAP + Transferências somente leitura para Visualizador
    - preserva a conversão pt-BR dos valores SAP (V40.0.49);
    - libera a aba Transferências ao perfil Visualizador;
    - Visualizador pode consultar e filtrar, sem ações operacionais;
@@ -10,7 +10,7 @@
   if (window.__HAP_V40049_TRANSFER_SAP_VALUES__) return;
   window.__HAP_V40049_TRANSFER_SAP_VALUES__ = true;
 
-  const VERSION = '40.0.128';
+  const VERSION = '40.0.129';
   const SELECTOR = '.linha-transf input[id^="t-valor-"]';
 
   function parseSapMoney(value) {
@@ -163,14 +163,14 @@
   console.info(`[HAPCAPEX ${VERSION}] Valores SAP em Transferências ativo.`);
 })();
 
-/* V40.0.128 — Transferências em modo consulta para Visualizador, sem mensagens técnicas. */
+/* V40.0.129 — Visualizador limpo: Transferências somente leitura e sem mensagens técnicas/operacionais. */
 (() => {
   'use strict';
 
   if (window.__HAP_V40127_VIEWER_TRANSFER_READONLY__) return;
   window.__HAP_V40127_VIEWER_TRANSFER_READONLY__ = true;
 
-  const VERSION = '40.0.128';
+  const VERSION = '40.0.129';
   const STYLE_ID = 'hap-v40127-viewer-transfer-readonly-style';
   const OPERATIONAL_SELECTORS = [
     '#importar-transf-btn',
@@ -202,7 +202,8 @@
       body.hap-v40127-viewer-transfer ${OPERATIONAL_SELECTORS}{display:none!important}
       body.hap-v40128-viewer-clean .v40127-viewer-transfer-note,
       body.hap-v40128-viewer-clean [data-v390-viewer-note],
-      body.hap-v40128-viewer-clean .v394-viewer-allowed{display:none!important}
+      body.hap-v40128-viewer-clean .v394-viewer-allowed,
+      body.hap-v40128-viewer-clean [data-v394-info]{display:none!important}
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -297,8 +298,25 @@
     document.body?.classList?.add('hap-v40128-viewer-clean');
 
     // Mensagens de permissão são úteis para suporte, não para a experiência do gestor.
-    document.querySelectorAll('.v40127-viewer-transfer-note,[data-v390-viewer-note],.v394-viewer-allowed')
+    document.querySelectorAll('.v40127-viewer-transfer-note,[data-v390-viewer-note],.v394-viewer-allowed,[data-v394-info]')
       .forEach(el => el.remove());
+
+    // Base Consumo: manter somente a informação útil de última atualização.
+    // O texto explicativo sobre a função da Base Consumo é removido apenas para Visualizador.
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      [...appRoot.children].forEach(el => {
+        const text = cleanViewerText(el.textContent);
+        if (text.includes('A BASE CONSUMO E A FONTE OPERACIONAL DE COMPROMISSADO E SALDO')) el.remove();
+      });
+    }
+
+    // Base O.I: a conferência técnica CAPEX x Base O.I. permanece disponível ao Administrador,
+    // mas não ocupa espaço no painel do Visualizador.
+    document.querySelectorAll('.banner-ok,.banner-warn').forEach(el => {
+      const text = cleanViewerText(el.textContent);
+      if (text.includes('CONSISTENCIA COM O CAPEX')) el.remove();
+    });
 
     // Pendências cadastrais/técnicas continuam visíveis ao Administrador, mas não ao Visualizador.
     document.querySelectorAll('.v4071-pending').forEach(section => {
