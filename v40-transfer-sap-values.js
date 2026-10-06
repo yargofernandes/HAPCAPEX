@@ -1,6 +1,8 @@
-/* HAPCAPEX V40.0.49 — Valores SAP em Transferências
-   Correção estrutural e independente do loader de filtros.
-   Aceita colagem pt-BR do SAP e entrega número canônico à revisão V37.
+/* HAPCAPEX V40.0.127 — Valores SAP + Transferências somente leitura para Visualizador
+   - preserva a conversão pt-BR dos valores SAP (V40.0.49);
+   - libera a aba Transferências ao perfil Visualizador;
+   - Visualizador pode consultar e filtrar, sem ações operacionais;
+   - segurança real de escrita permanece no backend/RLS/RPCs administrativos.
 */
 (() => {
   'use strict';
@@ -8,7 +10,7 @@
   if (window.__HAP_V40049_TRANSFER_SAP_VALUES__) return;
   window.__HAP_V40049_TRANSFER_SAP_VALUES__ = true;
 
-  const VERSION = '40.0.49';
+  const VERSION = '40.0.127';
   const SELECTOR = '.linha-transf input[id^="t-valor-"]';
 
   function parseSapMoney(value) {
@@ -32,15 +34,12 @@
     if (!raw || raw === '-' || raw === ',' || raw === '.') return null;
 
     if (raw.includes(',')) {
-      // SAP / pt-BR: 61.345,34
       raw = raw.replace(/\./g, '').replace(',', '.');
     } else {
       const dots = (raw.match(/\./g) || []).length;
-
       if (dots === 1 && /\.\d{1,2}$/.test(raw)) {
-        // 61345.34: ponto decimal já canônico.
+        // ponto decimal já canônico
       } else if (dots > 0) {
-        // 61.345 ou 1.234.567: ponto de milhar.
         raw = raw.replace(/\./g, '');
       }
     }
@@ -50,14 +49,12 @@
     let number = Number(raw);
     if (!Number.isFinite(number)) return null;
     if (negative) number = -Math.abs(number);
-
     return number;
   }
 
   function displayPtBr(value) {
     const n = typeof value === 'number' ? value : parseSapMoney(value);
     if (!Number.isFinite(n)) return '';
-    // Conforme padrão solicitado: sem milhar no campo, vírgula decimal.
     return n.toFixed(2).replace('.', ',');
   }
 
@@ -76,8 +73,6 @@
     if (input.dataset.hapSapMoneyV40049 === '1') return;
 
     input.dataset.hapSapMoneyV40049 = '1';
-
-    // type=number é incompatível com "61.345,34".
     input.type = 'text';
     input.inputMode = 'decimal';
     input.autocomplete = 'off';
@@ -95,7 +90,6 @@
     root?.querySelectorAll?.(SELECTOR).forEach(prepareInput);
   }
 
-  // 1) Toda linha criada no modal já nasce preparada.
   const observer = new MutationObserver(mutations => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes || []) {
@@ -114,36 +108,26 @@
   if (document.body) startObserver();
   else document.addEventListener('DOMContentLoaded', startObserver, { once: true });
 
-  // 2) Segurança no foco.
   document.addEventListener('focusin', event => {
     if (isValueInput(event.target)) prepareInput(event.target);
   }, true);
 
-  // 3) Colagem: usa o texto bruto do clipboard antes de o navegador
-  //    tentar interpretá-lo como número.
   document.addEventListener('paste', event => {
     const input = event.target;
     if (!isValueInput(input)) return;
 
     prepareInput(input);
-
     const pasted = event.clipboardData?.getData('text') ?? '';
     const parsed = parseSapMoney(pasted);
-
     if (!Number.isFinite(parsed)) return;
 
     event.preventDefault();
     event.stopPropagation();
-
     input.value = displayPtBr(parsed);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }, true);
 
-  // 4) CRÍTICO: a governança V37 captura o clique no botão e lê
-  //    Number(input.value). Este listener está no document (fase capture),
-  //    portanto executa ANTES do listener do botão e converte temporariamente:
-  //    24820,00 -> 24820.00.
   document.addEventListener('click', event => {
     const saveButton = event.target?.closest?.('#modal-save');
     if (!saveButton) return;
@@ -152,20 +136,15 @@
     if (!modal?.querySelector('.linha-transf')) return;
 
     const restores = [];
-
     modal.querySelectorAll(SELECTOR).forEach(input => {
       prepareInput(input);
-
       const parsed = parseSapMoney(input.value);
       if (!Number.isFinite(parsed)) return;
-
       restores.push([input, displayPtBr(parsed)]);
       input.value = canonicalJs(parsed);
       input.dataset.hapCanonicalV40049 = input.value;
     });
 
-    // readTransferDraftV376 é síncrona no início do handler V37.
-    // Depois dessa leitura, devolve o visual pt-BR caso o usuário volte/edite.
     setTimeout(() => {
       for (const [input, formatted] of restores) {
         if (input?.isConnected) input.value = formatted;
@@ -182,4 +161,264 @@
   };
 
   console.info(`[HAPCAPEX ${VERSION}] Valores SAP em Transferências ativo.`);
+})();
+
+/* V40.0.127 — Transferências em modo consulta para Visualizador. */
+(() => {
+  'use strict';
+
+  if (window.__HAP_V40127_VIEWER_TRANSFER_READONLY__) return;
+  window.__HAP_V40127_VIEWER_TRANSFER_READONLY__ = true;
+
+  const VERSION = '40.0.127';
+  const STYLE_ID = 'hap-v40127-viewer-transfer-readonly-style';
+  const OPERATIONAL_SELECTORS = [
+    '#importar-transf-btn',
+    '#colar-transf-btn',
+    '#nova-transf-btn',
+    '#import-file-input-transf',
+    '#import-status-transf',
+    '#v40123-export-transfer'
+  ].join(',');
+
+  function getState() {
+    try { return typeof state !== 'undefined' ? state : null; }
+    catch (_) { return null; }
+  }
+
+  function isViewer() {
+    return String(getState()?.role || '').toLowerCase() === 'viewer';
+  }
+
+  function isTransferTab() {
+    return String(getState()?.tab || '') === 'transferencias';
+  }
+
+  function injectStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      body.hap-v40127-viewer-transfer ${OPERATIONAL_SELECTORS}{display:none!important}
+      body.hap-v40127-viewer-transfer .v40127-viewer-transfer-note{
+        display:flex;align-items:center;gap:7px;padding:8px 10px;border:1px solid #c9d8ea;
+        background:#f4f8fd;border-radius:9px;color:#36556f;font-size:11px;font-weight:700;
+        margin:0 0 10px 0
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function transferPill() {
+    const active = isTransferTab();
+    return `<span class="nav-pill ${active ? 'active' : ''}" onclick="switchTab('transferencias')">TRANSFERÊNCIAS</span>`;
+  }
+
+  function ensureViewerTransferNavHtml(html) {
+    if (!isViewer() || !html || typeof html !== 'string') return html;
+    if (html.includes("switchTab('transferencias')")) return html;
+    const pill = transferPill();
+    const gerencial = html.indexOf("switchTab('gerencial')");
+    if (gerencial >= 0) {
+      const marker = html.lastIndexOf('<span', gerencial);
+      if (marker >= 0) return html.slice(0, marker) + pill + html.slice(marker);
+    }
+    if (/<\/div>\s*$/.test(html)) return html.replace(/<\/div>\s*$/, pill + '</div>');
+    return `<div style="display:flex;gap:6px;">${html}${pill}</div>`;
+  }
+
+  function installNavWrapper() {
+    const current = window.navHtml;
+    if (typeof current !== 'function') return false;
+    if (current.__hapV40127ViewerTransferNav) return true;
+    const wrapped = function() {
+      return ensureViewerTransferNavHtml(current.apply(this, arguments));
+    };
+    wrapped.__hapV40127ViewerTransferNav = true;
+    wrapped.__hapV40127Original = current;
+    try { navHtml = window.navHtml = wrapped; }
+    catch (_) { window.navHtml = wrapped; }
+    return true;
+  }
+
+  function installRefreshWrapper() {
+    const current = window.refreshCurrent;
+    if (typeof current !== 'function') return false;
+    if (current.__hapV40127ViewerTransferRefresh) return true;
+    const wrapped = async function() {
+      if (isViewer() && isTransferTab()) {
+        if (typeof window.loadTransferenciasTab === 'function') {
+          await window.loadTransferenciasTab();
+          queueMicrotask(enforceViewerTransferUi);
+          return;
+        }
+      }
+      return current.apply(this, arguments);
+    };
+    wrapped.__hapV40127ViewerTransferRefresh = true;
+    wrapped.__hapV40127Original = current;
+    try { refreshCurrent = window.refreshCurrent = wrapped; }
+    catch (_) { window.refreshCurrent = wrapped; }
+    return true;
+  }
+
+  function removeActionColumn() {
+    const table = document.querySelector('.table-card table');
+    if (!table?.tHead) return;
+    const headRow = table.tHead.rows?.[0];
+    if (!headRow) return;
+    const headers = [...headRow.cells];
+    const idx = headers.findIndex(cell => {
+      const text = String(cell.textContent || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+      return text === 'ACOES';
+    });
+    if (idx < 0) return;
+    [...table.rows].forEach((row, rowIndex) => {
+      if (rowIndex === 0) return;
+      const cell = row.cells?.[idx];
+      if (cell) cell.remove();
+      [...row.querySelectorAll('[colspan]')].forEach(el => {
+        const n = Number(el.getAttribute('colspan'));
+        if (Number.isFinite(n) && n > 6) el.setAttribute('colspan', '6');
+      });
+    });
+    headRow.cells[idx]?.remove();
+  }
+
+  function ensureReadOnlyNote() {
+    if (!isViewer() || !isTransferTab()) return;
+    const tableCard = document.querySelector('.table-card');
+    if (!tableCard || document.querySelector('.v40127-viewer-transfer-note')) return;
+    const note = document.createElement('div');
+    note.className = 'v40127-viewer-transfer-note';
+    note.textContent = 'Modo Visualizador: consulta e filtros liberados; alterações de transferências permanecem bloqueadas.';
+    tableCard.parentNode?.insertBefore(note, tableCard);
+  }
+
+  function enforceViewerTransferUi() {
+    injectStyle();
+    const body = document.body;
+    if (!body) return;
+    const active = isViewer() && isTransferTab();
+    body.classList.toggle('hap-v40127-viewer-transfer', active);
+    if (!isViewer()) return;
+
+    document.querySelectorAll('.role-badge').forEach(el => {
+      if (String(el.textContent || '').trim().toLowerCase() === 'admin') el.textContent = 'Visualizador';
+    });
+
+    if (!active) return;
+    document.querySelectorAll('#importar-transf-btn,#colar-transf-btn,#nova-transf-btn,#import-file-input-transf,#import-status-transf').forEach(el => el.remove());
+    // O botão de exportação permanece no DOM apenas para impedir o módulo de relatórios
+    // de recriá-lo continuamente; o CSS o mantém invisível ao Visualizador.
+    removeActionColumn();
+    ensureReadOnlyNote();
+    ensureMobileTransferButton();
+  }
+
+  function ensureMobileTransferButton() {
+    if (!isViewer()) return;
+    const dock = document.getElementById('v380-control-dock');
+    if (!dock) return;
+    let button = dock.querySelector('[data-v380-tab="transferencias"]');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.v380Tab = 'transferencias';
+      button.innerHTML = '<span class="v380-icon">⇄</span><small>Transf.</small>';
+      const more = dock.querySelector('[data-v380-more]');
+      if (more) dock.insertBefore(button, more); else dock.appendChild(button);
+      button.addEventListener('click', () => {
+        try { window.switchTab?.('transferencias'); } catch (_) {}
+        setTimeout(enforceViewerTransferUi, 0);
+        try { window.scrollTo({ top:0, behavior:'smooth' }); } catch (_) {}
+      });
+    }
+    button.classList.toggle('active', isTransferTab());
+    const visibleButtons = dock.querySelectorAll('button:not([hidden])').length;
+    if (visibleButtons > 0) dock.style.gridTemplateColumns = `repeat(${visibleButtons},1fr)`;
+  }
+
+  function installRenderWrapper() {
+    const current = window.renderTransferenciasTab;
+    if (typeof current !== 'function') return false;
+    if (current.__hapV40127ViewerTransferRender) return true;
+    const wrapped = function() {
+      const result = current.apply(this, arguments);
+      queueMicrotask(enforceViewerTransferUi);
+      return result;
+    };
+    wrapped.__hapV40127ViewerTransferRender = true;
+    wrapped.__hapV40127Original = current;
+    try { renderTransferenciasTab = window.renderTransferenciasTab = wrapped; }
+    catch (_) { window.renderTransferenciasTab = wrapped; }
+    return true;
+  }
+
+  function blockViewerMutationFunction(name) {
+    const current = window[name];
+    if (typeof current !== 'function') return false;
+    if (current.__hapV40127ViewerBlocked) return true;
+    const wrapped = function() {
+      if (isViewer()) {
+        console.warn(`[HAPCAPEX ${VERSION}] Ação ${name} bloqueada para Visualizador.`);
+        return undefined;
+      }
+      return current.apply(this, arguments);
+    };
+    wrapped.__hapV40127ViewerBlocked = true;
+    wrapped.__hapV40127Original = current;
+    window[name] = wrapped;
+    try {
+      if (name === 'openNovaTransferenciaModal') openNovaTransferenciaModal = wrapped;
+      else if (name === 'editarTransferencia') editarTransferencia = wrapped;
+      else if (name === 'excluirTransferencia') excluirTransferencia = wrapped;
+      else if (name === 'importarArquivoTransferencias') importarArquivoTransferencias = wrapped;
+      else if (name === 'openColarTransferenciasModal') openColarTransferenciasModal = wrapped;
+    } catch (_) {}
+    return true;
+  }
+
+  function installMutationGuards() {
+    ['openNovaTransferenciaModal','editarTransferencia','excluirTransferencia','importarArquivoTransferencias','openColarTransferenciasModal']
+      .forEach(blockViewerMutationFunction);
+  }
+
+  function install() {
+    installNavWrapper();
+    installRefreshWrapper();
+    installRenderWrapper();
+    installMutationGuards();
+    enforceViewerTransferUi();
+    ensureMobileTransferButton();
+  }
+
+  install();
+  let tries = 0;
+  const timer = setInterval(() => {
+    install();
+    if (++tries >= 300) clearInterval(timer);
+  }, 100);
+
+  let mutationTimer = 0;
+  const root = document.body || document.documentElement;
+  if (root && typeof MutationObserver === 'function') {
+    const uiObserver = new MutationObserver(() => {
+      clearTimeout(mutationTimer);
+      mutationTimer = setTimeout(() => {
+        enforceViewerTransferUi();
+        ensureMobileTransferButton();
+      }, 20);
+    });
+    uiObserver.observe(root, { childList:true, subtree:true });
+  }
+
+  window.HAP_V40127_VIEWER_TRANSFER_READONLY = Object.freeze({
+    version: VERSION,
+    enabled: true,
+    readOnly: true,
+    refresh: enforceViewerTransferUi
+  });
+
+  console.info(`[HAPCAPEX ${VERSION}] Transferências liberadas em modo somente leitura para Visualizador.`);
 })();
