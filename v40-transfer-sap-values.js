@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.130 — Valores SAP + Transferências somente leitura para Visualizador
+/* HAPCAPEX V40.0.131 — Valores SAP + Transferências somente leitura para Visualizador
    - preserva a conversão pt-BR dos valores SAP (V40.0.49);
    - libera a aba Transferências ao perfil Visualizador;
    - Visualizador pode consultar e filtrar, sem ações operacionais;
@@ -10,7 +10,7 @@
   if (window.__HAP_V40049_TRANSFER_SAP_VALUES__) return;
   window.__HAP_V40049_TRANSFER_SAP_VALUES__ = true;
 
-  const VERSION = '40.0.130';
+  const VERSION = '40.0.131';
   const SELECTOR = '.linha-transf input[id^="t-valor-"]';
 
   function parseSapMoney(value) {
@@ -163,14 +163,14 @@
   console.info(`[HAPCAPEX ${VERSION}] Valores SAP em Transferências ativo.`);
 })();
 
-/* V40.0.130 — Correção de isolamento de perfil: Viewer read-only sem afetar Admin. */
+/* V40.0.131 — Isolamento de perfil + estabilização de wrappers sem afetar Admin. */
 (() => {
   'use strict';
 
   if (window.__HAP_V40130_VIEWER_TRANSFER_READONLY__) return;
   window.__HAP_V40130_VIEWER_TRANSFER_READONLY__ = true;
 
-  const VERSION = '40.0.130';
+  const VERSION = '40.0.131';
   const STYLE_ID = 'hap-v40130-viewer-transfer-readonly-style';
   const OPERATIONAL_SELECTORS = [
     '#importar-transf-btn',
@@ -200,6 +200,30 @@
 
   function isTransferTab() {
     return String(getState()?.tab || '') === 'transferencias';
+  }
+
+  /* V40.0.131 — detecta uma proteção já presente mesmo quando outro módulo
+     adicionou um wrapper por fora. Isso impede o crescimento recursivo da cadeia. */
+  function wrapperChainHas(fn, marker, maxDepth = 512) {
+    let current = fn;
+    const seen = new Set();
+    for (let depth = 0; typeof current === 'function' && depth < maxDepth && !seen.has(current); depth++) {
+      try { if (current[marker]) return true; } catch (_) {}
+      seen.add(current);
+      let next = null;
+      try {
+        for (const key of Object.getOwnPropertyNames(current)) {
+          if (!/original/i.test(key)) continue;
+          const descriptor = Object.getOwnPropertyDescriptor(current, key);
+          if (descriptor && typeof descriptor.value === 'function') {
+            next = descriptor.value;
+            break;
+          }
+        }
+      } catch (_) {}
+      current = next;
+    }
+    return false;
   }
 
   function injectStyle() {
@@ -236,7 +260,7 @@
   function installNavWrapper() {
     const current = window.navHtml;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40130ViewerTransferNav) return true;
+    if (wrapperChainHas(current, '__hapV40130ViewerTransferNav')) return true;
     const wrapped = function() {
       return ensureViewerTransferNavHtml(current.apply(this, arguments));
     };
@@ -250,7 +274,7 @@
   function installRefreshWrapper() {
     const current = window.refreshCurrent;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40130ViewerTransferRefresh) return true;
+    if (wrapperChainHas(current, '__hapV40130ViewerTransferRefresh')) return true;
     const wrapped = async function() {
       if (isViewer() && isTransferTab()) {
         if (typeof window.loadTransferenciasTab === 'function') {
@@ -333,7 +357,8 @@
     document.querySelectorAll('.role-badge').forEach(el => {
       const text = normalizeText(el.textContent);
       if (!['ADMIN','VIEWER','VISUALIZADOR','ADMINISTRADOR'].includes(text)) return;
-      el.textContent = currentRole === 'viewer' ? 'Visualizador' : 'Admin';
+      const desired = currentRole === 'viewer' ? 'Visualizador' : 'Admin';
+      if (el.textContent !== desired) el.textContent = desired;
     });
   }
 
@@ -387,7 +412,7 @@
   function installRenderWrapper() {
     const current = window.renderTransferenciasTab;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40130ViewerTransferRender) return true;
+    if (wrapperChainHas(current, '__hapV40130ViewerTransferRender')) return true;
     const wrapped = function() {
       const result = current.apply(this, arguments);
       queueMicrotask(enforceProfileUi);
@@ -403,7 +428,7 @@
   function blockViewerMutationFunction(name) {
     const current = window[name];
     if (typeof current !== 'function') return false;
-    if (current.__hapV40130ViewerBlocked) return true;
+    if (wrapperChainHas(current, '__hapV40130ViewerBlocked')) return true;
     const wrapped = function() {
       if (isViewer()) {
         console.warn(`[HAPCAPEX ${VERSION}] Ação ${name} bloqueada para Visualizador.`);
@@ -463,7 +488,8 @@
     enabled: true,
     readOnly: true,
     refresh: enforceProfileUi,
-    cleanViewerMessages: markViewerTechnicalMessages
+    cleanViewerMessages: markViewerTechnicalMessages,
+    wrapperChainHas
   });
 
   console.info(`[HAPCAPEX ${VERSION}] Perfis isolados: Admin operacional; Visualizador somente leitura em Transferências.`);

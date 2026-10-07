@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.123 — Gerencial Viewer + relatórios operacionais
+/* HAPCAPEX V40.0.131 — Gerencial Viewer + relatórios operacionais
    - preserva a correção V40.0.122 do Gerencial para Visualizador;
    - adiciona total dinâmico explícito à coluna Valor em Transferências;
    - adiciona exportação Excel completa/filtrada na Base Consumo;
@@ -6,7 +6,7 @@
 */
 (()=>{'use strict';
 if(window.HAP_CONTROL_PREAUTH_V40?.bootstrapped)return;
-const VERSION='40.0.123';
+const VERSION='40.0.131';
 
 function load(flag,needle,src,key){
   if(window[flag])return;
@@ -19,7 +19,7 @@ function load(flag,needle,src,key){
   document.head.appendChild(sc);
 }
 
-load('__HAP_V40049_TRANSFER_SAP_LOADER__','v40-transfer-sap-values.js','./v40-transfer-sap-values.js?v=40.0.49','hapV40049TransferSap');
+load('__HAP_V40049_TRANSFER_SAP_LOADER__','v40-transfer-sap-values.js','./v40-transfer-sap-values.js?v=40.0.131','hapV40049TransferSap');
 load('__HAP_V40050_CAPEX_FILTERS_LOADER__','v40-capex-column-filters.js','./v40-capex-column-filters.js?v=40.0.50','hapV40050CapexFilters');
 const old=[...document.querySelectorAll('script[src]')].find(s=>String(s.getAttribute('src')||'').includes('v40-table-totals.js'));
 if(old)old.remove();
@@ -166,11 +166,11 @@ window.HAP_CONTROL_PREAUTH_V40={
 };
 })();
 
-/* V40.0.123 — Totais e exportações do Controle de CAPEX. */
+/* V40.0.131 — Totais/exportações + estabilização de wrappers do Controle de CAPEX. */
 (()=>{'use strict';
 if(window.__HAP_V40123_CONTROL_REPORTS__)return;
 window.__HAP_V40123_CONTROL_REPORTS__=true;
-const VERSION='40.0.123';
+const VERSION='40.0.131';
 const CONSUMO_ID='control-consumo';
 const TRANSFER_ID='control-transfer';
 const PAGE=1000;
@@ -433,10 +433,38 @@ function decorateCurrent(){
     decorateTransferTotal();
   }
 }
+
+/* V40.0.131
+   Vários módulos do Controle envolvem as mesmas funções em wrappers e alguns deles
+   tentam se reinstalar por alguns segundos. Verificar apenas o wrapper externo fazia
+   dois módulos alternarem wrappers indefinidamente, aumentando a pilha até causar
+   "Maximum call stack size exceeded". Procura a marca em toda a cadeia já instalada. */
+function wrapperChainHas(fn,marker,maxDepth=512){
+  let current=fn;
+  const seen=new Set();
+  for(let depth=0;typeof current==='function'&&depth<maxDepth&&!seen.has(current);depth++){
+    try{if(current[marker])return true;}catch(_){}
+    seen.add(current);
+    let next=null;
+    try{
+      for(const key of Object.getOwnPropertyNames(current)){
+        if(!/original/i.test(key))continue;
+        const descriptor=Object.getOwnPropertyDescriptor(current,key);
+        if(descriptor&&typeof descriptor.value==='function'){
+          next=descriptor.value;
+          break;
+        }
+      }
+    }catch(_){}
+    current=next;
+  }
+  return false;
+}
+
 function wrapRender(name,kind){
   const current=window[name];
   if(typeof current!=='function')return false;
-  if(current.__hapV40123Reports)return true;
+  if(wrapperChainHas(current,'__hapV40123Reports'))return true;
   const wrapped=function(){
     const result=current.apply(this,arguments);
     queueMicrotask(()=>{
@@ -456,7 +484,7 @@ function wrapRender(name,kind){
 function wrapConsumoImport(){
   const current=window.importarArquivoBaseConsumo;
   if(typeof current!=='function')return false;
-  if(current.__hapV40123ReportsCache)return true;
+  if(wrapperChainHas(current,'__hapV40123ReportsCache'))return true;
   const wrapped=async function(){
     consumoCache=null;
     try{return await current.apply(this,arguments);}
@@ -491,6 +519,7 @@ window.HAP_V40123_CONTROL_REPORTS={
   exportBaseConsumo:()=>exportReport('consumo',document.getElementById('v40123-export-consumo')),
   exportTransferencias:()=>exportReport('transfer',document.getElementById('v40123-export-transfer')),
   refresh:decorateCurrent,
-  invalidateConsumoCache(){consumoCache=null;}
+  invalidateConsumoCache(){consumoCache=null;},
+  wrapperChainHas
 };
 })();
