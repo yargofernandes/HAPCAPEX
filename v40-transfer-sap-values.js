@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.129 — Valores SAP + Transferências somente leitura para Visualizador
+/* HAPCAPEX V40.0.130 — Valores SAP + Transferências somente leitura para Visualizador
    - preserva a conversão pt-BR dos valores SAP (V40.0.49);
    - libera a aba Transferências ao perfil Visualizador;
    - Visualizador pode consultar e filtrar, sem ações operacionais;
@@ -10,7 +10,7 @@
   if (window.__HAP_V40049_TRANSFER_SAP_VALUES__) return;
   window.__HAP_V40049_TRANSFER_SAP_VALUES__ = true;
 
-  const VERSION = '40.0.129';
+  const VERSION = '40.0.130';
   const SELECTOR = '.linha-transf input[id^="t-valor-"]';
 
   function parseSapMoney(value) {
@@ -163,15 +163,15 @@
   console.info(`[HAPCAPEX ${VERSION}] Valores SAP em Transferências ativo.`);
 })();
 
-/* V40.0.129 — Visualizador limpo: Transferências somente leitura e sem mensagens técnicas/operacionais. */
+/* V40.0.130 — Correção de isolamento de perfil: Viewer read-only sem afetar Admin. */
 (() => {
   'use strict';
 
-  if (window.__HAP_V40127_VIEWER_TRANSFER_READONLY__) return;
-  window.__HAP_V40127_VIEWER_TRANSFER_READONLY__ = true;
+  if (window.__HAP_V40130_VIEWER_TRANSFER_READONLY__) return;
+  window.__HAP_V40130_VIEWER_TRANSFER_READONLY__ = true;
 
-  const VERSION = '40.0.129';
-  const STYLE_ID = 'hap-v40127-viewer-transfer-readonly-style';
+  const VERSION = '40.0.130';
+  const STYLE_ID = 'hap-v40130-viewer-transfer-readonly-style';
   const OPERATIONAL_SELECTORS = [
     '#importar-transf-btn',
     '#colar-transf-btn',
@@ -179,15 +179,23 @@
     '#import-file-input-transf',
     '#import-status-transf',
     '#v40123-export-transfer'
-  ].join(',');
+  ];
 
   function getState() {
     try { return typeof state !== 'undefined' ? state : null; }
     catch (_) { return null; }
   }
 
+  function role() {
+    return String(getState()?.role || '').trim().toLowerCase();
+  }
+
   function isViewer() {
-    return String(getState()?.role || '').toLowerCase() === 'viewer';
+    return role() === 'viewer';
+  }
+
+  function isAdmin() {
+    return role() === 'admin';
   }
 
   function isTransferTab() {
@@ -198,12 +206,11 @@
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
     style.id = STYLE_ID;
+    const operational = OPERATIONAL_SELECTORS.join(',');
     style.textContent = `
-      body.hap-v40127-viewer-transfer ${OPERATIONAL_SELECTORS}{display:none!important}
-      body.hap-v40128-viewer-clean .v40127-viewer-transfer-note,
-      body.hap-v40128-viewer-clean [data-v390-viewer-note],
-      body.hap-v40128-viewer-clean .v394-viewer-allowed,
-      body.hap-v40128-viewer-clean [data-v394-info]{display:none!important}
+      body.hap-v40130-viewer-transfer :is(${operational}){display:none!important}
+      body.hap-v40130-viewer-transfer .hap-v40130-transfer-action-cell{display:none!important}
+      body.hap-v40130-viewer-clean .hap-v40130-viewer-hidden{display:none!important}
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -229,12 +236,12 @@
   function installNavWrapper() {
     const current = window.navHtml;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40127ViewerTransferNav) return true;
+    if (current.__hapV40130ViewerTransferNav) return true;
     const wrapped = function() {
       return ensureViewerTransferNavHtml(current.apply(this, arguments));
     };
-    wrapped.__hapV40127ViewerTransferNav = true;
-    wrapped.__hapV40127Original = current;
+    wrapped.__hapV40130ViewerTransferNav = true;
+    wrapped.__hapV40130Original = current;
     try { navHtml = window.navHtml = wrapped; }
     catch (_) { window.navHtml = wrapped; }
     return true;
@@ -243,48 +250,27 @@
   function installRefreshWrapper() {
     const current = window.refreshCurrent;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40127ViewerTransferRefresh) return true;
+    if (current.__hapV40130ViewerTransferRefresh) return true;
     const wrapped = async function() {
       if (isViewer() && isTransferTab()) {
         if (typeof window.loadTransferenciasTab === 'function') {
           await window.loadTransferenciasTab();
-          queueMicrotask(enforceViewerTransferUi);
+          queueMicrotask(enforceProfileUi);
           return;
         }
       }
-      return current.apply(this, arguments);
+      const result = await current.apply(this, arguments);
+      queueMicrotask(enforceProfileUi);
+      return result;
     };
-    wrapped.__hapV40127ViewerTransferRefresh = true;
-    wrapped.__hapV40127Original = current;
+    wrapped.__hapV40130ViewerTransferRefresh = true;
+    wrapped.__hapV40130Original = current;
     try { refreshCurrent = window.refreshCurrent = wrapped; }
     catch (_) { window.refreshCurrent = wrapped; }
     return true;
   }
 
-  function removeActionColumn() {
-    const table = document.querySelector('.table-card table');
-    if (!table?.tHead) return;
-    const headRow = table.tHead.rows?.[0];
-    if (!headRow) return;
-    const headers = [...headRow.cells];
-    const idx = headers.findIndex(cell => {
-      const text = String(cell.textContent || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
-      return text === 'ACOES';
-    });
-    if (idx < 0) return;
-    [...table.rows].forEach((row, rowIndex) => {
-      if (rowIndex === 0) return;
-      const cell = row.cells?.[idx];
-      if (cell) cell.remove();
-      [...row.querySelectorAll('[colspan]')].forEach(el => {
-        const n = Number(el.getAttribute('colspan'));
-        if (Number.isFinite(n) && n > 6) el.setAttribute('colspan', '6');
-      });
-    });
-    headRow.cells[idx]?.remove();
-  }
-
-  function cleanViewerText(value) {
+  function normalizeText(value) {
     return String(value || '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -293,59 +279,85 @@
       .toUpperCase();
   }
 
-  function removeViewerTechnicalMessages() {
-    if (!isViewer()) return;
-    document.body?.classList?.add('hap-v40128-viewer-clean');
-
-    // Mensagens de permissão são úteis para suporte, não para a experiência do gestor.
-    document.querySelectorAll('.v40127-viewer-transfer-note,[data-v390-viewer-note],.v394-viewer-allowed,[data-v394-info]')
-      .forEach(el => el.remove());
-
-    // Base Consumo: manter somente a informação útil de última atualização.
-    // O texto explicativo sobre a função da Base Consumo é removido apenas para Visualizador.
-    const appRoot = document.getElementById('app');
-    if (appRoot) {
-      [...appRoot.children].forEach(el => {
-        const text = cleanViewerText(el.textContent);
-        if (text.includes('A BASE CONSUMO E A FONTE OPERACIONAL DE COMPROMISSADO E SALDO')) el.remove();
-      });
-    }
-
-    // Base O.I: a conferência técnica CAPEX x Base O.I. permanece disponível ao Administrador,
-    // mas não ocupa espaço no painel do Visualizador.
-    document.querySelectorAll('.banner-ok,.banner-warn').forEach(el => {
-      const text = cleanViewerText(el.textContent);
-      if (text.includes('CONSISTENCIA COM O CAPEX')) el.remove();
-    });
-
-    // Pendências cadastrais/técnicas continuam visíveis ao Administrador, mas não ao Visualizador.
-    document.querySelectorAll('.v4071-pending').forEach(section => {
-      const text = cleanViewerText(section.textContent);
-      if (
-        text.includes('OIS COM CLASSIFICACAO INCOMPLETA') ||
-        text.includes('TRANSFERENCIAS HISTORICAS SEM PACOTE IDENTIFICAVEL')
-      ) section.remove();
+  function markActionColumn() {
+    const table = document.querySelector('.table-card table');
+    if (!table?.tHead) return;
+    const headRow = table.tHead.rows?.[0];
+    if (!headRow) return;
+    const headers = [...headRow.cells];
+    const idx = headers.findIndex(cell => normalizeText(cell.textContent) === 'ACOES');
+    if (idx < 0) return;
+    headRow.cells[idx]?.classList?.add('hap-v40130-transfer-action-cell');
+    [...table.tBodies].forEach(tbody => {
+      [...tbody.rows].forEach(row => row.cells?.[idx]?.classList?.add('hap-v40130-transfer-action-cell'));
     });
   }
 
-  function enforceViewerTransferUi() {
+  function markViewerTechnicalMessages() {
+    if (!isViewer()) return;
+
+    // Mensagens de permissão/suporte: continuam no DOM e ficam invisíveis apenas no Viewer.
+    document.querySelectorAll('.v40127-viewer-transfer-note,[data-v390-viewer-note],.v394-viewer-allowed,[data-v394-info]')
+      .forEach(el => el.classList.add('hap-v40130-viewer-hidden'));
+
+    // Base Consumo: manter a última atualização e ocultar somente o texto conceitual.
+    const appRoot = document.getElementById('app');
+    if (appRoot) {
+      [...appRoot.children].forEach(el => {
+        const text = normalizeText(el.textContent);
+        if (text.includes('A BASE CONSUMO E A FONTE OPERACIONAL DE COMPROMISSADO E SALDO')) {
+          el.classList.add('hap-v40130-viewer-hidden');
+        }
+      });
+    }
+
+    // Base O.I.: o diagnóstico de consistência é administrativo, não executivo.
+    document.querySelectorAll('.banner-ok,.banner-warn').forEach(el => {
+      const text = normalizeText(el.textContent);
+      if (text.includes('CONSISTENCIA COM O CAPEX')) el.classList.add('hap-v40130-viewer-hidden');
+    });
+
+    // Gerencial: pendências técnicas seguem disponíveis ao Admin e ocultas no Viewer.
+    document.querySelectorAll('.v4071-pending').forEach(section => {
+      const text = normalizeText(section.textContent);
+      if (
+        text.includes('OIS COM CLASSIFICACAO INCOMPLETA') ||
+        text.includes('TRANSFERENCIAS HISTORICAS SEM PACOTE IDENTIFICAVEL')
+      ) section.classList.add('hap-v40130-viewer-hidden');
+    });
+  }
+
+  function syncRoleBadge() {
+    const currentRole = role();
+    if (!['viewer','admin'].includes(currentRole)) return;
+    document.querySelectorAll('.role-badge').forEach(el => {
+      const text = normalizeText(el.textContent);
+      if (!['ADMIN','VIEWER','VISUALIZADOR','ADMINISTRADOR'].includes(text)) return;
+      el.textContent = currentRole === 'viewer' ? 'Visualizador' : 'Admin';
+    });
+  }
+
+  function enforceProfileUi() {
     injectStyle();
     const body = document.body;
     if (!body) return;
-    const active = isViewer() && isTransferTab();
-    body.classList.toggle('hap-v40127-viewer-transfer', active);
-    if (!isViewer()) return;
-    removeViewerTechnicalMessages();
 
-    document.querySelectorAll('.role-badge').forEach(el => {
-      if (String(el.textContent || '').trim().toLowerCase() === 'admin') el.textContent = 'Visualizador';
-    });
+    const viewer = isViewer();
+    const viewerTransfer = viewer && isTransferTab();
+    body.classList.toggle('hap-v40130-viewer-clean', viewer);
+    body.classList.toggle('hap-v40130-viewer-transfer', viewerTransfer);
 
-    if (!active) return;
-    document.querySelectorAll('#importar-transf-btn,#colar-transf-btn,#nova-transf-btn,#import-file-input-transf,#import-status-transf').forEach(el => el.remove());
-    // O botão de exportação permanece no DOM apenas para impedir o módulo de relatórios
-    // de recriá-lo continuamente; o CSS o mantém invisível ao Visualizador.
-    removeActionColumn();
+    // Remove classes legadas para evitar que uma versão anterior permaneça influenciando o Admin.
+    body.classList.remove('hap-v40127-viewer-transfer','hap-v40128-viewer-clean');
+
+    syncRoleBadge();
+    if (!viewer) return;
+
+    markViewerTechnicalMessages();
+    if (!viewerTransfer) return;
+
+    // Não removemos elementos do DOM. O isolamento entre perfis é feito por CSS + backend.
+    markActionColumn();
     ensureMobileTransferButton();
   }
 
@@ -363,7 +375,7 @@
       if (more) dock.insertBefore(button, more); else dock.appendChild(button);
       button.addEventListener('click', () => {
         try { window.switchTab?.('transferencias'); } catch (_) {}
-        setTimeout(enforceViewerTransferUi, 0);
+        setTimeout(enforceProfileUi, 0);
         try { window.scrollTo({ top:0, behavior:'smooth' }); } catch (_) {}
       });
     }
@@ -375,14 +387,14 @@
   function installRenderWrapper() {
     const current = window.renderTransferenciasTab;
     if (typeof current !== 'function') return false;
-    if (current.__hapV40127ViewerTransferRender) return true;
+    if (current.__hapV40130ViewerTransferRender) return true;
     const wrapped = function() {
       const result = current.apply(this, arguments);
-      queueMicrotask(enforceViewerTransferUi);
+      queueMicrotask(enforceProfileUi);
       return result;
     };
-    wrapped.__hapV40127ViewerTransferRender = true;
-    wrapped.__hapV40127Original = current;
+    wrapped.__hapV40130ViewerTransferRender = true;
+    wrapped.__hapV40130Original = current;
     try { renderTransferenciasTab = window.renderTransferenciasTab = wrapped; }
     catch (_) { window.renderTransferenciasTab = wrapped; }
     return true;
@@ -391,7 +403,7 @@
   function blockViewerMutationFunction(name) {
     const current = window[name];
     if (typeof current !== 'function') return false;
-    if (current.__hapV40127ViewerBlocked) return true;
+    if (current.__hapV40130ViewerBlocked) return true;
     const wrapped = function() {
       if (isViewer()) {
         console.warn(`[HAPCAPEX ${VERSION}] Ação ${name} bloqueada para Visualizador.`);
@@ -399,8 +411,8 @@
       }
       return current.apply(this, arguments);
     };
-    wrapped.__hapV40127ViewerBlocked = true;
-    wrapped.__hapV40127Original = current;
+    wrapped.__hapV40130ViewerBlocked = true;
+    wrapped.__hapV40130Original = current;
     window[name] = wrapped;
     try {
       if (name === 'openNovaTransferenciaModal') openNovaTransferenciaModal = wrapped;
@@ -422,7 +434,7 @@
     installRefreshWrapper();
     installRenderWrapper();
     installMutationGuards();
-    enforceViewerTransferUi();
+    enforceProfileUi();
     ensureMobileTransferButton();
   }
 
@@ -439,20 +451,20 @@
     const uiObserver = new MutationObserver(() => {
       clearTimeout(mutationTimer);
       mutationTimer = setTimeout(() => {
-        enforceViewerTransferUi();
+        enforceProfileUi();
         ensureMobileTransferButton();
       }, 20);
     });
     uiObserver.observe(root, { childList:true, subtree:true });
   }
 
-  window.HAP_V40127_VIEWER_TRANSFER_READONLY = Object.freeze({
+  window.HAP_V40130_VIEWER_TRANSFER_READONLY = Object.freeze({
     version: VERSION,
     enabled: true,
     readOnly: true,
-    refresh: enforceViewerTransferUi,
-    cleanViewerMessages: removeViewerTechnicalMessages
+    refresh: enforceProfileUi,
+    cleanViewerMessages: markViewerTechnicalMessages
   });
 
-  console.info(`[HAPCAPEX ${VERSION}] Transferências liberadas em modo somente leitura para Visualizador.`);
+  console.info(`[HAPCAPEX ${VERSION}] Perfis isolados: Admin operacional; Visualizador somente leitura em Transferências.`);
 })();
