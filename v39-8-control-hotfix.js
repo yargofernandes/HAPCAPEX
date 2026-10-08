@@ -83,7 +83,7 @@
     el.id='import-status';
     el.className='hap-v3982-status';
     el.setAttribute('aria-live','polite');
-    el.textContent='Pronto para receber a Base Consumo exportada pelo SAP.';
+    el.textContent='Pronto para importar a planilha da Base Consumo.';
     toolbar.appendChild(el);
     return el;
   }

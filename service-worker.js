@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-0-111-edit-oi-wide-20260923';
+const CACHE_NAME = 'hapcapex-v40-0-133-viewer-consumo-planilha-20261008';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,10 +10,10 @@ const APP_SHELL = [
   './v34-module-selector.js?v=39.7.0',
   './v35-control-addon.js?v=35.6.4',
   './v36-control-integration.js?v=36.1',
-  './v37-control-governance.js?v=39.7.0',
+  './v37-control-governance.js?v=40.0.133',
   './v36-curve-addon.js?v=38.1.0',
   './v39-global-admin.js?v=39.8.0',
-  './v39-8-control-hotfix.js?v=39.8.2',
+  './v39-8-control-hotfix.js?v=40.0.133',
   './v40-security-hardening.js?v=40.0.0',
   './v40-control-security.js?v=40.0.1',
   './v40-control-preauth.js?v=40.0.3',
@@ -37,8 +37,8 @@ const APP_SHELL = [
 ];
 
 const GLOBAL_ADMIN_TAG = '<script src="./v39-global-admin.js?v=39.8.0"></script>';
-const CONTROL_HOTFIX_TAG = '<script src="./v39-8-control-hotfix.js?v=39.8.2"></script>';
-const CONTROL_GOVERNANCE_TAG = '<script src="./v37-control-governance.js?v=40.0.103"></script>';
+const CONTROL_HOTFIX_TAG = '<script src="./v39-8-control-hotfix.js?v=40.0.133"></script>';
+const CONTROL_GOVERNANCE_TAG = '<script src="./v37-control-governance.js?v=40.0.133"></script>';
 const CONTROL_SECURITY_TAG = '<script src="./v40-control-security.js?v=40.0.1"></script>';
 const CONTROL_PREAUTH_TAG = '<script src="./v40-control-preauth.js?v=40.0.3"></script>';
 const LOGOUT_TAG = '<script src="./v40-logout-fix.js?v=40.0.6"></script>';

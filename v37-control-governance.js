@@ -2179,8 +2179,8 @@ O planejamento da Curva ficou pendente e poderá ser feito depois pelo botão "P
     const setStatus=html=>{if(statusEl)statusEl.innerHTML=html;};
     const context=baseConsumoContextV394(executionContext||{});
     try{
-      if(state.role==='viewer' && String(context.origem||'').trim().toLowerCase()!=='sap'){
-        throw new Error('Visualizadores podem atualizar a Base Consumo somente pelo SAP.');
+      if(!['admin','viewer'].includes(state.role)){
+        throw new Error('Perfil sem autorização para atualizar a Base Consumo.');
       }
       setStatus('Lendo o arquivo e preparando a revisão...');
       const [parsed,hash]=await Promise.all([parseBaseConsumoFileV379(file),sha256FileV394(file)]);
@@ -2945,6 +2945,13 @@ O planejamento da Curva ficou pendente e poderá ser feito depois pelo botão "P
   }
 
   function decorateSapBridgeEntryV390(){
+    // V40.0.133: o SAP Bridge permanece exclusivo do Administrador.
+    // O Visualizador importa diretamente a planilha para a Base Consumo.
+    if(state.role==='viewer'){
+      document.getElementById('v390-sap-btn')?.remove();
+      document.querySelectorAll('[data-v390-sap-head],[data-v390-sap-more]').forEach(el=>el.remove());
+      return;
+    }
     const importBtn=document.getElementById('importar-btn');
     const toolbar=(state.tab==='base_consumo'?document.querySelector('.toolbar'):null);
     if(toolbar && !document.getElementById('v390-sap-btn')){
@@ -3026,15 +3033,25 @@ O planejamento da Curva ficou pendente e poderá ser feito depois pelo botão "P
     decorateRoleBadgeV394();
     const grid=document.querySelector('.kpi-grid'); if(!grid)return;
     if(state.role==='viewer'){
-      // Garante primeiro o único comando permitido e só depois remove importação/edição manual.
+      // Importação manual liberada para Viewer apenas na Base Consumo.
+      // Exclui ações administrativas e entradas SAP legadas, sem destruir o input de arquivo.
       decorateSapBridgeEntryV390();
-      document.getElementById('importar-btn')?.remove();
-      document.getElementById('import-file-input')?.remove();
-      document.getElementById('import-status')?.remove();
       document.getElementById('v35-link-ois-btn')?.remove();
       document.querySelectorAll('[onclick*="abrirCriarOiPrefill"]').forEach(el=>el.remove());
       const toolbar=document.querySelector('.toolbar');
-      toolbar?.querySelectorAll('button').forEach(btn=>{if(btn.id!=='v390-sap-btn')btn.remove();});
+      toolbar?.querySelectorAll('button').forEach(btn=>{
+        if(btn.id!=='importar-btn' && !/export/i.test(btn.id||''))btn.remove();
+      });
+      const importBtn=document.getElementById('importar-btn');
+      if(importBtn){
+        importBtn.hidden=false;
+        importBtn.textContent='+ Importar planilha';
+        importBtn.onclick=()=>document.getElementById('import-file-input')?.click();
+      }
+      const fileInput=document.getElementById('import-file-input');
+      if(fileInput){
+        fileInput.onchange=e=>{if(e.target.files?.[0])window.importarArquivoBaseConsumo(e.target.files[0]);};
+      }
     }
     document.querySelector('.v394-last-update')?.remove();
     const u=state.v394?.lastUpdate||null;

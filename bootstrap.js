@@ -1005,7 +1005,7 @@ $('#installPwaBtn').onclick = async () => {
 async function registerPwaServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   try {
-    const registration = await navigator.serviceWorker.register('./service-worker.js?v=35', { scope: './' });
+    const registration = await navigator.serviceWorker.register('./service-worker.js?v=40.0.133', { scope: './' });
     registration.update().catch(() => {});
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
