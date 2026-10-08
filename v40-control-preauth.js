@@ -19,7 +19,7 @@ function load(flag,needle,src,key){
   document.head.appendChild(sc);
 }
 
-load('__HAP_V40049_TRANSFER_SAP_LOADER__','v40-transfer-sap-values.js','./v40-transfer-sap-values.js?v=40.0.131','hapV40049TransferSap');
+load('__HAP_V40049_TRANSFER_SAP_LOADER__','v40-transfer-sap-values.js','./v40-transfer-sap-values.js?v=40.0.135','hapV40049TransferSap');
 load('__HAP_V40050_CAPEX_FILTERS_LOADER__','v40-capex-column-filters.js','./v40-capex-column-filters.js?v=40.0.50','hapV40050CapexFilters');
 const old=[...document.querySelectorAll('script[src]')].find(s=>String(s.getAttribute('src')||'').includes('v40-table-totals.js'));
 if(old)old.remove();

@@ -163,22 +163,21 @@
   console.info(`[HAPCAPEX ${VERSION}] Valores SAP em Transferências ativo.`);
 })();
 
-/* V40.0.131 — Isolamento de perfil + estabilização de wrappers sem afetar Admin. */
+/* V40.0.135 — Visualizador: Exportar Excel e Limpar Filtros em Transferências. */
 (() => {
   'use strict';
 
   if (window.__HAP_V40130_VIEWER_TRANSFER_READONLY__) return;
   window.__HAP_V40130_VIEWER_TRANSFER_READONLY__ = true;
 
-  const VERSION = '40.0.131';
+  const VERSION = '40.0.135';
   const STYLE_ID = 'hap-v40130-viewer-transfer-readonly-style';
   const OPERATIONAL_SELECTORS = [
     '#importar-transf-btn',
     '#colar-transf-btn',
     '#nova-transf-btn',
     '#import-file-input-transf',
-    '#import-status-transf',
-    '#v40123-export-transfer'
+    '#import-status-transf'
   ];
 
   function getState() {
@@ -234,6 +233,9 @@
     style.textContent = `
       body.hap-v40130-viewer-transfer :is(${operational}){display:none!important}
       body.hap-v40130-viewer-transfer .hap-v40130-transfer-action-cell{display:none!important}
+      /* Exportação e limpeza são operações de consulta, não mutações financeiras. */
+      body.hap-v40130-viewer-transfer #v40123-export-transfer,
+      body.hap-v40130-viewer-transfer .toolbar .hap-xf-unified-clear{display:inline-flex!important}
       body.hap-v40130-viewer-clean .hap-v40130-viewer-hidden{display:none!important}
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -362,6 +364,60 @@
     });
   }
 
+  // Controle de Transferências: estas duas ações não alteram registros no banco.
+  // Reaproveita exportador e motor de filtros existentes; não libera criação/edição.
+  function ensureViewerTransferReadActions() {
+    if (!isViewer() || !isTransferTab()) return;
+    const table = document.querySelector('.table-card table');
+    const card = table?.closest?.('.table-card');
+    const toolbar = card?.previousElementSibling?.classList?.contains('toolbar')
+      ? card.previousElementSibling : document.querySelector('.toolbar');
+    if (!toolbar) return;
+
+    // Exportador já existente em v40-control-preauth.js; evita segundo handler.
+    if (!document.getElementById('v40123-export-transfer')) {
+      try { window.HAP_V40123_CONTROL_REPORTS?.refresh?.(); }
+      catch (error) { console.warn('[HAPCAPEX V40.0.135] Exportador indisponível', error); }
+    }
+
+    // O motor de filtros HAP_XF normalmente cria o botão canônico. Se houver
+    // atraso entre wrappers de renderização, cria o mesmo controle com callback
+    // funcional; o motor reconhece a marca e não instala outro handler.
+    const xf = window.HAP_XF;
+    if (typeof xf?.clear !== 'function' || typeof xf?.hasActive !== 'function') return;
+    const normalizar = value => String(value || '').trim().toLocaleLowerCase('pt-BR');
+    const candidatos = [...toolbar.querySelectorAll('button')].filter(btn =>
+      normalizar(btn.textContent) === 'limpar filtros'
+    );
+    let clear = candidatos.find(btn => btn.classList.contains('hap-xf-unified-clear'))
+      || candidatos[0] || null;
+    if (!clear) {
+      clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'btn btn-secondary hap-xf-unified-clear';
+      clear.textContent = 'Limpar filtros';
+      toolbar.appendChild(clear);
+    }
+    clear.classList.add('hap-xf-unified-clear');
+    clear.dataset.hapXfUnifiedId = 'control-transfer';
+    if (clear.dataset.hapXfUnifiedBound !== '1') {
+      clear.dataset.hapXfUnifiedBound = '1';
+      clear.addEventListener('click', () => {
+        if (!isViewer() || !isTransferTab()) return;
+        window.HAP_XF?.clear?.('control-transfer', { silent: true });
+        const st = getState();
+        if (st) {
+          st.transferFilter = '';
+          st.transferDataInicio = null;
+          st.transferDataFim = null;
+          st.transferPendencia = null;
+        }
+        window.renderTransferenciasTab?.();
+      });
+    }
+    clear.disabled = !xf.hasActive('control-transfer');
+  }
+
   function enforceProfileUi() {
     injectStyle();
     const body = document.body;
@@ -384,6 +440,7 @@
     // Não removemos elementos do DOM. O isolamento entre perfis é feito por CSS + backend.
     markActionColumn();
     ensureMobileTransferButton();
+    ensureViewerTransferReadActions();
   }
 
   function ensureMobileTransferButton() {
