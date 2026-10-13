@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.8',
+    version: '35.6.9',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -1195,7 +1195,10 @@
   }
   function yearOptionsMarkupV40139(){
     const choices=A40139.exercises||[{exercicio:currentExercise(),situacao:'atual'}];
-    return choices.map(x=>`<option value="${Number(x.exercicio)}" ${Number(x.exercicio)===A40139.getSelectedYear()?'selected':''}>${Number(x.exercicio)} · ${x.situacao==='atual'?'Atual':'Histórico'}</option>`).join('');
+    const available=choices.map(x=>`<option value="${Number(x.exercicio)}" ${Number(x.exercicio)===A40139.getSelectedYear()?'selected':''}>${Number(x.exercicio)} · ${x.situacao==='atual'?'Atual':'Histórico'}</option>`).join('');
+    // Exercicio unico: manter o select nativo operavel em navegadores que nao
+    // abrem listas de uma unica opcao. A linha explicativa nao pode ser escolhida.
+    return choices.length===1 ? available+'<option value="__indisponivel__" disabled>Outros exercícios ainda indisponíveis</option>' : available;
   }
   function yearSelectorMarkupV40139(selectId='v40139-select-year', extraClass=''){
     return `<label class="v40139-year-control ${extraClass}">Exercício
@@ -1208,12 +1211,16 @@
     const existing=[...select.options];
     // A serialização HTML do navegador normaliza `selected` para `selected=""`.
     // Comparar innerHTML literalmente causava atualizações contínuas no observer.
-    const same=existing.length===choices.length && existing.every((option,i)=>
-      option.value===String(Number(choices[i].exercicio)) &&
-      option.textContent===`${Number(choices[i].exercicio)} · ${choices[i].situacao==='atual'?'Atual':'Histórico'}`);
+    const same=existing.length===choices.length+(choices.length===1?1:0)
+      && choices.every((year,i)=>existing[i]?.value===String(Number(year.exercicio))
+        && existing[i]?.textContent===`${Number(year.exercicio)} · ${year.situacao==='atual'?'Atual':'Histórico'}`)
+      && (choices.length!==1 || (existing[1]?.disabled===true && existing[1]?.value==='__indisponivel__'));
     if(!same)select.innerHTML=yearOptionsMarkupV40139();
     const selected=String(A40139.getSelectedYear());
     if(select.value!==selected)select.value=selected;
+    select.title=choices.length===1
+      ? 'Somente este exercício está disponível. Outros anos serão liberados após o fechamento anual aprovado.'
+      : 'Selecione o exercício financeiro para consulta';
   }
   async function applyYearSelectionV40139(y){
     if(!A40139.exercises?.some(x=>Number(x.exercicio)===y))return false;
