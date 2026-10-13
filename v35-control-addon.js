@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.4',
+    version: '35.6.5',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -73,7 +73,14 @@
       .v35-link-badge{display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 6px;border-radius:999px;background:#eee9ff;color:#6044a5;font-size:9px;font-weight:800;cursor:pointer;border:1px solid #d9cff8;vertical-align:middle}
       .v35-link-btn{background:#faf8ff!important;border-color:#d9cff8!important;color:#6044a5!important}
       .v35-identity-list{display:grid;gap:8px;margin-top:12px}.v35-identity-item{border:1px solid #dde3ee;border-radius:9px;padding:10px 11px}.v35-identity-item-head{display:flex;justify-content:space-between;gap:12px}.v35-identity-item strong{color:#0d2b4e}.v35-identity-year{margin-top:7px;padding-top:7px;border-top:1px solid #eef1f5;display:flex;flex-wrap:wrap;gap:12px;font-size:10px;color:#5a6882}.v35-link-suggestion{font-size:9px;color:#6044a5;margin-top:3px;max-width:190px;white-space:normal}
-      @media(max-width:900px){.v35-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v35-recon-row{grid-template-columns:1fr 1fr}.v35-recon-row>span:first-child{grid-column:1/-1}.v35-aporte-choice-grid{grid-template-columns:1fr}}
+      .v40136-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;margin:14px 0 12px}
+      .v40136-stat{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid #dde3ee;border-radius:10px;background:#f8fafc;min-height:74px;justify-content:center}
+      .v40136-stat small{display:block;font-size:11px;font-weight:800;color:#5a6882;line-height:1.35;text-transform:none}
+      .v40136-stat strong{display:block;font-size:19px;line-height:1.2;font-weight:900;color:#0d2b4e;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+      .v40136-consumo-last{margin:8px 0 12px;line-height:1.5}
+      .v40136-consumo-last strong{font-weight:900;color:#0d2b4e}
+      .v40136-check{display:block;margin-top:10px;line-height:1.45}
+      @media(max-width:900px){.v35-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.v35-recon-row{grid-template-columns:1fr 1fr}.v35-recon-row>span:first-child{grid-column:1/-1}.v35-aporte-choice-grid{grid-template-columns:1fr}.v40136-grid{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
   }
@@ -134,10 +141,10 @@
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('Contexto anual vazio');
       applyV35ContextPayload(data);
-      console.info(`[HAPCAPEX V35.6.4] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
+      console.info(`[HAPCAPEX V35.6.5] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
       return;
     } catch (rpcErr) {
-      console.warn('[HAPCAPEX V35.6.4] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
+      console.warn('[HAPCAPEX V35.6.5] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
     }
 
     try {
@@ -163,7 +170,7 @@
         movimentos: mov || []
       });
     } catch (err) {
-      console.warn('[HAPCAPEX V35.6.4] Contexto anual indisponível; mantendo fallback V34.', err);
+      console.warn('[HAPCAPEX V35.6.5] Contexto anual indisponível; mantendo fallback V34.', err);
       V35.ready = false;
     }
   }
@@ -876,14 +883,14 @@
       <h3>1 de 4 · Conferência e preservação do histórico de ${y}</h3>
       <p>A fotografia final de ${y} só será gravada no fechamento definitivo. Esta conferência usa os dados vigentes e <b>não altera nenhuma informação</b>.</p>
       <div class="v40136-grid">
-        <div><small>OIs do exercício</small><strong>${Number(d.ois||0).toLocaleString('pt-BR')}</strong></div>
-        <div><small>Montante de ${y}</small><strong>${moneyV40136(d.montante)}</strong></div>
-        <div><small>Compromissado de ${y}</small><strong>${moneyV40136(d.compromissado)}</strong></div>
-        <div><small>Saldo de ${y}</small><strong>${moneyV40136(d.saldo)}</strong></div>
-        <div><small>Base Consumo — último lote</small><strong>${Number(d.consumo_linhas||0).toLocaleString('pt-BR')} linhas</strong></div>
-        <div><small>Transferências de ${y}</small><strong>${Number(d.transferencias||0).toLocaleString('pt-BR')}</strong></div>
+        <div class="v40136-stat"><small>OIs do exercício</small><strong>${Number(d.ois||0).toLocaleString('pt-BR')}</strong></div>
+        <div class="v40136-stat"><small>Montante de ${y}</small><strong>${moneyV40136(d.montante)}</strong></div>
+        <div class="v40136-stat"><small>Compromissado de ${y}</small><strong>${moneyV40136(d.compromissado)}</strong></div>
+        <div class="v40136-stat"><small>Saldo de ${y}</small><strong>${moneyV40136(d.saldo)}</strong></div>
+        <div class="v40136-stat"><small>Base Consumo — último lote</small><strong>${Number(d.consumo_linhas||0).toLocaleString('pt-BR')} linhas</strong></div>
+        <div class="v40136-stat"><small>Transferências de ${y}</small><strong>${Number(d.transferencias||0).toLocaleString('pt-BR')}</strong></div>
       </div>
-      <p><b>Última Base Consumo:</b> ${escapeHtml(d.lote_consumo_nome||'Não encontrada')}.</p>
+      <p class="v40136-consumo-last"><b>Última Base Consumo:</b> <strong>${escapeHtml(d.lote_consumo_nome||'Não encontrada')}</strong>.</p>
       ${alerts.length?`<div class="v35-block-note warn">${alerts.map(x=>`<div>• ${escapeHtml(String(x))}</div>`).join('')}</div>`:'<div class="v35-block-note ok">Nenhum alerta automático nesta pré-conferência.</div>'}
       <label class="v40136-check"><input type="checkbox" id="v40136-understand"> Confirmo que o histórico financeiro de ${y} deverá ser preservado integralmente antes da ativação de ${y+1}. Entendo que esta prévia ainda não faz o fechamento.</label>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-close">Cancelar</button><button type="button" class="btn btn-primary" id="v40136-step2" disabled>Continuar para planilha de ${y+1}</button></div>
