@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.10',
+    version: '35.6.12',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -150,10 +150,10 @@
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('Contexto anual vazio');
       applyV35ContextPayload(data);
-      console.info(`[HAPCAPEX V35.6.10] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
+      console.info(`[HAPCAPEX V35.6.12] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
       return;
     } catch (rpcErr) {
-      console.warn('[HAPCAPEX V35.6.10] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
+      console.warn('[HAPCAPEX V35.6.12] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
     }
 
     try {
@@ -179,7 +179,7 @@
         movimentos: mov || []
       });
     } catch (err) {
-      console.warn('[HAPCAPEX V35.6.10] Contexto anual indisponível; mantendo fallback V34.', err);
+      console.warn('[HAPCAPEX V35.6.12] Contexto anual indisponível; mantendo fallback V34.', err);
       V35.ready = false;
     }
   }
@@ -1237,6 +1237,91 @@
       }
     };
   }
+  // V40.0.142: o motor de filtros estilo Excel elimina QUALQUER <select>
+  // dentro da .toolbar. Portanto este seletor operacional nao pode usar <select>
+  // nem <input>. Gerencial continua usando seu controle nativo, fora da .toolbar.
+  function operationalYearChoicesV40142(){
+    return A40139.exercises?.length ? A40139.exercises : [{exercicio:currentExercise(),situacao:'atual'}];
+  }
+  function operationalYearLabelV40142(year){
+    return `${Number(year.exercicio)} · ${year.situacao==='atual'?'Atual':'Histórico'}`;
+  }
+  function syncOperationalYearWidgetV40142(slot){
+    if(!slot)return;
+    // Faz a migracao limpa das versoes anteriores: nunca deixe um SELECT na barra.
+    slot.querySelectorAll('.v40139-year-control, #v40139-select-year').forEach(el=>el.remove());
+    let widget=slot.querySelector('#v40142-year-picker');
+    if(!widget){
+      widget=document.createElement('div');
+      widget.id='v40142-year-picker';
+      widget.className='v40142-year-picker';
+      widget.innerHTML=`<span class="v40142-year-caption">Exercício</span>
+        <div class="v40142-year-trigger" role="combobox" tabindex="0"
+          aria-label="Selecionar exercício financeiro" aria-haspopup="listbox"
+          aria-expanded="false" aria-controls="v40142-year-options">
+          <span class="v40142-year-value"></span><span aria-hidden="true" class="v40142-year-chevron">⌄</span>
+        </div>
+        <div class="v40142-year-options" id="v40142-year-options" role="listbox"
+          aria-label="Exercícios disponíveis" hidden></div>`;
+      slot.insertBefore(widget,slot.firstChild);
+    }
+    const trigger=widget.querySelector('.v40142-year-trigger');
+    const panel=widget.querySelector('.v40142-year-options');
+    const years=operationalYearChoicesV40142();
+    const current=A40139.getSelectedYear();
+    const selected=years.find(x=>Number(x.exercicio)===current) || years[0];
+    const label=operationalYearLabelV40142(selected);
+    const val=widget.querySelector('.v40142-year-value');
+    if(val.textContent!==label)val.textContent=label;
+    const signature=years.map(y=>`${Number(y.exercicio)}:${y.situacao}`).join('|');
+    if(panel.dataset.signature!==signature){
+      panel.innerHTML=years.map(y=>`<div class="v40142-year-option" role="option"
+        tabindex="-1" data-year="${Number(y.exercicio)}" aria-selected="false">${operationalYearLabelV40142(y)}</div>`).join('')
+        +(years.length===1?'<div class="v40142-year-unavailable">Outros exercícios ainda indisponíveis</div>':'');
+      panel.dataset.signature=signature;
+    }
+    panel.querySelectorAll('[data-year]').forEach(x=>x.setAttribute('aria-selected',String(Number(x.dataset.year)===current)));
+    if(widget.dataset.v40142Bound==='1')return;
+    widget.dataset.v40142Bound='1';
+    const close=()=>{panel.hidden=true;trigger.setAttribute('aria-expanded','false');};
+    const open=()=>{panel.hidden=false;trigger.setAttribute('aria-expanded','true');};
+    const toggle=()=>{if(panel.hidden)open();else close();};
+    trigger.onclick=toggle;
+    trigger.onkeydown=e=>{
+      if(e.key==='Enter'||e.key===' '||e.key==='ArrowDown'){
+        e.preventDefault();open();panel.querySelector(`[data-year="${A40139.getSelectedYear()}"]`)?.focus();
+      }else if(e.key==='Escape')close();
+    };
+    panel.addEventListener('click',async e=>{
+      const item=e.target.closest('[data-year]');if(!item)return;
+      const year=Number(item.dataset.year);close();
+      if(!Number.isInteger(year)||year===A40139.getSelectedYear())return;
+      try{await applyYearSelectionV40139(year);}catch(err){
+        console.error('[HAPCAPEX] Erro ao trocar exercício:',err);
+        syncOperationalYearWidgetV40142(slot);
+      }
+    });
+    panel.addEventListener('keydown',e=>{
+      const options=[...panel.querySelectorAll('[data-year]')];
+      const index=options.indexOf(document.activeElement);
+      if(e.key==='Escape'){e.preventDefault();close();trigger.focus();}
+      else if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+        e.preventDefault();options[(index+(e.key==='ArrowDown'?1:-1)+options.length)%options.length]?.focus();
+      }else if(e.key==='Enter'||e.key===' '){e.preventDefault();document.activeElement?.click();}
+    });
+    // Unico listener global, evita duplicacao em cada troca de aba.
+    if(!window.__HAP_V40142_OUTSIDE_BOUND__){
+      window.__HAP_V40142_OUTSIDE_BOUND__=true;
+      document.addEventListener('pointerdown',e=>{
+        const picker=document.getElementById('v40142-year-picker');
+        if(picker&&!picker.contains(e.target)){
+          const menu=picker.querySelector('.v40142-year-options');
+          const button=picker.querySelector('.v40142-year-trigger');
+          if(menu)menu.hidden=true;if(button)button.setAttribute('aria-expanded','false');
+        }
+      });
+    }
+  }
   function removeHeaderYearSelectorV40139(){
     // Limpa a implementação anterior, que colocava controles no cabeçalho.
     document.querySelectorAll('header.topbar .user-chip .v40139-year-control').forEach(label=>{
@@ -1285,15 +1370,9 @@
             toolbar.insertBefore(slot,toolbar.firstChild);
           }
           document.querySelectorAll('#app #v40139-capex-tools').forEach(el=>{if(el!==slot)el.remove();});
-          let select=slot.querySelector('#v40139-select-year');
-          if(!select){
-            slot.insertAdjacentHTML('afterbegin',yearSelectorMarkupV40139('v40139-select-year','v40139-compact'));
-            select=slot.querySelector('#v40139-select-year');
-          }
-          // Não reescreve o DOM em todo refresh: isso evita loops do observer,
-          // perda de foco e desaparecimento durante o pós-render das barras.
-          syncYearSelectorOptionsV40139(select);
-          bindYearSelectorV40139(select);
+          // Motor HAP_XF remove selects e inputs dentro da toolbar: utilizar
+          // combobox acessivel composto por DIVs que o motor de filtros preserva.
+          syncOperationalYearWidgetV40142(slot);
           const showClose=tab==='capex' && state.role==='admin' && !A40139.isHistorical();
           let close=slot.querySelector('#v40136-annual-close');
           if(showClose&&!close){
@@ -1520,6 +1599,17 @@
     .v40139-toolbar-inline .btn{white-space:nowrap}
     .v40139-year-control.v40139-compact{font-size:9px;gap:4px;min-width:0;max-width:205px;flex:0 0 auto}
     .v40139-year-control.v40139-compact select{padding:5px 8px;min-width:0!important;width:155px!important;max-width:155px!important;flex:0 0 155px}
+    .v40142-year-picker{display:flex;align-items:center;gap:6px;position:relative;z-index:40;flex:0 0 auto;min-width:0}
+    .v40142-year-caption{font-size:9px;font-weight:800;color:#0d2b4e;white-space:nowrap}
+    .v40142-year-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;width:156px;min-width:142px;min-height:32px;border:1px solid #cad8eb;background:#fff;border-radius:8px;color:#0d2b4e;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;user-select:none}
+    .v40142-year-trigger:focus-visible{outline:2px solid #2e6bbf;outline-offset:2px}
+    .v40142-year-chevron{font-size:15px;line-height:1;color:#365b8e}
+    .v40142-year-options{position:absolute;left:44px;top:calc(100% + 5px);width:max(218px,100%);max-width:290px;max-height:245px;overflow:auto;border:1px solid #cad8eb;border-radius:9px;box-shadow:0 7px 19px rgba(13,43,78,.18);background:#fff;padding:4px;z-index:200}
+    .v40142-year-options[hidden]{display:none!important}
+    .v40142-year-option{padding:9px 10px;border-radius:6px;color:#0d2b4e;font-size:11px;font-weight:700;cursor:pointer}
+    .v40142-year-option:hover,.v40142-year-option:focus-visible{background:#e8f0fb;outline:none}
+    .v40142-year-option[aria-selected="true"]{background:#eef4fc}
+    .v40142-year-unavailable{padding:9px 10px;border-top:1px solid #e5ebf3;font-size:10px;color:#718096}
     .v40139-pager{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0;font-size:11px;color:#5a6882;font-weight:700}
     .v40139-historical [data-v40139-kpi]{cursor:pointer}
     .v40139-historical .table-card{overflow:auto}
