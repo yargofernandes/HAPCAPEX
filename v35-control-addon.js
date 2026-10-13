@@ -727,7 +727,7 @@
         <div class="history-section-title">Resumo histórico para gestão</div>
         <div class="v35-summary-grid">
           <div class="v35-summary-card"><span>Consumido em anos anteriores</span><strong style="color:var(--laranja)">${brl.format(previousConsumed)}</strong></div>
-          <div class="v35-summary-card"><span>Disponibilizado em ${currentExercise()}</span><strong>${brl.format(currentAvailable)}</strong></div>
+          <div class="v35-summary-card"><span>Capex ${currentExercise()}</span><strong>${brl.format(currentAvailable)}</strong></div>
           <div class="v35-summary-card"><span>Compromissado em ${currentExercise()}</span><strong style="color:var(--azul-claro)">${brl.format(currentCommitted)}</strong></div>
           <div class="v35-summary-card"><span>Consumido total</span><strong style="color:var(--laranja)">${brl.format(totalConsumed)}</strong></div>
           <div class="v35-summary-card"><span>Saldo atual</span><strong style="color:${currentBalance < -0.005 ? 'var(--vermelho)' : 'var(--verde)'}">${brl.format(currentBalance)}</strong></div>
