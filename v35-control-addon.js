@@ -229,6 +229,7 @@
   function decorateCurrentView() {
     injectV35Styles();
     decorateExerciseChip();
+    decorateAnnualCloseButtonV40136();
     decorateOperationalButtons();
     decorateWorkIdentityUi();
   }
@@ -821,6 +822,227 @@
       await refreshCurrent();
       alert(`Vínculo criado.\n\n${preferredHistoricalName(data)}\nOIs vinculadas: ${(data?.ois || []).map(x=>x.ordem_interna).join(', ')}`);
     };
+  }
+
+  // V40.0.136 — Preparação auditável da virada anual. Esta etapa é SOMENTE LEITURA.
+  // Não congela nem muda o exercício, não cria OIs e não envia arquivos ao servidor.
+  const V40136 = {preflight:null,parsed:null,pastOis:null};
+
+  function decorateAnnualCloseButtonV40136() {
+    if (state.role !== 'admin' || !['capex','base_oi','base_consumo','transferencias','gerencial'].includes(String(state.tab||''))) return;
+    const chip = document.querySelector('header.topbar .user-chip');
+    if (!chip || chip.querySelector('#v40136-annual-close')) return;
+    const button = document.createElement('button');
+    button.type='button';
+    button.id='v40136-annual-close';
+    button.className='btn btn-secondary';
+    button.textContent='Fechar exercício atual';
+    button.title='Iniciar conferência anual sem alterar os dados de produção.';
+    button.onclick=openAnnualWizardV40136;
+    chip.insertBefore(button,chip.firstChild);
+  }
+
+  function moneyV40136(value) {
+    return brl.format(Number(value||0));
+  }
+  function normalizeTitleV40136(input) {
+    return String(input??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]/g,'');
+  }
+  function numberV40136(value) {
+    if (typeof value === 'number') return Number.isFinite(value)?value:NaN;
+    let t=String(value??'').trim().replace(/\s/g,'').replace(/R\$/gi,'');
+    if(!t)return NaN;
+    if(t.includes(',')&&t.includes('.'))t=t.lastIndexOf(',')>t.lastIndexOf('.')?t.replace(/\./g,'').replace(',','.'):t.replace(/,/g,'');
+    else if(t.includes(','))t=t.replace(',','.');
+    const n=Number(t);
+    return Number.isFinite(n)?n:NaN;
+  }
+  function findColumnV40136(headers,patterns) {
+    return headers.findIndex(h=>patterns.some(p=>p.test(h)));
+  }
+  function renderWizardV40136(markup) {
+    const modal=document.getElementById('v40136-annual-backdrop');
+    const content=modal?.querySelector('#v40136-annual-content');
+    if(content)content.innerHTML=markup;
+    return content;
+  }
+  function renderStep1V40136() {
+    const d=V40136.preflight;
+    const y=currentExercise();
+    if(!d){renderWizardV40136(`<p>Conferindo Base O.I, Base Consumo, histórico e Transferências...</p>`);return;}
+    const alerts=Array.isArray(d.alertas)?d.alertas:[];
+    const section=renderWizardV40136(`
+      <h3>1 de 4 · Conferência e preservação do histórico de ${y}</h3>
+      <p>A fotografia final de ${y} só será gravada no fechamento definitivo. Esta conferência usa os dados vigentes e <b>não altera nenhuma informação</b>.</p>
+      <div class="v40136-grid">
+        <div><small>OIs do exercício</small><strong>${Number(d.ois||0).toLocaleString('pt-BR')}</strong></div>
+        <div><small>Montante de ${y}</small><strong>${moneyV40136(d.montante)}</strong></div>
+        <div><small>Compromissado de ${y}</small><strong>${moneyV40136(d.compromissado)}</strong></div>
+        <div><small>Saldo de ${y}</small><strong>${moneyV40136(d.saldo)}</strong></div>
+        <div><small>Base Consumo — último lote</small><strong>${Number(d.consumo_linhas||0).toLocaleString('pt-BR')} linhas</strong></div>
+        <div><small>Transferências de ${y}</small><strong>${Number(d.transferencias||0).toLocaleString('pt-BR')}</strong></div>
+      </div>
+      <p><b>Última Base Consumo:</b> ${escapeHtml(d.lote_consumo_nome||'Não encontrada')}.</p>
+      ${alerts.length?`<div class="v35-block-note warn">${alerts.map(x=>`<div>• ${escapeHtml(String(x))}</div>`).join('')}</div>`:'<div class="v35-block-note ok">Nenhum alerta automático nesta pré-conferência.</div>'}
+      <label class="v40136-check"><input type="checkbox" id="v40136-understand"> Confirmo que o histórico financeiro de ${y} deverá ser preservado integralmente antes da ativação de ${y+1}. Entendo que esta prévia ainda não faz o fechamento.</label>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-close">Cancelar</button><button type="button" class="btn btn-primary" id="v40136-step2" disabled>Continuar para planilha de ${y+1}</button></div>
+    `);
+    const accept=section.querySelector('#v40136-understand');
+    const next=section.querySelector('#v40136-step2');
+    accept.onchange=()=>next.disabled=!accept.checked;
+    next.onclick=renderStep2V40136;
+    section.querySelector('#v40136-close').onclick=closeAnnualWizardV40136;
+  }
+  function renderStep2V40136() {
+    const year=currentExercise()+1;
+    const content=renderWizardV40136(`
+      <h3>2 de 4 · Analisar a planilha inicial de ${year}</h3>
+      <p>Como o layout do Excel de ${year} ainda não foi definido, esta etapa identifica cabeçalhos e OIs sem alterar a base atual. O arquivo fica <b>somente neste navegador</b>.</p>
+      <input id="v40136-file" type="file" accept=".xlsx,.xls" style="width:100%;padding:10px;border:1px solid #dde3ee;border-radius:8px">
+      <div id="v40136-file-status" class="v35-block-note info">Aguardando uma planilha. A análise serve para preparar o modelo futuro de importação.</div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back1">Voltar</button><button type="button" class="btn btn-secondary" id="v40136-close">Cancelar</button></div>
+    `);
+    content.querySelector('#v40136-back1').onclick=renderStep1V40136;
+    content.querySelector('#v40136-close').onclick=closeAnnualWizardV40136;
+    content.querySelector('#v40136-file').onchange=async e=>{
+      const file=e.target.files?.[0];
+      if(!file)return;
+      const status=content.querySelector('#v40136-file-status');
+      status.textContent='Lendo e verificando estrutura, OIs e duplicidades...';
+      try{
+        const result=await parseAnnualPlanV40136(file);
+        V40136.parsed=result;
+        renderStep3V40136();
+      }catch(err){status.className='v35-block-note danger';status.textContent=String(err?.message||err);}
+    };
+  }
+  async function parseAnnualPlanV40136(file) {
+    if (!/\.(xlsx|xls)$/i.test(file.name)) throw Error('Selecione um Excel .xlsx ou .xls.');
+    if(file.size>25*1024*1024)throw Error('Arquivo acima de 25 MB. Precisaremos de importação em lotes para esse tamanho.');
+    if(!window.XLSX)throw Error('Leitor Excel não carregado nesta sessão. Atualize a página e tente novamente.');
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
+    if(!wb.SheetNames.length)throw Error('O arquivo não possui abas.');
+    let candidate=null;
+    for(const name of wb.SheetNames){
+      const aoa=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:null});
+      for(let i=0;i<Math.min(25,aoa.length);i++){
+        const raw=aoa[i]||[];
+        const headers=raw.map(normalizeTitleV40136);
+        const colOi=findColumnV40136(headers,[/^oi$/,/^ordeminterna$/,/^numerooi$/,/^nroi$/,/^nordeminterna$/]);
+        const colBudget=findColumnV40136(headers,[/^capex(?:inicial|20\d\d)?$/,/^montante(?:atribuido)?$/,/^orcamento(?:inicial)?$/,/^valor(?:capex|orcado)$/]);
+        const colDesc=findColumnV40136(headers,[/^obra$/,/^nome(?:da)?obra$/,/^descricao(?:daobra)?$/,/^projeto$/,/^nome$/]);
+        const monthCodes=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+        const monthCols=monthCodes.map(m=>headers.findIndex(h=>h===m||new RegExp('^'+m+'(?:eiro|ereiro|co|il|o|ho|sto|embro|ubro)?(?:\\d{2}|20\\d{2})?$').test(h)));
+        if(colOi>=0){candidate={name,aoa,headerIndex:i,raw,headers,colOi,colBudget,colDesc,monthCols};break;}
+      }
+      if(candidate)break;
+    }
+    if(!candidate)throw Error('Não identifiquei uma coluna de OI. Aguarde o modelo oficial da planilha para definirmos o mapeamento. Nenhum dado foi modificado.');
+    const rows=[];const duplicate=new Set(),seen=new Set();let invalid=0,total=0;let monthlyDifferences=0;
+    for(let i=candidate.headerIndex+1;i<candidate.aoa.length;i++){
+      const line=candidate.aoa[i];if(!line)continue;
+      const rawOi=line[candidate.colOi];if(rawOi===null||rawOi===undefined||String(rawOi).trim()==='')continue;
+      let oi=String(rawOi).trim().replace(/\.0+$/,'');
+      if(oi.length>60){invalid++;continue;}
+      if(seen.has(oi))duplicate.add(oi); else seen.add(oi);
+      const capex=candidate.colBudget>=0?numberV40136(line[candidate.colBudget]):null;
+      if(candidate.colBudget>=0&&(!Number.isFinite(capex)||capex<0))invalid++;
+      else if(Number.isFinite(capex))total+=capex;
+      if(candidate.monthCols.every(c=>c>=0)&&Number.isFinite(capex)){
+        const monthly=candidate.monthCols.reduce((sum,c)=>sum+(numberV40136(line[c])||0),0);
+        if(Math.abs(monthly-capex)>0.01) monthlyDifferences++;
+      }
+      rows.push({oi,capex,desc:candidate.colDesc>=0?String(line[candidate.colDesc]??'').slice(0,140):''});
+      if(rows.length>40000)throw Error('Mais de 40 mil OIs. Precisaremos processar essa planilha em lotes.');
+    }
+    if(!rows.length)throw Error('Não identifiquei nenhuma OI na planilha.');
+    const previous=new Map();let previousIncomplete=false;
+    const {data,error}=await sb.from('vw_controle_oi_exercicio')
+      .select('ordem_interna,nome_obra_plano,exercicio')
+      .eq('exercicio',currentExercise()).range(0,1999);
+    if(error)throw new Error('Falha na comparação com o exercício anterior: '+error.message);
+    for(const item of data||[])previous.set(String(item.ordem_interna),item);
+    if((data||[]).length===2000)previousIncomplete=true;
+    const returning=rows.filter(r=>previous.has(r.oi));
+    const newOis=rows.filter(r=>!previous.has(r.oi));
+    const duplicateNames=new Map();
+    for(const item of previous.values()){
+      const norm=normalizeTitleV40136(item.nome_obra_plano);
+      if(norm&&!duplicateNames.has(norm))duplicateNames.set(norm,item.ordem_interna);
+    }
+    const possibleRename=newOis.filter(r=>duplicateNames.has(normalizeTitleV40136(r.desc)));
+    return {name:file.name,year:currentExercise()+1,sheet:candidate.name,count:rows.length,
+      columns:candidate.raw.map(v=>String(v??'')),duplicates:[...duplicate],invalid,total,monthlyDifferences,monthsRecognized:candidate.monthCols.filter(c=>c>=0).length,
+      hasBudget:candidate.colBudget>=0,returning:returning.length,newOis:newOis.length,
+      possibleRename:possibleRename.slice(0,12).map(r=>({oi:r.oi,prev:duplicateNames.get(normalizeTitleV40136(r.desc))})),previousIncomplete,
+      status:'PREVIA_LOCAL_NAO_IMPORTADA'};
+  }
+  function renderStep3V40136(){
+    const d=V40136.parsed;if(!d)return renderStep2V40136();
+    const notes=[
+      ...(!d.hasBudget?['A coluna de CAPEX não foi identificada; o valor e a conciliação mensal precisam ser mapeados quando recebermos o Excel oficial.']:[]),
+      ...(d.invalid?[`${d.invalid} linha(s) com valores inválidos ou OIs excessivamente longas.`]:[]),
+      ...(d.duplicates.length?[`${d.duplicates.length} OI(s) duplicada(s) na planilha.`]:[]),
+      ...(d.monthlyDifferences?[`${d.monthlyDifferences} OI(s) com divergência entre CAPEX total e distribuição mensal.`]:[]),
+      ...(d.monthsRecognized<12?['Os 12 meses não foram reconhecidos integralmente. A distribuição mensal ainda precisa de validação.']:[]),
+      ...(d.previousIncomplete?['A lista de OIs anteriores excedeu a prévia de 2.000 registros; será necessária comparação por lotes.']:[])
+    ];
+    const c=renderWizardV40136(`
+      <h3>3 de 4 · Relatório preliminar de conciliação — ${d.year}</h3>
+      <p>Arquivo <b>${escapeHtml(d.name)}</b> · aba <b>${escapeHtml(d.sheet)}</b>. Os números são apenas uma <b>prévia local</b>.</p>
+      <div class="v40136-grid">
+        <div><small>Linhas com OI</small><strong>${d.count.toLocaleString('pt-BR')}</strong></div>
+        <div><small>OIs já existentes em ${d.year-1}</small><strong>${d.returning.toLocaleString('pt-BR')}</strong></div>
+        <div><small>OIs não encontradas em ${d.year-1}</small><strong>${d.newOis.toLocaleString('pt-BR')}</strong></div>
+        <div><small>CAPEX identificado</small><strong>${d.hasBudget?moneyV40136(d.total):'Pendente'}</strong></div>
+      </div>
+      <p><b>Cabeçalhos identificados:</b> ${escapeHtml(d.columns.filter(Boolean).slice(0,20).join(' · '))}</p>
+      ${d.possibleRename.length?`<div class="v35-block-note info">Possíveis mudanças de OI a confirmar: ${d.possibleRename.map(x=>`<div>${escapeHtml(x.prev)} → ${escapeHtml(x.oi)}</div>`).join('')}</div>`:''}
+      ${notes.length?`<div class="v35-block-note warn">${notes.map(x=>`<div>• ${escapeHtml(x)}</div>`).join('')}</div>`:''}
+      <div class="v35-block-note info">A validação financeira completa (mensalização, Carry Over com troca de OI e saldo inicial) será concluída quando o formato oficial de ${d.year} estiver definido. Nenhum registro foi importado.</div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back2">Escolher outro arquivo</button><button type="button" class="btn btn-primary" id="v40136-step4">Ver condições de ativação</button></div>
+    `);
+    c.querySelector('#v40136-back2').onclick=renderStep2V40136;
+    c.querySelector('#v40136-step4').onclick=renderStep4V40136;
+  }
+  function renderStep4V40136(){
+    const d=V40136.parsed;
+    const content=renderWizardV40136(`
+      <h3>4 de 4 · Aprovação e ativação de ${currentExercise()+1}</h3>
+      <div class="v35-block-note warn"><b>Ativação bloqueada nesta primeira entrega.</b> Antes de habilitá-la, precisamos implementar e testar o snapshot definitivo de ${currentExercise()}, a consulta histórica das Bases OI/Consumo, a classificação final dos Carry Overs e a importação do layout oficial de ${currentExercise()+1}.</div>
+      <p>${d?.name?`Planilha analisada localmente: <b>${escapeHtml(d.name)}</b>. `:''}Nenhum exercício foi fechado, nenhuma Base OI ou Base Consumo foi zerada, nenhuma Transferência foi alterada e nenhum arquivo financeiro foi salvo no GitHub.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back3">Voltar</button><button type="button" class="btn btn-secondary" id="v40136-close">Concluir pré-conferência</button><button type="button" class="btn btn-primary" disabled>Ativar ${currentExercise()+1} (indisponível)</button></div>
+    `);
+    content.querySelector('#v40136-back3').onclick=renderStep3V40136;
+    content.querySelector('#v40136-close').onclick=closeAnnualWizardV40136;
+  }
+  function closeAnnualWizardV40136(){
+    V40136.parsed=null;
+    document.getElementById('v40136-annual-backdrop')?.remove();
+  }
+  async function openAnnualWizardV40136(){
+    if(state.role!=='admin')return;
+    if(document.getElementById('v40136-annual-backdrop'))return;
+    const backdrop=document.createElement('div');
+    backdrop.id='v40136-annual-backdrop';
+    backdrop.className='modal-backdrop';
+    backdrop.innerHTML='<div class="modal-box modal-wide v40136-dialog" role="dialog" aria-modal="true" aria-label="Fechar exercício atual"><h2>Fechar exercício atual · Preparação segura</h2><div id="v40136-annual-content">Conferindo...</div></div>';
+    document.body.appendChild(backdrop);
+    V40136.preflight=null;
+    V40136.parsed=null;
+    renderStep1V40136();
+    try{
+      const {data,error}=await sb.rpc('previsualizar_fechamento_exercicio_v40136');
+      if(error)throw error;
+      if(!document.getElementById('v40136-annual-backdrop'))return;
+      if(Number(data?.exercicio_atual)!==currentExercise())throw Error('Exercício da prévia difere do exercício ativo. Atualize a página.');
+      V40136.preflight=data;
+      renderStep1V40136();
+    }catch(err){
+      const c=renderWizardV40136(`<div class="v35-block-note danger">Não foi possível conferir o exercício: ${escapeHtml(String(err?.message||err))}. Nenhum dado foi alterado.</div><div class="modal-actions"><button class="btn btn-secondary" id="v40136-close">Fechar</button></div>`);
+      c?.querySelector('#v40136-close')?.addEventListener('click',closeAnnualWizardV40136);
+    }
   }
 
   injectV35Styles();
