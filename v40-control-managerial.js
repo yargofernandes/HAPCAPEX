@@ -789,7 +789,7 @@
     bindManagerialTableControls(document);
     document.querySelectorAll('[data-v4071-edit-oi]').forEach(btn=>btn.addEventListener('click',()=>{
       const id=btn.getAttribute('data-v4071-edit-oi');
-      if(typeof editarOi==='function' && id) void editarOi(id);
+      if(!mgr.raw?.somente_leitura && typeof editarOi==='function' && id) void editarOi(id);
     }));
     const pending=document.getElementById('v4071-pending-kpi');
     if(pending) pending.addEventListener('click',()=>document.getElementById('v4071-pending-section')?.scrollIntoView({behavior:'smooth',block:'start'}));
@@ -820,15 +820,22 @@
     const appEl=document.getElementById('app'); if(!appEl)return;
     mgr.loading=true;
     appEl.innerHTML='<div class="session-loading"><div class="session-loading-card"><strong>Gerencial</strong><span>Consolidando dados e indicadores...</span></div></div>';
-    const {data,error}=await sb.rpc('obter_gerencial_controle_v4082',{p_exercicio:null});
+    const requestedYear=window.HAP_V40139?.getSelectedYear?.() ?? null;
+    const {data,error}=await sb.rpc('obter_gerencial_controle_v4082',{p_exercicio:requestedYear});
     mgr.loading=false;
     if(error){appEl.innerHTML=`<div class="error-msg">Não foi possível carregar o Gerencial: ${esc(error.message||error)}</div>`;return;}
     mgr.raw=data||{};
+    appEl.classList.toggle('v40139-managerial-historical',mgr.raw.somente_leitura===true);
     let fullName='';try{fullName=state?.fullName||'';}catch(_){}
     appEl.innerHTML=`<header class="topbar"><div><div class="brand-eyebrow">Controle de Capex</div><div class="brand-title">Gerencial</div></div>${navHtml(true)}<div class="user-chip">${esc(fullName)} <span class="role-badge">Admin</span><button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button><button class="btn btn-secondary" id="logout-btn">Sair</button></div></header>
       ${filterToolbarHtml()}<div id="v4071-content"></div>`;
     document.getElementById('logout-btn')?.addEventListener('click',()=>sb.auth.signOut());
     bindFilterControls(); renderContent();
+    if(mgr.raw.somente_leitura) {
+      const t=document.getElementById('v4071-filter-summary');
+      if(t)t.insertAdjacentHTML('afterbegin','<span class="v4071-chip">Exercício histórico · somente leitura</span>');
+    }
+    window.HAP_V40139?.decorateYearControl?.();
   }
 
   function loadScriptOnce(src,test) {

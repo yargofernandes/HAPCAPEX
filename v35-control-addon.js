@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.6',
+    version: '35.6.7',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -245,6 +245,7 @@
   function decorateCurrentView() {
     injectV35Styles();
     decorateExerciseChip();
+    decorateYearSelectorV40139();
     decorateAnnualCloseButtonV40136();
     decorateOperationalButtons();
     decorateWorkIdentityUi();
@@ -845,6 +846,10 @@
   const V40136 = {preflight:null,parsed:null,pastOis:null};
 
   function decorateAnnualCloseButtonV40136() {
+    if(window.HAP_V40139?.isHistorical?.()){
+      document.getElementById('v40136-annual-close')?.remove();
+      return;
+    }
     if (state.role !== 'admin' || !['capex','base_oi','base_consumo','transferencias','gerencial'].includes(String(state.tab||''))) return;
     const chip = document.querySelector('header.topbar .user-chip');
     if (!chip || chip.querySelector('#v40136-annual-close')) return;
@@ -986,7 +991,8 @@
         const monthly=candidate.monthCols.reduce((sum,c)=>sum+(numberV40136(line[c])||0),0);
         if(Math.abs(monthly-capex)>0.01) monthlyDifferences++;
       }
-      rows.push({oi,capex,desc:candidate.colDesc>=0?String(line[candidate.colDesc]??'').slice(0,140):''});
+      rows.push({oi,capex,desc:candidate.colDesc>=0?String(line[candidate.colDesc]??'').slice(0,140):'',
+        months:candidate.monthCols.every(c=>c>=0)?candidate.monthCols.map(c=>numberV40136(line[c])):null});
       if(rows.length>40000)throw Error('Mais de 40 mil OIs. Precisaremos processar essa planilha em lotes.');
     }
     if(!rows.length)throw Error('Não identifiquei nenhuma OI na planilha.');
@@ -1009,6 +1015,8 @@
       columns:candidate.raw.map(v=>String(v??'')),duplicates:[...duplicate],invalid,total,monthlyDifferences,monthsRecognized:candidate.monthCols.filter(c=>c>=0).length,
       hasBudget:candidate.colBudget>=0,returning:returning.length,newOis:newOis.length,
       possibleRename:possibleRename.slice(0,12).map(r=>({oi:r.oi,prev:duplicateNames.get(normalizeTitleV40136(r.desc))})),previousIncomplete,
+      rows:rows.map(r=>({oi:r.oi,descricao:r.desc,capex:Number.isFinite(r.capex)?r.capex:null,
+        ...(r.months?.every(Number.isFinite)?{meses:r.months}: {})})),
       status:'PREVIA_LOCAL_NAO_IMPORTADA'};
   }
   function renderStep3V40136(){
@@ -1033,22 +1041,100 @@
       <p><b>Cabeçalhos identificados:</b> ${escapeHtml(d.columns.filter(Boolean).slice(0,20).join(' · '))}</p>
       ${d.possibleRename.length?`<div class="v35-block-note info">Possíveis mudanças de OI a confirmar: ${d.possibleRename.map(x=>`<div>${escapeHtml(x.prev)} → ${escapeHtml(x.oi)}</div>`).join('')}</div>`:''}
       ${notes.length?`<div class="v35-block-note warn">${notes.map(x=>`<div>• ${escapeHtml(x)}</div>`).join('')}</div>`:''}
-      <div class="v35-block-note info">A validação financeira completa (mensalização, Carry Over com troca de OI e saldo inicial) será concluída quando o formato oficial de ${d.year} estiver definido. Nenhum registro foi importado.</div>
-      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back2">Escolher outro arquivo</button><button type="button" class="btn btn-primary" id="v40136-step4">Ver condições de ativação</button></div>
+      <div class="v35-block-note info">O arquivo está somente em prévia local. Para registrar uma preparação no Supabase, a planilha deve apresentar OIs únicas e valores CAPEX válidos. As sugestões de mudança de OI exigirão revisão humana.</div>
+      <div id="v40139-stage-status"></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back2">Escolher outro arquivo</button>
+        <button type="button" class="btn btn-secondary" id="v40139-save-stage" ${d.hasBudget&&!d.invalid&&!d.duplicates.length&&!d.monthlyDifferences?'':'disabled'}>Salvar preparação de ${d.year}</button>
+        <button type="button" class="btn btn-primary" id="v40136-step4">Ver condições de ativação</button></div>
     `);
     c.querySelector('#v40136-back2').onclick=renderStep2V40136;
     c.querySelector('#v40136-step4').onclick=renderStep4V40136;
+    c.querySelector('#v40139-save-stage').onclick=async()=>{
+      const yes=confirm(`Registrar somente a PREPARAÇÃO de ${d.year} no Supabase? O exercício ${d.year-1} continuará aberto. Nenhuma Base OI, Base Consumo ou Curva será alterada.`);
+      if(!yes)return;
+      const button=c.querySelector('#v40139-save-stage');const out=c.querySelector('#v40139-stage-status');
+      button.disabled=true;out.textContent='Conferindo no servidor...';
+      try{
+        const params={p_exercicio:d.year,p_arquivo:d.name,p_planilha:d.sheet,p_dados:d.rows};
+        const {data:preview,error:e1}=await sb.rpc('preparar_proximo_exercicio_v40139',{...params,p_validar:false});
+        if(e1)throw e1;
+        if(!preview?.valido)throw Error('Erros: '+(preview?.erros||[]).slice(0,10).join('; '));
+        if(Number(preview?.capex_total)!==Number(d.total.toFixed(2)))throw Error('Divergência entre a planilha e a validação no servidor');
+        const {data:result,error:e2}=await sb.rpc('preparar_proximo_exercicio_v40139',{...params,p_validar:true});
+        if(e2)throw e2;
+        if(!result?.valido||!result?.gravado)throw Error('O servidor não confirmou a preparação');
+        out.className='v35-block-note ok';out.textContent=`Preparação ${d.year} registrada no Supabase, aguardando conferência final. ${d.year-1} permanece ativo.`;
+        V40136.preparation=result;button.textContent='Preparação salva';
+      }catch(err){out.className='v35-block-note danger';out.textContent=String(err.message||err);button.disabled=false;}
+    };
   }
   function renderStep4V40136(){
-    const d=V40136.parsed;
+    const y=currentExercise()+1;
     const content=renderWizardV40136(`
-      <h3>4 de 4 · Aprovação e ativação de ${currentExercise()+1}</h3>
-      <div class="v35-block-note warn"><b>Ativação bloqueada nesta primeira entrega.</b> Antes de habilitá-la, precisamos implementar e testar o snapshot definitivo de ${currentExercise()}, a consulta histórica das Bases OI/Consumo, a classificação final dos Carry Overs e a importação do layout oficial de ${currentExercise()+1}.</div>
-      <p>${d?.name?`Planilha analisada localmente: <b>${escapeHtml(d.name)}</b>. `:''}Nenhum exercício foi fechado, nenhuma Base OI ou Base Consumo foi zerada, nenhuma Transferência foi alterada e nenhum arquivo financeiro foi salvo no GitHub.</p>
-      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back3">Voltar</button><button type="button" class="btn btn-secondary" id="v40136-close">Concluir pré-conferência</button><button type="button" class="btn btn-primary" disabled>Ativar ${currentExercise()+1} (indisponível)</button></div>
+      <h3>4 de 4 · Aprovação e ativação de ${y}</h3>
+      <div class="v35-block-note info"><b>Controle anual protegido:</b> uma simulação verifica a Base Consumo, vínculos das OIs, conciliação financeira e integridade dos registros. Nenhum exercício é fechado sem confirmação administrativa e sem a data correta.</div>
+      <div id="v40139-sim-result">Consultando preparação no Supabase...</div>
+      <div id="v40139-map-decisions"></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="v40136-back3">Voltar</button>
+        <button type="button" class="btn btn-secondary" id="v40136-close">Concluir pré-conferência</button>
+        <button type="button" class="btn btn-primary" id="v40139-final-activate" disabled>Ativar ${y} (aguardando simulação)</button></div>
     `);
     content.querySelector('#v40136-back3').onclick=renderStep3V40136;
     content.querySelector('#v40136-close').onclick=closeAnnualWizardV40136;
+    void (async()=>{
+      const status=content.querySelector('#v40139-sim-result');
+      const decisions=content.querySelector('#v40139-map-decisions');
+      const button=content.querySelector('#v40139-final-activate');
+      try {
+        const {data:d,error}=await sb.rpc('simular_virada_exercicio_v40139',{p_exercicio:y});
+        if(error)throw error;if(!document.body.contains(content))return;
+        const notes=Array.isArray(d.alertas)?d.alertas:[];
+        const linkSuggestions=Array.isArray(d.mudancas_oi_sugeridas)?d.mudancas_oi_sugeridas:[];
+        status.innerHTML=`<div class="v40136-grid">
+          <div class="v40136-stat"><small>Preparação de ${y}</small><strong style="font-size:14px">${escapeHtml(d.etapa_preparacao||'Não iniciada')}</strong></div>
+          <div class="v40136-stat"><small>OIs para ${y}</small><strong>${Number(d.qtd_oi_proxima||0).toLocaleString('pt-BR')}</strong></div>
+          <div class="v40136-stat"><small>CAPEX inicial de ${y}</small><strong>${moneyV40136(d.capex_proximo||0)}</strong></div>
+          <div class="v40136-stat"><small>Data mínima de ativação</small><strong style="font-size:14px">01/01/${y}</strong></div>
+        </div>
+        <div class="v35-block-note ${d.apto_tecnicamente?'ok':'warn'}"><b>${d.apto_tecnicamente?'Pré-conferência financeira aprovada':'Há condições pendentes para ativação'}.</b>
+          ${d.data_permitida?'A data mínima foi alcançada.':'Ainda não chegou a data de abertura de '+y+'.'}
+        </div>
+        ${notes.length?`<details class="v35-collapsible" open><summary>Alertas e conferências (${notes.length})</summary><div class="v35-collapsible-body">${notes.slice(0,30).map(t=>`<p>• ${escapeHtml(String(t))}</p>`).join('')}</div></details>`:''}`;
+        if(d.etapa_preparacao==='validacao_pendente'){
+          const matches=linkSuggestions.map((s,i)=>`<div class="v40139-map-row"><span><strong>OI nova ${escapeHtml(s.oi_nova)}</strong> · ${escapeHtml(s.nome||'')}</span>
+            <label>Decisão<select data-v40139-link="${escapeHtml(s.oi_nova)}">
+              <option value="">Selecionar...</option>
+              <option value="${escapeHtml(s.oi_anterior_sugerida)}">Vincular à OI anterior ${escapeHtml(s.oi_anterior_sugerida)}</option>
+              <option value="nova">Tratar como obra nova (sem vínculo)</option>
+            </select></label></div>`).join('');
+          decisions.innerHTML=`<div class="v35-block-note info"><b>Aprovação administrativa da planilha:</b> confira os valores e as sugestões. Vinculações são registradas somente após sua confirmação.</div>
+            ${matches}<div class="modal-actions"><button class="btn btn-secondary" id="v40139-approve-plan">Aprovar preparação de ${y}</button></div><div id="v40139-approve-msg"></div>`;
+          decisions.querySelector('#v40139-approve-plan').onclick=async()=>{
+            const map={};let missing=false;
+            decisions.querySelectorAll('[data-v40139-link]').forEach(el=>{if(!el.value)missing=true;else map[el.dataset.v40139Link]=el.value;});
+            if(missing){alert('Revise cada possível mudança de OI antes da aprovação.');return;}
+            if(!confirm(`Aprovar a planilha de ${y} e as decisões de Carry Over? Isso NÃO encerra ${y-1} nem ativa ${y}.`))return;
+            const approve=decisions.querySelector('#v40139-approve-plan');approve.disabled=true;
+            const {data:result,error:err}=await sb.rpc('aprovar_preparacao_exercicio_v40139',{p_exercicio:y,p_vinculos:map,p_confirmo:true});
+            if(err){decisions.querySelector('#v40139-approve-msg').textContent=String(err.message);approve.disabled=false;return;}
+            if(result?.aprovado)renderStep4V40136();
+          };
+        }
+        if(d.apto_tecnicamente===true && d.data_permitida===true && d.etapa_preparacao==='validado'){
+          button.disabled=false;button.textContent='Confirmar fechamento e ativar '+y;
+          button.onclick=async()=>{
+            const phrase=`FECHAR ${y-1} E ABRIR ${y}`;
+            const answer=prompt(`Operação definitiva e auditável. Digite exatamente:\n${phrase}\n\nOs dados financeiros de ${y-1} serão congelados e ${y} será ativado.`);
+            if(answer!==phrase){if(answer!==null)alert('Confirmação inválida. Nenhum dado foi alterado.');return;}
+            if(!confirm(`Última confirmação: encerrar ${y-1}, guardar o histórico e abrir ${y}?`))return;
+            button.disabled=true;button.textContent='Processando fechamento...';
+            const {data:result,error:e}=await sb.rpc('concluir_virada_exercicio_v40139',{p_exercicio_proximo:y,p_confirmacao:phrase});
+            if(e){alert('Virada não concluída: '+e.message+'\nAs alterações foram revertidas pelo Supabase.');button.disabled=false;button.textContent='Confirmar fechamento e ativar '+y;return;}
+            if(result?.executado){alert(`Exercício ${y} ativado. Histórico de ${y-1} preservado. A página será atualizada.`);location.reload();}
+          };
+        }else button.textContent='Ativar '+y+' (bloqueado)';
+      }catch(err){status.innerHTML=`<div class="v35-block-note danger">Não foi possível executar a simulação: ${escapeHtml(String(err.message||err))}. Nenhum dado foi alterado.</div>`;}
+    })();
   }
   function closeAnnualWizardV40136(){
     V40136.parsed=null;
@@ -1077,6 +1163,238 @@
       c?.querySelector('#v40136-close')?.addEventListener('click',closeAnnualWizardV40136);
     }
   }
+
+
+  // V40.0.139 - Filtro de exercicios: atual preserva todas as rotinas originais;
+  // historicos sao SOMENTE LEITURA e consultados em paginas no Supabase.
+  const A40139 = window.HAP_V40139 = {
+    selectedYear: null, exercises: null, loadingYears: false,
+    historicQuery:'',historicPackage:'',historicHead:'',historicPage:0,
+    getSelectedYear(){return Number(this.selectedYear||currentExercise());},
+    isHistorical(){return this.getSelectedYear()!==currentExercise();},
+    decorateYearControl(){decorateYearSelectorV40139();},
+    renderHistoricalCapex(){return renderHistoricalCapexV40139();},
+    renderHistoricalBase(){return renderHistoricalBaseV40139();}
+  };
+  let historicalRenderTokenV40139=0;
+  function showFiscalErrorV40139(err){
+    app.innerHTML=`<div class="error-msg" style="margin:25px">Consulta histórica indisponível: ${escapeHtml(String(err?.message||err))}</div>`;
+  }
+  async function loadYearsV40139() {
+    if (A40139.loadingYears || A40139.exercises) return;
+    A40139.loadingYears=true;
+    try {
+      const {data,error}=await sb.rpc('listar_exercicios_consulta_v40138');
+      if(error)throw error;
+      A40139.exercises=Array.isArray(data?.exercicios)?data.exercicios:[];
+      if(!A40139.exercises.some(x=>Number(x.exercicio)===A40139.getSelectedYear()))A40139.selectedYear=Number(data.atual)||currentExercise();
+    }catch(err){console.warn('[HAPCAPEX] Exercícios indisponíveis:',err); A40139.exercises=[{exercicio:currentExercise(),situacao:'atual'}];}
+    finally {A40139.loadingYears=false;decorateYearSelectorV40139();}
+  }
+  function yearSelectorMarkupV40139(){
+    const choices=A40139.exercises||[{exercicio:currentExercise(),situacao:'atual'}];
+    return `<label class="v40139-year-control">Exercício
+      <select id="v40139-select-year" aria-label="Exercício para consulta">
+       ${choices.map(x=>`<option value="${Number(x.exercicio)}" ${Number(x.exercicio)===A40139.getSelectedYear()?'selected':''}>${Number(x.exercicio)} · ${x.situacao==='atual'?'Atual':'Histórico'}</option>`).join('')}
+      </select></label>`;
+  }
+  function decorateYearSelectorV40139(){
+    try{
+      if(!['capex','gerencial','base_oi','base_consumo'].includes(String(state.tab||'')))return;
+      const chip=document.querySelector('header.topbar .user-chip');
+      if(!chip)return;
+      const existing=chip.querySelector('#v40139-select-year');
+      if(existing){
+        const options=yearSelectorMarkupV40139();
+        const temp=document.createElement('span');temp.innerHTML=options;
+        const newOptions=temp.querySelector('select')?.innerHTML;
+        if(newOptions && existing.innerHTML!==newOptions)existing.innerHTML=newOptions;
+        existing.value=String(A40139.getSelectedYear());return;
+      }
+      const slot=document.createElement('span');slot.innerHTML=yearSelectorMarkupV40139();
+      chip.insertBefore(slot,chip.firstChild);
+      slot.querySelector('#v40139-select-year').onchange=async ev=>{
+        const y=Number(ev.target.value);
+        if(!A40139.exercises?.some(x=>Number(x.exercicio)===y)){ev.target.value=String(A40139.getSelectedYear());return;}
+        A40139.selectedYear=y;A40139.historicPage=0;
+        A40139.historicQuery='';A40139.historicPackage='';A40139.historicHead='';
+        if(state.tab==='gerencial') {
+          if(window.HAP_V4071_CONTROL_MANAGERIAL?.loadManagerialTab)
+            await window.HAP_V4071_CONTROL_MANAGERIAL.loadManagerialTab();
+          else await refreshCurrent();
+        } else if(A40139.isHistorical()){
+          if(state.tab==='capex')await renderHistoricalCapexV40139();
+          else await renderHistoricalBaseV40139();
+        }else await refreshCurrent();
+      };
+      if(!A40139.exercises)void loadYearsV40139();
+    }catch(e){console.warn('Seletor anual:',e);}
+  }
+  function historicalHeadV40139(title){
+    return `<header class="topbar"><div><div class="brand-eyebrow">Controle de Capex</div><div class="brand-title">${escapeHtml(title)}</div></div>
+      ${navHtml(state.role==='admin')}<div class="user-chip">${escapeHtml(state.fullName||'')} <span class="role-badge">${state.role==='admin'?'Admin':'Visualizador'}</span>
+      <button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button>
+      <button class="btn btn-secondary" id="logout-btn">Sair</button></div></header>`;
+  }
+  function historicKpiV40139(title,value,metric=''){
+    return `<div class="kpi-card ${metric?'clickable':''}" ${metric?`data-v40139-kpi="${metric}" tabindex="0" role="button"`:''}><div class="label">${title}</div><div class="value">${moneyV40136(value)}</div></div>`;
+  }
+  function setupHistoryHeaderV40139(){
+    document.getElementById('logout-btn')?.addEventListener('click',()=>sb.auth.signOut());
+    decorateYearSelectorV40139();
+  }
+  async function renderHistoricalCapexV40139() {
+    const y=A40139.getSelectedYear();
+    if(!A40139.isHistorical())return refreshCurrent();
+    const seq=++historicalRenderTokenV40139;
+    const search=A40139.historicQuery;
+    const pkg=A40139.historicPackage;
+    const head=A40139.historicHead;
+    const page=A40139.historicPage;
+    try{
+      const {data:d,error}=await sb.rpc('consultar_capex_historico_v40138',{
+        p_exercicio:y,p_busca:search||null,p_pacote:pkg||null,p_head:head||null,
+        p_limite:100,p_deslocamento:page*100});
+      if(error)throw error;if(seq!==historicalRenderTokenV40139||state.tab!=='capex'||!A40139.isHistorical())return;
+      const k=d.kpis||{};const rows=d.linhas||[];
+      const qtd=Number(d.total_filtrado||0),last=Math.max(0,Math.ceil(qtd/100)-1);
+      const opts=(values,current)=>Array.isArray(values)?values.map(v=>`<option value="${escapeHtml(String(v))}" ${String(v)===current?'selected':''}>${escapeHtml(String(v))}</option>`).join(''):'';
+      app.innerHTML=`<div class="v40139-historical">${historicalHeadV40139('CAPEX · Histórico de '+y)}
+      <div class="v35-block-note info"><strong>Exercício ${y} encerrado · somente consulta.</strong> Dados congelados no fechamento anual; nenhuma operação financeira pode ser feita nesta visualização.</div>
+      <div class="kpi-grid v37-kpi-grid">
+        ${historicKpiV40139('CAPEX Inicial',k.capex_inicial,'inicial')}
+        ${historicKpiV40139('Doações',k.doacoes,'doacoes')}
+        ${historicKpiV40139('Contingenciamentos',k.contingenciamentos,'contingenciamentos')}
+        ${historicKpiV40139('Aportes Extras',k.aportes,'aportes')}
+        ${historicKpiV40139('CAPEX Atual',k.capex_atual_formula,'conciliação')}
+        ${historicKpiV40139('Compromissado',k.compromissado_operacional,'ois')}
+        ${historicKpiV40139('Saldo disponível',k.saldo_operacional,'ois')}
+        <div class="kpi-card"><div class="label">% Compromissado</div><div class="value">${Number(k.capex_atual_formula)>0?(Number(k.compromissado_operacional)/Number(k.capex_atual_formula)*100).toLocaleString('pt-BR',{maximumFractionDigits:1,minimumFractionDigits:1})+'%':'—'}</div></div>
+        <div class="kpi-card"><div class="label">Qtde de obras</div><div class="value">${Number(k.qtd_obras||0).toLocaleString('pt-BR')}</div></div>
+      </div>
+      <div class="toolbar v40139-toolbar" style="display:flex;gap:8px;flex-wrap:wrap">
+       <input id="v40139-search" placeholder="Buscar OI ou obra" value="${escapeHtml(search)}" style="min-width:200px;flex:2">
+       <select id="v40139-package"><option value="">Todos os pacotes</option>${opts(d.filtros?.pacotes,pkg)}</select>
+       <select id="v40139-head"><option value="">Todos os HEADs</option>${opts(d.filtros?.heads,head)}</select>
+       <button class="btn btn-secondary" id="v40139-clear">Limpar filtros</button>
+       <button class="btn btn-secondary" id="v40139-xlsx">Exportar Excel</button>
+      </div>
+      <div class="table-card" id="v40139-lista"><table><thead><tr><th>OI</th><th>Obra</th><th>Montante</th><th>Compromissado</th><th>Saldo</th><th>Pacote CAPEX</th><th>HEAD Operação</th><th>Grupo Executivo</th><th>Detalhamento</th><th>Categoria ORC</th><th>Detalhamento ORC</th></tr></thead><tbody>
+      ${rows.length?rows.map(r=>`<tr><td>${escapeHtml(r.ordem_interna)}</td><td>${escapeHtml(r.obra||'')}</td><td>${moneyV40136(r.montante_atribuido)}</td><td>${moneyV40136(r.valor_compromissado)}</td><td>${moneyV40136(r.saldo_disponivel)}</td><td>${escapeHtml(r.pacote_capex||'')}</td><td>${escapeHtml(r.head_operacao||'')}</td><td>${escapeHtml(r.grupo_executivo||'')}</td><td>${escapeHtml(r.detalhamento||'')}</td><td>${escapeHtml(r.categoria_orc||'')}</td><td>${escapeHtml(r.detalhamento_orc||'')}</td></tr>`).join(''):'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>'}
+      </tbody></table></div><div class="v40139-pager"><span>${qtd.toLocaleString('pt-BR')} OIs · página ${page+1} de ${last+1}</span><div><button class="btn btn-secondary" id="v40139-prev" ${page===0?'disabled':''}>Anterior</button> <button class="btn btn-secondary" id="v40139-next" ${page>=last?'disabled':''}>Próxima</button></div></div>
+      </div>`;
+      setupHistoryHeaderV40139();
+      const reload=()=>{A40139.historicPage=0;void renderHistoricalCapexV40139();};
+      document.getElementById('v40139-search').onchange=e=>{A40139.historicQuery=e.target.value.trim();reload();};
+      document.getElementById('v40139-package').onchange=e=>{A40139.historicPackage=e.target.value;reload();};
+      document.getElementById('v40139-head').onchange=e=>{A40139.historicHead=e.target.value;reload();};
+      document.getElementById('v40139-clear').onclick=()=>{A40139.historicQuery='';A40139.historicPackage='';A40139.historicHead='';reload();};
+      document.getElementById('v40139-prev').onclick=()=>{A40139.historicPage=Math.max(0,page-1);void renderHistoricalCapexV40139();};
+      document.getElementById('v40139-next').onclick=()=>{A40139.historicPage=Math.min(last,page+1);void renderHistoricalCapexV40139();};
+      document.getElementById('v40139-xlsx').onclick=()=>void exportHistoricalCapexV40139();
+      document.querySelectorAll('[data-v40139-kpi]').forEach(node=>{
+        const open=()=>void openHistoricalKpiV40139(node.dataset.v40139Kpi);
+        node.onclick=open;node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
+      });
+    }catch(err){if(seq===historicalRenderTokenV40139)showFiscalErrorV40139(err);}
+  }
+  async function exportHistoricalCapexV40139(){
+    if(!window.XLSX)return alert('Leitor Excel não disponível');
+    const year=A40139.getSelectedYear();const all=[];
+    for(let offset=0;offset<200000;offset+=100){
+      const {data,error}=await sb.rpc('consultar_capex_historico_v40138',{
+        p_exercicio:year,p_busca:A40139.historicQuery||null,
+        p_pacote:A40139.historicPackage||null,p_head:A40139.historicHead||null,
+        p_limite:100,p_deslocamento:offset});
+      if(error)throw Error(error.message);all.push(...(data.linhas||[]));
+      if(all.length>=Number(data.total_filtrado||0))break;
+    }
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(all),'Capex '+year);
+    XLSX.writeFile(wb,'HAPCAPEX_Historico_'+year+'.xlsx');
+  }
+  async function openHistoricalKpiV40139(metric){
+    const year=A40139.getSelectedYear();const id='v40139-historical-detail';
+    document.getElementById(id)?.remove();
+    const modal=document.createElement('div');modal.id=id;modal.className='modal-backdrop';
+    modal.innerHTML=`<div class="modal-box modal-wide"><h2>Detalhamento histórico — ${year}</h2><div id="v40139-detail-body">Carregando...</div><div class="modal-actions"><button class="btn btn-secondary" id="v40139-detail-close">Fechar</button></div></div>`;
+    document.body.appendChild(modal);modal.querySelector('#v40139-detail-close').onclick=()=>modal.remove();
+    const body=modal.querySelector('#v40139-detail-body');
+    try{
+      if(metric==='ois'){modal.remove();document.getElementById('v40139-lista')?.scrollIntoView({behavior:'smooth'});return;}
+      if(['doacoes','contingenciamentos','aportes'].includes(metric)){
+        const type=metric==='doacoes'?'doacoes':'movimentos';
+        const {data,error}=await sb.rpc('consultar_historico_detalhes_v40138',{p_exercicio:year,p_tipo:type,p_limite:100,p_deslocamento:0});
+        if(error)throw error;
+        const rows=(data.linhas||[]).filter(x=>type==='doacoes'||x.tipo===(metric==='aportes'?'aporte':'contingenciamento'));
+        body.innerHTML=`<p>Até 100 registros nesta consulta. Use os relatórios completos para auditoria.</p><div class="v35-collapsible-body">${rows.map(x=>`<div class="v35-mini-row"><span>${escapeHtml(x.nome||x.descricao||x.capex_destino||x.ordem_interna||'Lançamento')} · ${escapeHtml(x.data_movimento||x.data_doacao||'')}</span><strong>${moneyV40136(x.valor)}</strong></div>`).join('')||'Sem lançamentos.'}</div>`;
+      }else{
+        const {data,error}=await sb.rpc('consultar_capex_historico_v40138',{p_exercicio:year,p_limite:1,p_deslocamento:0});if(error)throw error;
+        const k=data.kpis||{};
+        body.innerHTML=`<div class="v40136-grid">${[
+          ['CAPEX inicial',k.capex_inicial],['− Doações',k.doacoes],['− Contingenciamentos',k.contingenciamentos],['+ Aportes',k.aportes],['CAPEX Atual',k.capex_atual_formula],['Montante operacional',k.capex_atual_ois],['Diferença de conciliação',k.diferenca_conciliacao]
+        ].map(([t,v])=>`<div class="v40136-stat"><small>${t}</small><strong>${moneyV40136(v)}</strong></div>`).join('')}</div>`;
+      }
+    }catch(err){body.textContent='Não foi possível consultar: '+String(err.message||err);}
+  }
+  async function renderHistoricalBaseV40139(){
+    if(!A40139.isHistorical())return refreshCurrent();
+    const year=A40139.getSelectedYear(),baseOI=state.tab==='base_oi';
+    if(state.tab!=='base_oi'&&state.tab!=='base_consumo')return;
+    const seq=++historicalRenderTokenV40139;
+    try{
+      const args=baseOI?{
+        fn:'consultar_capex_historico_v40138',params:{p_exercicio:year,p_busca:A40139.historicQuery||null,p_limite:100,p_deslocamento:A40139.historicPage*100}
+      }:{fn:'consultar_base_consumo_historica_v40138',params:{p_exercicio:year,p_oi:A40139.historicQuery||null,p_limite:100,p_deslocamento:A40139.historicPage*100}};
+      const {data:d,error}=await sb.rpc(args.fn,args.params);if(error)throw error;
+      if(seq!==historicalRenderTokenV40139||!A40139.isHistorical())return;
+      const rows=d.linhas||[],total=Number(d.total_filtrado||0),page=A40139.historicPage,last=Math.max(0,Math.ceil(total/100)-1);
+      const cols=baseOI?['ordem_interna','obra','montante_atribuido','valor_compromissado','saldo_disponivel','pacote_capex','head_operacao']:
+        ['linha_origem','ordem_interna','descricao','categoria_valor','montante','data_lancamento','fornecedor_nome'];
+      const finance=new Set(['montante_atribuido','valor_compromissado','saldo_disponivel','montante']);
+      app.innerHTML=`<div class="v40139-historical">${historicalHeadV40139((baseOI?'Base O.I':'Base Consumo')+' · Histórico de '+year)}
+        <div class="v35-block-note info">Exercício ${year} encerrado · somente consulta. Exibição paginada para preservar a velocidade do sistema.</div>
+        <div class="toolbar"><input id="v40139-base-search" placeholder="${baseOI?'Buscar OI ou obra':'Pesquisar OI exata'}" value="${escapeHtml(A40139.historicQuery)}">
+        <button class="btn btn-secondary" id="v40139-base-clear">Limpar filtro</button></div>
+        <div class="table-card"><table><thead><tr>${cols.map(c=>`<th>${escapeHtml(c.replace(/_/g,' ').toUpperCase())}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${finance.has(c)?moneyV40136(r[c]):escapeHtml(r[c]??'')}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${cols.length}">Nenhum registro.</td></tr>`}</tbody></table></div>
+        <div class="v40139-pager"><span>${total.toLocaleString('pt-BR')} registros · página ${page+1} de ${last+1}</span><div><button class="btn btn-secondary" id="v40139-base-prev" ${page===0?'disabled':''}>Anterior</button> <button class="btn btn-secondary" id="v40139-base-next" ${page>=last?'disabled':''}>Próxima</button></div></div>
+        </div>`;
+      setupHistoryHeaderV40139();
+      document.getElementById('v40139-base-search').onchange=e=>{A40139.historicQuery=e.target.value.trim();A40139.historicPage=0;void renderHistoricalBaseV40139();};
+      document.getElementById('v40139-base-clear').onclick=()=>{A40139.historicQuery='';A40139.historicPage=0;void renderHistoricalBaseV40139();};
+      document.getElementById('v40139-base-prev').onclick=()=>{A40139.historicPage=Math.max(0,page-1);void renderHistoricalBaseV40139();};
+      document.getElementById('v40139-base-next').onclick=()=>{A40139.historicPage=Math.min(last,page+1);void renderHistoricalBaseV40139();};
+    }catch(err){if(seq===historicalRenderTokenV40139)showFiscalErrorV40139(err);}
+  }
+  // Quando outro módulo re-renderiza uma aba, restabelece somente a consulta histórica.
+  function initAnnualObserverV40139(){
+    const appEl=document.getElementById('app');if(!appEl)return;
+    let pending=false;
+    const observer=new MutationObserver(()=>{
+      if(pending)return;pending=true;
+      Promise.resolve().then(()=>{
+        pending=false;
+        if(!A40139.isHistorical()){
+          decorateYearSelectorV40139();return;
+        }
+        if(state.tab==='capex'&&!appEl.querySelector('.v40139-historical'))void renderHistoricalCapexV40139();
+        else if(['base_oi','base_consumo'].includes(state.tab)&&!appEl.querySelector('.v40139-historical'))void renderHistoricalBaseV40139();
+        else decorateYearSelectorV40139();
+      });
+    });
+    observer.observe(appEl,{childList:true});
+    decorateYearSelectorV40139();
+  }
+  const annualStyle=document.createElement('style');annualStyle.id='hap-v40139-annual-style';
+  annualStyle.textContent=`.v40139-year-control{display:flex;gap:5px;align-items:center;font-size:10px;font-weight:800;white-space:nowrap}
+    .v40139-year-control select{padding:6px 8px;border:1px solid #cad8eb;background:#fff;border-radius:7px;color:#0d2b4e;font-weight:800}
+    .v40139-pager{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0;font-size:11px;color:#5a6882;font-weight:700}
+    .v40139-historical [data-v40139-kpi]{cursor:pointer}
+    .v40139-historical .table-card{overflow:auto}
+    @media(max-width:680px){.v40139-year-control{width:100%;justify-content:flex-start}}
+    .v40139-managerial-historical [data-v4071-edit-oi]{display:none!important}`;
+  document.head.appendChild(annualStyle);
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAnnualObserverV40139,{once:true});
+  else initAnnualObserverV40139();
 
   injectV35Styles();
 })();
