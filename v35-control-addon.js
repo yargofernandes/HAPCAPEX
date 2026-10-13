@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.12',
+    version: '35.6.13',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -1598,7 +1598,7 @@
     .v40139-toolbar-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-right:auto}
     .v40139-toolbar-inline .btn{white-space:nowrap}
     .v40139-year-control.v40139-compact{font-size:9px;gap:4px;min-width:0;max-width:205px;flex:0 0 auto}
-    .v40139-year-control.v40139-compact select{padding:5px 8px;min-width:0!important;width:155px!important;max-width:155px!important;flex:0 0 155px}
+    .v40139-year-control.v40139-compact select{padding:5px 8px;min-width:0!important;width:155px!important;max-width:155px!important;flex:0 0 auto!important;height:32px!important;min-height:32px!important;max-height:32px!important;box-sizing:border-box!important}
     .v40142-year-picker{display:flex;align-items:center;gap:6px;position:relative;z-index:40;flex:0 0 auto;min-width:0}
     .v40142-year-caption{font-size:9px;font-weight:800;color:#0d2b4e;white-space:nowrap}
     .v40142-year-trigger{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;width:156px;min-width:142px;min-height:32px;border:1px solid #cad8eb;background:#fff;border-radius:8px;color:#0d2b4e;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;user-select:none}
@@ -1619,5 +1619,62 @@
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAnnualObserverV40139,{once:true});
   else initAnnualObserverV40139();
 
+  // V40.0.143: Ctrl+F5 pode ignorar o Service Worker apenas nessa navegação.
+  // O HTML cru do Controle não carrega os módulos injetados pelo SW (ex.: Gerencial).
+  // Nunca deixar esse HTML parcial montar uma interface financeira aparentemente normal.
+  function protectControlHardReloadV40143(){
+    if(!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol))return;
+    // A fonte de verdade é o módulo Gerencial estar carregado ANTES do init().
+    // workerStart=0 pode significar Ctrl+F5, mas varia entre navegadores.
+    const retryKey='hapcapex:v40143:raw-reload';
+    const originalInit=init;
+    let activated=false;
+    const notice=(message,canRetry=false)=>{
+      const target=document.getElementById('app');if(!target)return;
+      target.innerHTML='<div class="session-loading"><div class="session-loading-card">'
+        +'<strong>'+message+'</strong>'
+        +'<span>Os dados financeiros permanecem protegidos no Supabase.</span>'
+        +(canRetry?'<div style="margin-top:12px"><button id="hap-v40143-retry" class="btn btn-primary">Tentar novamente</button></div>':'')
+        +'</div></div>';
+      const button=document.getElementById('hap-v40143-retry');
+      if(button)button.onclick=()=>{try{sessionStorage.removeItem(retryKey);}catch(_){}location.reload();};
+    };
+    const withTimeout=(promise,ms)=>Promise.race([
+      promise,
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('Tempo de ativação excedido')),ms))
+    ]);
+    init=window.init=function(...args){
+      if(window.HAP_V4071_CONTROL_MANAGERIAL?.loadManagerialTab){
+        try{sessionStorage.removeItem(retryKey);}catch(_){}
+        return originalInit.apply(this,args);
+      }
+      if(activated)return;
+      activated=true;
+      notice('Atualizando o HAPCAPEX...');
+      (async()=>{
+        let last=0;try{last=Number(sessionStorage.getItem(retryKey)||0);}catch(_){}
+        if(last && Date.now()-last<18000){
+          notice('A atualização da interface não foi concluída. Tente novamente.',true);
+          return;
+        }
+        try{sessionStorage.setItem(retryKey,String(Date.now()));}catch(_){}
+        let registration=await withTimeout(navigator.serviceWorker.getRegistration('./'),5000);
+        if(!registration){
+          registration=await withTimeout(
+            navigator.serviceWorker.register('./service-worker.js?v=40.0.133',{scope:'./'}),9000);
+        }
+        if(registration.waiting)registration.waiting.postMessage({type:'SKIP_WAITING'});
+        const ready=await withTimeout(navigator.serviceWorker.ready,9000);
+        if(!ready?.active)throw new Error('Service Worker indisponível');
+        const url=new URL(location.href);
+        url.searchParams.set('_hap_ui','40143');
+        location.replace(url.href);
+      })().catch(error=>{
+        console.warn('[HAPCAPEX] Não foi possível estabilizar o carregamento:',error);
+        notice('Não foi possível atualizar a interface. Verifique sua conexão e tente novamente.',true);
+      });
+    };
+  }
+  protectControlHardReloadV40143();
   injectV35Styles();
 })();
