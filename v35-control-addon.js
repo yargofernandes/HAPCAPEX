@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.5',
+    version: '35.6.6',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -77,6 +77,15 @@
       .v40136-stat{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid #dde3ee;border-radius:10px;background:#f8fafc;min-height:74px;justify-content:center}
       .v40136-stat small{display:block;font-size:11px;font-weight:800;color:#5a6882;line-height:1.35;text-transform:none}
       .v40136-stat strong{display:block;font-size:19px;line-height:1.2;font-weight:900;color:#0d2b4e;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+      .v40136-section-title{font-size:12px;color:#0d2b4e;font-weight:900;margin:17px 0 6px}
+      .v40136-section-sub{font-size:10.5px;color:#5a6882;line-height:1.4;margin:0 0 6px}
+      .v40136-stat[data-tone="orange"] strong{color:var(--laranja,#dc6b20)}
+      .v40136-stat[data-tone="red"] strong{color:var(--vermelho,#c0392b)}
+      .v40136-stat[data-tone="green"] strong{color:var(--verde,#12805c)}
+      .v40136-recon{border-radius:8px;padding:10px 12px;font-size:11px;line-height:1.5;margin:9px 0}
+      .v40136-recon[data-status="conciliado"]{background:#e1f5ee;color:#04342c}
+      .v40136-recon[data-status="arredondamento"]{background:#fff0c0;color:#8a6000}
+      .v40136-recon[data-status="divergente"],.v40136-recon[data-status="nao_disponivel"]{background:#fcebeb;color:#791f1f}
       .v40136-consumo-last{margin:8px 0 12px;line-height:1.5}
       .v40136-consumo-last strong{font-weight:900;color:#0d2b4e}
       .v40136-check{display:block;margin-top:10px;line-height:1.45}
@@ -141,10 +150,10 @@
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('Contexto anual vazio');
       applyV35ContextPayload(data);
-      console.info(`[HAPCAPEX V35.6.5] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
+      console.info(`[HAPCAPEX V35.6.6] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
       return;
     } catch (rpcErr) {
-      console.warn('[HAPCAPEX V35.6.5] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
+      console.warn('[HAPCAPEX V35.6.6] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
     }
 
     try {
@@ -170,7 +179,7 @@
         movimentos: mov || []
       });
     } catch (err) {
-      console.warn('[HAPCAPEX V35.6.5] Contexto anual indisponível; mantendo fallback V34.', err);
+      console.warn('[HAPCAPEX V35.6.6] Contexto anual indisponível; mantendo fallback V34.', err);
       V35.ready = false;
     }
   }
@@ -882,11 +891,28 @@
     const section=renderWizardV40136(`
       <h3>1 de 4 · Conferência e preservação do histórico de ${y}</h3>
       <p>A fotografia final de ${y} só será gravada no fechamento definitivo. Esta conferência usa os dados vigentes e <b>não altera nenhuma informação</b>.</p>
+      <h4 class="v40136-section-title">KPIs financeiros de ${y}</h4>
+      <p class="v40136-section-sub">Mesma composição financeira da aba Capex, calculada para o exercício corrente.</p>
       <div class="v40136-grid">
-        <div class="v40136-stat"><small>OIs do exercício</small><strong>${Number(d.ois||0).toLocaleString('pt-BR')}</strong></div>
-        <div class="v40136-stat"><small>Montante de ${y}</small><strong>${moneyV40136(d.montante)}</strong></div>
-        <div class="v40136-stat"><small>Compromissado de ${y}</small><strong>${moneyV40136(d.compromissado)}</strong></div>
-        <div class="v40136-stat"><small>Saldo de ${y}</small><strong>${moneyV40136(d.saldo)}</strong></div>
+        <div class="v40136-stat"><small>CAPEX Inicial</small><strong>${d.capex_inicial==null?'Não definido':moneyV40136(d.capex_inicial)}</strong></div>
+        <div class="v40136-stat" data-tone="orange"><small>Doações</small><strong>${moneyV40136(d.doacoes)}</strong></div>
+        <div class="v40136-stat" data-tone="red"><small>Contingenciamentos</small><strong>${moneyV40136(d.contingenciamentos)}</strong></div>
+        <div class="v40136-stat" data-tone="green"><small>Aportes Extras</small><strong>${moneyV40136(d.aportes)}</strong></div>
+        <div class="v40136-stat"><small>CAPEX Atual</small><strong>${d.capex_atual_formula==null?'Não disponível':moneyV40136(d.capex_atual_formula)}</strong></div>
+        <div class="v40136-stat"><small>Compromissado</small><strong>${moneyV40136(d.compromissado_operacional)}</strong></div>
+        <div class="v40136-stat" data-tone="green"><small>Saldo disponível</small><strong>${moneyV40136(d.saldo_operacional)}</strong></div>
+        <div class="v40136-stat"><small>% Compromissado</small><strong>${Number(d.capex_atual_formula)>0 ? new Intl.NumberFormat('pt-BR',{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(Number(d.compromissado_operacional||0)/Number(d.capex_atual_formula)) : '—'}</strong></div>
+        <div class="v40136-stat"><small>Qtde de obras</small><strong>${Number(d.qtd_obras||0).toLocaleString('pt-BR')}</strong></div>
+      </div>
+      <div class="v40136-recon" data-status="${escapeHtml(d.status_conciliacao||'nao_disponivel')}">
+        <strong>Conciliação do CAPEX Atual:</strong> ${d.diferenca_conciliacao==null?'CAPEX inicial indisponível.':`${moneyV40136(d.diferenca_conciliacao)} de diferença entre a fórmula gerencial e a soma das OIs operacionais.`}
+        ${d.status_conciliacao==='divergente'?'<strong> Revisar antes do fechamento definitivo.</strong>':''}
+      </div>
+      <h4 class="v40136-section-title">Conferência das bases</h4>
+      <p class="v40136-section-sub">Montante bruto inclui a OI técnica; os KPIs operacionais acima a excluem, como no painel Capex.</p>
+      <div class="v40136-grid">
+        <div class="v40136-stat"><small>Montante bruto de ${y}</small><strong>${moneyV40136(d.montante)}</strong></div>
+        <div class="v40136-stat"><small>OIs do exercício (inclui OI técnica)</small><strong>${Number(d.ois||0).toLocaleString('pt-BR')}</strong></div>
         <div class="v40136-stat"><small>Base Consumo — último lote</small><strong>${Number(d.consumo_linhas||0).toLocaleString('pt-BR')} linhas</strong></div>
         <div class="v40136-stat"><small>Transferências de ${y}</small><strong>${Number(d.transferencias||0).toLocaleString('pt-BR')}</strong></div>
       </div>
