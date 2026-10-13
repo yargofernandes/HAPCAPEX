@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.83 — Gerencial: tipografia e contraste dos gráficos aprimorados.
+/* HAPCAPEX V40.0.84 — Gerencial: tipografia e contraste dos gráficos aprimorados.
    - Mantém V40.0.82: classificação gerencial retroativa pela classificação atual da OI.
    - Eixos, legendas e tooltips maiores, mais escuros e com peso reforçado.
    - Canvas em maior densidade para melhor nitidez na tela e no PDF.
@@ -585,6 +585,7 @@
         </select></label>
       </div>
       <div class="v4071-filter-row">
+        ${window.HAP_V40139?.yearControlMarkup?.('v4071-select-year','v40139-compact')||''}
         <label>Mês inicial<select id="v4071-month-start">${monthOptions(mgr.monthStart)}</select></label>
         <label>Mês final<select id="v4071-month-end">${monthOptions(mgr.monthEnd)}</select></label>
         <label>Top OIs<select id="v4071-top-n">${[10,15,20,30,50].map(x=>optionHtml(x,`Top ${x}`,mgr.topN)).join('')}</select></label>
@@ -797,7 +798,7 @@
 
   function syncFilterControls() {
     const set=(id,val)=>{const el=document.getElementById(id);if(el)el.value=String(val??'');};
-    set('v4071-filter-query',mgr.query);set('v4071-filter-package',mgr.pacote);set('v4071-filter-head',mgr.head);set('v4071-filter-saldo',mgr.saldo);set('v4071-filter-transfer',mgr.transferRule);set('v4071-month-start',mgr.monthStart);set('v4071-month-end',mgr.monthEnd);set('v4071-top-n',mgr.topN);
+    set('v4071-filter-query',mgr.query);set('v4071-filter-package',mgr.pacote);set('v4071-filter-head',mgr.head);set('v4071-filter-saldo',mgr.saldo);set('v4071-filter-transfer',mgr.transferRule);set('v4071-select-year',window.HAP_V40139?.getSelectedYear?.()??mgr.raw?.exercicio);set('v4071-month-start',mgr.monthStart);set('v4071-month-end',mgr.monthEnd);set('v4071-top-n',mgr.topN);
   }
 
   function debounce(fn,wait=180){let t;return (...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),wait);};}
@@ -806,6 +807,11 @@
     if(query) query.addEventListener('input',debounce(e=>{mgr.query=e.target.value||'';renderContent();},180));
     const bind=(id,key,convert=v=>v)=>{const el=document.getElementById(id);if(el)el.addEventListener('change',e=>{mgr[key]=convert(e.target.value);renderContent();});};
     bind('v4071-filter-package','pacote');bind('v4071-filter-head','head');bind('v4071-filter-saldo','saldo');bind('v4071-filter-transfer','transferRule');
+    const yearSelect=document.getElementById('v4071-select-year');
+    if(yearSelect && window.HAP_V40139?.syncYearControl && window.HAP_V40139?.bindYearControl){
+      window.HAP_V40139.syncYearControl(yearSelect);
+      window.HAP_V40139.bindYearControl(yearSelect);
+    }
     bind('v4071-month-start','monthStart',Number);bind('v4071-month-end','monthEnd',Number);bind('v4071-top-n','topN',Number);
     document.getElementById('v4071-clear')?.addEventListener('click',()=>{
       mgr.pacote='';mgr.head='';mgr.query='';mgr.monthStart=1;mgr.monthEnd=12;mgr.saldo='all';mgr.transferRule='all';mgr.topN=10;resetTableStates();syncFilterControls();renderContent();
@@ -868,7 +874,7 @@
 
   async function renderCharts(s) {
     const seq=++mgr.chartSeq;
-    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.83] Chart.js indisponível',err);return;}
+    try{await ensureChartJs();}catch(err){console.warn('[HAPCAPEX V40.0.84] Chart.js indisponível',err);return;}
     if(seq!==mgr.chartSeq) return;
     Object.values(mgr.charts).forEach(c=>{try{c?.destroy();}catch(_){}});mgr.charts={};
     if(typeof state!=='undefined' && state?.tab!=='gerencial') return;

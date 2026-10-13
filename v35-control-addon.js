@@ -150,10 +150,10 @@
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('Contexto anual vazio');
       applyV35ContextPayload(data);
-      console.info(`[HAPCAPEX V35.6.6] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
+      console.info(`[HAPCAPEX V35.6.7] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
       return;
     } catch (rpcErr) {
-      console.warn('[HAPCAPEX V35.6.6] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
+      console.warn('[HAPCAPEX V35.6.7] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
     }
 
     try {
@@ -179,7 +179,7 @@
         movimentos: mov || []
       });
     } catch (err) {
-      console.warn('[HAPCAPEX V35.6.6] Contexto anual indisponível; mantendo fallback V34.', err);
+      console.warn('[HAPCAPEX V35.6.7] Contexto anual indisponível; mantendo fallback V34.', err);
       V35.ready = false;
     }
   }
@@ -1173,6 +1173,9 @@
     getSelectedYear(){return Number(this.selectedYear||currentExercise());},
     isHistorical(){return this.getSelectedYear()!==currentExercise();},
     decorateYearControl(){decorateYearSelectorV40139();},
+    yearControlMarkup(selectId='v40139-select-year', extraClass=''){return yearSelectorMarkupV40139(selectId, extraClass);},
+    bindYearControl(select){bindYearSelectorV40139(select);},
+    syncYearControl(select){syncYearSelectorOptionsV40139(select);},
     renderHistoricalCapex(){return renderHistoricalCapexV40139();},
     renderHistoricalBase(){return renderHistoricalBaseV40139();}
   };
@@ -1191,43 +1194,84 @@
     }catch(err){console.warn('[HAPCAPEX] Exercícios indisponíveis:',err); A40139.exercises=[{exercicio:currentExercise(),situacao:'atual'}];}
     finally {A40139.loadingYears=false;decorateYearSelectorV40139();}
   }
-  function yearSelectorMarkupV40139(){
+  function yearOptionsMarkupV40139(){
     const choices=A40139.exercises||[{exercicio:currentExercise(),situacao:'atual'}];
-    return `<label class="v40139-year-control">Exercício
-      <select id="v40139-select-year" aria-label="Exercício para consulta">
-       ${choices.map(x=>`<option value="${Number(x.exercicio)}" ${Number(x.exercicio)===A40139.getSelectedYear()?'selected':''}>${Number(x.exercicio)} · ${x.situacao==='atual'?'Atual':'Histórico'}</option>`).join('')}
-      </select></label>`;
+    return choices.map(x=>`<option value="${Number(x.exercicio)}" ${Number(x.exercicio)===A40139.getSelectedYear()?'selected':''}>${Number(x.exercicio)} · ${x.situacao==='atual'?'Atual':'Histórico'}</option>`).join('');
+  }
+  function yearSelectorMarkupV40139(selectId='v40139-select-year', extraClass=''){
+    return `<label class="v40139-year-control ${extraClass}">Exercício
+      <select id="${escapeHtml(selectId)}" aria-label="Exercício para consulta">${yearOptionsMarkupV40139()}</select>
+    </label>`;
+  }
+  function syncYearSelectorOptionsV40139(select){
+    if(!select)return;
+    const options=yearOptionsMarkupV40139();
+    if(select.innerHTML!==options)select.innerHTML=options;
+    select.value=String(A40139.getSelectedYear());
+  }
+  async function applyYearSelectionV40139(y){
+    if(!A40139.exercises?.some(x=>Number(x.exercicio)===y))return false;
+    A40139.selectedYear=y;A40139.historicPage=0;
+    A40139.historicQuery='';A40139.historicPackage='';A40139.historicHead='';
+    if(state.tab==='gerencial') {
+      if(window.HAP_V4071_CONTROL_MANAGERIAL?.loadManagerialTab)
+        await window.HAP_V4071_CONTROL_MANAGERIAL.loadManagerialTab();
+      else await refreshCurrent();
+    } else if(A40139.isHistorical()){
+      if(state.tab==='capex')await renderHistoricalCapexV40139();
+      else if(['base_oi','base_consumo'].includes(state.tab))await renderHistoricalBaseV40139();
+      else await refreshCurrent();
+    }else await refreshCurrent();
+    return true;
+  }
+  function bindYearSelectorV40139(select){
+    if(!select)return;
+    select.onchange=async ev=>{
+      const y=Number(ev.target.value);
+      const ok=await applyYearSelectionV40139(y);
+      if(!ok)ev.target.value=String(A40139.getSelectedYear());
+    };
+  }
+  function removeHeaderYearSelectorV40139(){
+    document.querySelectorAll('header.topbar .user-chip #v40139-select-year, header.topbar .user-chip #v40136-annual-close').forEach(el=>el.remove());
   }
   function decorateYearSelectorV40139(){
     try{
-      if(!['capex','gerencial','base_oi','base_consumo'].includes(String(state.tab||'')))return;
-      const chip=document.querySelector('header.topbar .user-chip');
-      if(!chip)return;
-      const existing=chip.querySelector('#v40139-select-year');
-      if(existing){
-        const options=yearSelectorMarkupV40139();
-        const temp=document.createElement('span');temp.innerHTML=options;
-        const newOptions=temp.querySelector('select')?.innerHTML;
-        if(newOptions && existing.innerHTML!==newOptions)existing.innerHTML=newOptions;
-        existing.value=String(A40139.getSelectedYear());return;
+      removeHeaderYearSelectorV40139();
+      const tab=String(state.tab||'');
+      // Uma unica selecao de exercicio para CAPEX, Base OI, Base Consumo e Gerencial.
+      // O botao de fechamento e exclusivo da aba CAPEX no exercicio atual.
+      if(['capex','base_oi','base_consumo'].includes(tab)){
+        const toolbar=document.querySelector('.toolbar');
+        if(toolbar){
+          let slot=toolbar.querySelector('#v40139-capex-tools');
+          if(!slot){
+            slot=document.createElement('div');
+            slot.id='v40139-capex-tools';
+            slot.className='v40139-toolbar-inline';
+            toolbar.insertBefore(slot,toolbar.firstChild);
+          }
+          const closeBtn=(tab==='capex' && state.role==='admin' && !A40139.isHistorical())?'<button type="button" class="btn btn-secondary v40139-close-btn" id="v40136-annual-close" title="Iniciar conferencia anual sem alterar os dados de producao.">Fechar exercício atual</button>':'';
+          slot.innerHTML=yearSelectorMarkupV40139('v40139-select-year','v40139-compact')+closeBtn;
+          const select=slot.querySelector('#v40139-select-year');
+          syncYearSelectorOptionsV40139(select);
+          bindYearSelectorV40139(select);
+          const close=slot.querySelector('#v40136-annual-close');
+          if(close)close.onclick=openAnnualWizardV40136;
+        }
+        if(!A40139.exercises)void loadYearsV40139();
+        return;
       }
-      const slot=document.createElement('span');slot.innerHTML=yearSelectorMarkupV40139();
-      chip.insertBefore(slot,chip.firstChild);
-      slot.querySelector('#v40139-select-year').onchange=async ev=>{
-        const y=Number(ev.target.value);
-        if(!A40139.exercises?.some(x=>Number(x.exercicio)===y)){ev.target.value=String(A40139.getSelectedYear());return;}
-        A40139.selectedYear=y;A40139.historicPage=0;
-        A40139.historicQuery='';A40139.historicPackage='';A40139.historicHead='';
-        if(state.tab==='gerencial') {
-          if(window.HAP_V4071_CONTROL_MANAGERIAL?.loadManagerialTab)
-            await window.HAP_V4071_CONTROL_MANAGERIAL.loadManagerialTab();
-          else await refreshCurrent();
-        } else if(A40139.isHistorical()){
-          if(state.tab==='capex')await renderHistoricalCapexV40139();
-          else await renderHistoricalBaseV40139();
-        }else await refreshCurrent();
-      };
-      if(!A40139.exercises)void loadYearsV40139();
+      document.getElementById('v40139-capex-tools')?.remove();
+      if(tab==='gerencial'){
+        const select=document.getElementById('v4071-select-year');
+        if(select){
+          syncYearSelectorOptionsV40139(select);
+          bindYearSelectorV40139(select);
+        }
+        if(!A40139.exercises)void loadYearsV40139();
+        return;
+      }
     }catch(e){console.warn('Seletor anual:',e);}
   }
   function historicalHeadV40139(title){
@@ -1387,10 +1431,14 @@
   const annualStyle=document.createElement('style');annualStyle.id='hap-v40139-annual-style';
   annualStyle.textContent=`.v40139-year-control{display:flex;gap:5px;align-items:center;font-size:10px;font-weight:800;white-space:nowrap}
     .v40139-year-control select{padding:6px 8px;border:1px solid #cad8eb;background:#fff;border-radius:7px;color:#0d2b4e;font-weight:800}
+    .v40139-toolbar-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-right:auto}
+    .v40139-toolbar-inline .btn{white-space:nowrap}
+    .v40139-year-control.v40139-compact{font-size:9px;gap:4px;min-width:150px}
+    .v40139-year-control.v40139-compact select{padding:5px 8px;min-width:138px}
     .v40139-pager{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0;font-size:11px;color:#5a6882;font-weight:700}
     .v40139-historical [data-v40139-kpi]{cursor:pointer}
     .v40139-historical .table-card{overflow:auto}
-    @media(max-width:680px){.v40139-year-control{width:100%;justify-content:flex-start}}
+    @media(max-width:680px){.v40139-year-control{width:100%;justify-content:flex-start}.v40139-toolbar-inline{width:100%;margin-right:0}}
     .v40139-managerial-historical [data-v4071-edit-oi]{display:none!important}`;
   document.head.appendChild(annualStyle);
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAnnualObserverV40139,{once:true});
