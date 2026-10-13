@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.7',
+    version: '35.6.8',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -246,7 +246,6 @@
     injectV35Styles();
     decorateExerciseChip();
     decorateYearSelectorV40139();
-    decorateAnnualCloseButtonV40136();
     decorateOperationalButtons();
     decorateWorkIdentityUi();
   }
@@ -1205,9 +1204,16 @@
   }
   function syncYearSelectorOptionsV40139(select){
     if(!select)return;
-    const options=yearOptionsMarkupV40139();
-    if(select.innerHTML!==options)select.innerHTML=options;
-    select.value=String(A40139.getSelectedYear());
+    const choices=A40139.exercises||[{exercicio:currentExercise(),situacao:'atual'}];
+    const existing=[...select.options];
+    // A serialização HTML do navegador normaliza `selected` para `selected=""`.
+    // Comparar innerHTML literalmente causava atualizações contínuas no observer.
+    const same=existing.length===choices.length && existing.every((option,i)=>
+      option.value===String(Number(choices[i].exercicio)) &&
+      option.textContent===`${Number(choices[i].exercicio)} · ${choices[i].situacao==='atual'?'Atual':'Histórico'}`);
+    if(!same)select.innerHTML=yearOptionsMarkupV40139();
+    const selected=String(A40139.getSelectedYear());
+    if(select.value!==selected)select.value=selected;
   }
   async function applyYearSelectionV40139(y){
     if(!A40139.exercises?.some(x=>Number(x.exercicio)===y))return false;
@@ -1233,16 +1239,38 @@
     };
   }
   function removeHeaderYearSelectorV40139(){
-    document.querySelectorAll('header.topbar .user-chip #v40139-select-year, header.topbar .user-chip #v40136-annual-close').forEach(el=>el.remove());
+    // Limpa a implementação anterior, que colocava controles no cabeçalho.
+    document.querySelectorAll('header.topbar .user-chip .v40139-year-control').forEach(label=>{
+      const parent=label.parentElement;
+      label.remove();
+      if(parent && parent.tagName==='SPAN' && !parent.textContent.trim() && !parent.children.length)parent.remove();
+    });
+    document.querySelectorAll('header.topbar .user-chip #v40136-annual-close').forEach(button=>button.remove());
+  }
+  function operationalToolbarV40140C(){
+    const appEl=document.getElementById('app');
+    if(!appEl)return null;
+    // O contêiner é recriado por diferentes módulos de CAPEX/Base OI/Base Consumo.
+    // Sempre usamos o primeiro toolbar dentro da aba visível, e não um modal global.
+    const toolbar=appEl.querySelector('.toolbar');
+    if(toolbar)return toolbar;
+    const reference=appEl.querySelector('.table-card');
+    if(!reference)return null;
+    let fallback=appEl.querySelector('#v40140c-fiscal-toolbar');
+    if(!fallback){
+      fallback=document.createElement('div');
+      fallback.id='v40140c-fiscal-toolbar';
+      fallback.className='toolbar';
+      reference.parentElement.insertBefore(fallback,reference);
+    }
+    return fallback;
   }
   function decorateYearSelectorV40139(){
     try{
       removeHeaderYearSelectorV40139();
       const tab=String(state.tab||'');
-      // Uma unica selecao de exercicio para CAPEX, Base OI, Base Consumo e Gerencial.
-      // O botao de fechamento e exclusivo da aba CAPEX no exercicio atual.
       if(['capex','base_oi','base_consumo'].includes(tab)){
-        const toolbar=document.querySelector('.toolbar');
+        const toolbar=operationalToolbarV40140C();
         if(toolbar){
           let slot=toolbar.querySelector('#v40139-capex-tools');
           if(!slot){
@@ -1251,13 +1279,26 @@
             slot.className='v40139-toolbar-inline';
             toolbar.insertBefore(slot,toolbar.firstChild);
           }
-          const closeBtn=(tab==='capex' && state.role==='admin' && !A40139.isHistorical())?'<button type="button" class="btn btn-secondary v40139-close-btn" id="v40136-annual-close" title="Iniciar conferencia anual sem alterar os dados de producao.">Fechar exercício atual</button>':'';
-          slot.innerHTML=yearSelectorMarkupV40139('v40139-select-year','v40139-compact')+closeBtn;
-          const select=slot.querySelector('#v40139-select-year');
+          let select=slot.querySelector('#v40139-select-year');
+          if(!select){
+            slot.insertAdjacentHTML('afterbegin',yearSelectorMarkupV40139('v40139-select-year','v40139-compact'));
+            select=slot.querySelector('#v40139-select-year');
+          }
+          // Não reescreve o DOM em todo refresh: isso evita loops do observer,
+          // perda de foco e desaparecimento durante o pós-render das barras.
           syncYearSelectorOptionsV40139(select);
           bindYearSelectorV40139(select);
-          const close=slot.querySelector('#v40136-annual-close');
-          if(close)close.onclick=openAnnualWizardV40136;
+          const showClose=tab==='capex' && state.role==='admin' && !A40139.isHistorical();
+          let close=slot.querySelector('#v40136-annual-close');
+          if(showClose&&!close){
+            close=document.createElement('button');
+            close.type='button';close.id='v40136-annual-close';
+            close.className='btn btn-secondary v40139-close-btn';
+            close.textContent='Fechar exercício atual';
+            close.title='Iniciar conferência anual sem alterar os dados de produção.';
+            close.onclick=openAnnualWizardV40136;
+            slot.appendChild(close);
+          }else if(!showClose&&close){close.remove();}
         }
         if(!A40139.exercises)void loadYearsV40139();
         return;
@@ -1425,7 +1466,9 @@
         else decorateYearSelectorV40139();
       });
     });
-    observer.observe(appEl,{childList:true});
+    // Outro módulo pode reconstruir somente a barra interna, sem trocar #app.
+    // O decorador não reescreve controles já inseridos, evitando loops de observação.
+    observer.observe(appEl,{childList:true,subtree:true});
     decorateYearSelectorV40139();
   }
   const annualStyle=document.createElement('style');annualStyle.id='hap-v40139-annual-style';
