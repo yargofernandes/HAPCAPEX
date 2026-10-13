@@ -3,7 +3,7 @@
   'use strict';
 
   const V35 = window.HAP_V35 = {
-    version: '35.6.9',
+    version: '35.6.10',
     exercise: 2026,
     exerciseStatus: 'aberto',
     config: { oi_bolsao_manutencao: '50158051' },
@@ -150,10 +150,10 @@
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('Contexto anual vazio');
       applyV35ContextPayload(data);
-      console.info(`[HAPCAPEX V35.6.7] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
+      console.info(`[HAPCAPEX V35.6.10] Contexto carregado: ${V35.workGroups.length} obras vinculadas / ${V35.workLinks.length} OIs vinculadas / ${V35.historyOiSet.size} obras com consumo histórico.`);
       return;
     } catch (rpcErr) {
-      console.warn('[HAPCAPEX V35.6.7] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
+      console.warn('[HAPCAPEX V35.6.10] RPC de contexto indisponível; tentando fallback por views.', rpcErr);
     }
 
     try {
@@ -179,7 +179,7 @@
         movimentos: mov || []
       });
     } catch (err) {
-      console.warn('[HAPCAPEX V35.6.7] Contexto anual indisponível; mantendo fallback V34.', err);
+      console.warn('[HAPCAPEX V35.6.10] Contexto anual indisponível; mantendo fallback V34.', err);
       V35.ready = false;
     }
   }
@@ -246,6 +246,7 @@
     injectV35Styles();
     decorateExerciseChip();
     decorateYearSelectorV40139();
+    repairManagerialNavigationV40141();
     decorateOperationalButtons();
     decorateWorkIdentityUi();
   }
@@ -844,24 +845,6 @@
   // Não congela nem muda o exercício, não cria OIs e não envia arquivos ao servidor.
   const V40136 = {preflight:null,parsed:null,pastOis:null};
 
-  function decorateAnnualCloseButtonV40136() {
-    if(window.HAP_V40139?.isHistorical?.()){
-      document.getElementById('v40136-annual-close')?.remove();
-      return;
-    }
-    if (state.role !== 'admin' || !['capex','base_oi','base_consumo','transferencias','gerencial'].includes(String(state.tab||''))) return;
-    const chip = document.querySelector('header.topbar .user-chip');
-    if (!chip || chip.querySelector('#v40136-annual-close')) return;
-    const button = document.createElement('button');
-    button.type='button';
-    button.id='v40136-annual-close';
-    button.className='btn btn-secondary';
-    button.textContent='Fechar exercício atual';
-    button.title='Iniciar conferência anual sem alterar os dados de produção.';
-    button.onclick=openAnnualWizardV40136;
-    chip.insertBefore(button,chip.firstChild);
-  }
-
   function moneyV40136(value) {
     return brl.format(Number(value||0));
   }
@@ -1238,11 +1221,20 @@
     return true;
   }
   function bindYearSelectorV40139(select){
-    if(!select)return;
+    if(!select || select.dataset.v40141Bound==='1')return;
+    select.dataset.v40141Bound='1';
     select.onchange=async ev=>{
       const y=Number(ev.target.value);
-      const ok=await applyYearSelectionV40139(y);
-      if(!ok)ev.target.value=String(A40139.getSelectedYear());
+      if(!A40139.exercises || !A40139.exercises.some(x=>Number(x.exercicio)===y)){
+        ev.target.value=String(A40139.getSelectedYear());return;
+      }
+      try{
+        const ok=await applyYearSelectionV40139(y);
+        if(!ok && ev.target.isConnected)ev.target.value=String(A40139.getSelectedYear());
+      }catch(err){
+        console.error('[HAPCAPEX] Falha ao trocar exercício:',err);
+        if(ev.target.isConnected)ev.target.value=String(A40139.getSelectedYear());
+      }
     };
   }
   function removeHeaderYearSelectorV40139(){
@@ -1256,11 +1248,13 @@
   }
   function operationalToolbarV40140C(){
     const appEl=document.getElementById('app');
-    if(!appEl)return null;
-    // O contêiner é recriado por diferentes módulos de CAPEX/Base OI/Base Consumo.
-    // Sempre usamos o primeiro toolbar dentro da aba visível, e não um modal global.
-    const toolbar=appEl.querySelector('.toolbar');
-    if(toolbar)return toolbar;
+    if(!appEl || !['capex','base_oi','base_consumo'].includes(String(state.tab||'')))return null;
+    // Outras funcionalidades tambem usam .toolbar; escolher a barra que pertence
+    // a aba operacional, nao uma barra transitória ou um modal de importação.
+    const candidates=[...appEl.querySelectorAll('.toolbar')].filter(el=>!el.closest('.modal-backdrop'));
+    const preferred=candidates.find(el=>el.querySelector('#search-input, #importar-btn, #importar-oi-btn, #nova-oi-btn, #v40139-capex-tools'));
+    if(preferred)return preferred;
+    if(candidates.length)return candidates[0];
     const reference=appEl.querySelector('.table-card');
     if(!reference)return null;
     let fallback=appEl.querySelector('#v40140c-fiscal-toolbar');
@@ -1280,12 +1274,17 @@
         const toolbar=operationalToolbarV40140C();
         if(toolbar){
           let slot=toolbar.querySelector('#v40139-capex-tools');
+          // Um render anterior pode ter deixado o slot em outra barra; migrar
+          // em vez de manter IDs repetidos ou opções desencontradas.
+          const orphan=document.querySelector('#app #v40139-capex-tools');
+          if(!slot && orphan){slot=orphan;toolbar.insertBefore(slot,toolbar.firstChild);}
           if(!slot){
             slot=document.createElement('div');
             slot.id='v40139-capex-tools';
             slot.className='v40139-toolbar-inline';
             toolbar.insertBefore(slot,toolbar.firstChild);
           }
+          document.querySelectorAll('#app #v40139-capex-tools').forEach(el=>{if(el!==slot)el.remove();});
           let select=slot.querySelector('#v40139-select-year');
           if(!select){
             slot.insertAdjacentHTML('afterbegin',yearSelectorMarkupV40139('v40139-select-year','v40139-compact'));
@@ -1321,6 +1320,20 @@
         return;
       }
     }catch(e){console.warn('Seletor anual:',e);}
+  }
+  function repairManagerialNavigationV40141(){
+    // O módulo Gerencial às vezes finaliza sua inicialização depois da navegação
+    // de governança. Repor a aba somente se o módulo real estiver disponível.
+    if(state.role!=='admin' || !window.HAP_V4071_CONTROL_MANAGERIAL?.loadManagerialTab)return;
+    const header=document.querySelector('#app header.topbar');
+    const nav=header?.querySelector('.nav-pill')?.parentElement;
+    if(!nav || nav.querySelector('[data-v40141-managerial-nav]'))return;
+    if([...nav.querySelectorAll('.nav-pill')].some(el=>/GERENCIAL/i.test(el.textContent||'')))return;
+    const pill=document.createElement('span');
+    pill.dataset.v40141ManagerialNav='1';pill.className='nav-pill'+(state.tab==='gerencial'?' active':'');
+    pill.textContent='GERENCIAL';
+    pill.onclick=()=>{if(typeof window.switchTab==='function')window.switchTab('gerencial');};
+    nav.appendChild(pill);
   }
   function historicalHeadV40139(title){
     return `<header class="topbar"><div><div class="brand-eyebrow">Controle de Capex</div><div class="brand-title">${escapeHtml(title)}</div></div>
@@ -1457,25 +1470,47 @@
       document.getElementById('v40139-base-next').onclick=()=>{A40139.historicPage=Math.min(last,page+1);void renderHistoricalBaseV40139();};
     }catch(err){if(seq===historicalRenderTokenV40139)showFiscalErrorV40139(err);}
   }
-  // Quando outro módulo re-renderiza uma aba, restabelece somente a consulta histórica.
+  // Restaura o seletor apenas apos uma reconstrucao ESTRUTURAL da tela/barra.
+  // Nao reage a cada linha, KPI, grafico, tooltip ou a propria insercao do seletor.
   function initAnnualObserverV40139(){
     const appEl=document.getElementById('app');if(!appEl)return;
+    if(window.__HAP_V40141_ANNUAL_OBSERVER__)return;
     let pending=false;
-    const observer=new MutationObserver(()=>{
-      if(pending)return;pending=true;
-      Promise.resolve().then(()=>{
-        pending=false;
-        if(!A40139.isHistorical()){
-          decorateYearSelectorV40139();return;
-        }
-        if(state.tab==='capex'&&!appEl.querySelector('.v40139-historical'))void renderHistoricalCapexV40139();
-        else if(['base_oi','base_consumo'].includes(state.tab)&&!appEl.querySelector('.v40139-historical'))void renderHistoricalBaseV40139();
-        else decorateYearSelectorV40139();
-      });
+    const relevantNode=node=>{
+      if(node.nodeType!==1)return false;
+      if(node.closest?.('#v40139-capex-tools, .v40139-year-control, .v4071-content, .modal-backdrop'))return false;
+      return !!(node.matches?.('header.topbar, .toolbar, .table-card, .v4071-toolbar, .v40139-historical, .v40139-toolbar-inline')
+        || node.querySelector?.('header.topbar, .toolbar, .table-card, .v4071-toolbar, .v40139-historical'));
+    };
+    const shouldRefresh=mutations=>mutations.some(m=>{
+      const tab=String(state?.tab||'');
+      if(!['capex','base_oi','base_consumo','gerencial'].includes(tab))return false;
+      if(m.target.closest?.('#v40139-capex-tools, .v40139-year-control, .modal-backdrop'))return false;
+      const changes=[...m.addedNodes,...m.removedNodes];
+      if(m.target===appEl)return changes.some(n=>n.nodeType===1);
+      // Um módulo pode substituir todos os botões de um toolbar sem substituir a barra.
+      if(m.target.matches?.('.toolbar') && changes.some(n=>n.nodeType===1 &&
+        (n.matches?.('#v40139-capex-tools, #v40139-select-year, button, input, select') || n.querySelector?.('#v40139-capex-tools,#v40139-select-year'))))return true;
+      return changes.some(relevantNode);
     });
-    // Outro módulo pode reconstruir somente a barra interna, sem trocar #app.
-    // O decorador não reescreve controles já inseridos, evitando loops de observação.
+    const restore=()=>{
+      pending=false;
+      const tab=String(state?.tab||'');
+      if(!['capex','base_oi','base_consumo','gerencial'].includes(tab))return;
+      if(!A40139.isHistorical()){
+        decorateYearSelectorV40139();repairManagerialNavigationV40141();return;
+      }
+      if(tab==='capex'&&!appEl.querySelector('.v40139-historical'))void renderHistoricalCapexV40139();
+      else if(['base_oi','base_consumo'].includes(tab)&&!appEl.querySelector('.v40139-historical'))void renderHistoricalBaseV40139();
+      else decorateYearSelectorV40139();
+    };
+    const observer=new MutationObserver(mutations=>{
+      if(pending || !shouldRefresh(mutations))return;
+      pending=true;
+      requestAnimationFrame(restore);
+    });
     observer.observe(appEl,{childList:true,subtree:true});
+    window.__HAP_V40141_ANNUAL_OBSERVER__=observer;
     decorateYearSelectorV40139();
   }
   const annualStyle=document.createElement('style');annualStyle.id='hap-v40139-annual-style';
@@ -1483,8 +1518,8 @@
     .v40139-year-control select{padding:6px 8px;border:1px solid #cad8eb;background:#fff;border-radius:7px;color:#0d2b4e;font-weight:800}
     .v40139-toolbar-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-right:auto}
     .v40139-toolbar-inline .btn{white-space:nowrap}
-    .v40139-year-control.v40139-compact{font-size:9px;gap:4px;min-width:150px}
-    .v40139-year-control.v40139-compact select{padding:5px 8px;min-width:138px}
+    .v40139-year-control.v40139-compact{font-size:9px;gap:4px;min-width:0;max-width:205px;flex:0 0 auto}
+    .v40139-year-control.v40139-compact select{padding:5px 8px;min-width:0!important;width:155px!important;max-width:155px!important;flex:0 0 155px}
     .v40139-pager{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0;font-size:11px;color:#5a6882;font-weight:700}
     .v40139-historical [data-v40139-kpi]{cursor:pointer}
     .v40139-historical .table-card{overflow:auto}
