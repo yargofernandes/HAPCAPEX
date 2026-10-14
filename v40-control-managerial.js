@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.144 — Gerencial: tipografia e contraste dos gráficos aprimorados.
+/* HAPCAPEX V40.0.145 — Gerencial: tipografia e contraste dos gráficos aprimorados.
    - Mantém V40.0.82: classificação gerencial retroativa pela classificação atual da OI.
    - Eixos, legendas e tooltips maiores, mais escuros e com peso reforçado.
    - Canvas em maior densidade para melhor nitidez na tela e no PDF.
@@ -882,7 +882,7 @@
     const content=document.getElementById('v4071-content'); if(!content || !mgr.raw) return;
     const s=summaryData();
     const summary=document.getElementById('v4071-filter-summary'); if(summary) summary.innerHTML=filtersSummaryHtml(s);
-    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${adjustmentsTableHtml(s)}${chartGridHtml()}${topOisTableHtml(s)}${capexComparisonTableHtml(s)}${packageTableHtml(s)}${headTableHtml(s)}${transferNetTableHtml(s)}${routesTableHtml(s)}`;
+    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}${topOisTableHtml(s)}${capexComparisonTableHtml(s)}${packageTableHtml(s)}${headTableHtml(s)}${transferNetTableHtml(s)}${routesTableHtml(s)}${adjustmentsTableHtml(s)}`;
     bindContentActions();
     renderCharts(s);
   }
