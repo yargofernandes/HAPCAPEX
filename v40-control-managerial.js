@@ -1,4 +1,4 @@
-/* HAPCAPEX V40.0.84 — Gerencial: tipografia e contraste dos gráficos aprimorados.
+/* HAPCAPEX V40.0.144 — Gerencial: tipografia e contraste dos gráficos aprimorados.
    - Mantém V40.0.82: classificação gerencial retroativa pela classificação atual da OI.
    - Eixos, legendas e tooltips maiores, mais escuros e com peso reforçado.
    - Canvas em maior densidade para melhor nitidez na tela e no PDF.
@@ -15,7 +15,7 @@
   if (window.__HAP_V4074_CONTROL_MANAGERIAL__) return;
   window.__HAP_V4074_CONTROL_MANAGERIAL__ = true;
 
-  const VERSION = '40.0.83';
+  const VERSION = '40.0.144';
   const MONTHS = [
     ['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],
     ['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']
@@ -38,7 +38,9 @@
     chartReady: false,
     chartSeq: 0,
     loading: false,
-    tableStates: {}
+    tableStates: {},
+    adjustmentRaw: null,
+    adjustmentError: ''
   };
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -170,6 +172,17 @@
       .v4071-filter-row{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-top:8px}.v4071-filter-row label{min-width:135px}.v4071-filter-row .spacer{flex:1}
       .v4071-btn{border:1px solid #c7d3e3;background:#fff;color:#174f8c;border-radius:8px;padding:8px 10px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}.v4071-btn:hover{background:#eef4fc}.v4071-btn.primary{background:#1a4b8c;color:#fff;border-color:#1a4b8c}.v4071-btn.pdf{color:#8a3328;border-color:#e3b7b1}.v4071-btn:disabled{opacity:.5;cursor:default}
       .v4071-filter-summary{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;color:var(--texto-suave);font-size:9.5px}.v4071-chip{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:#eef3f9;color:#415873;font-weight:750}.v4071-chip.warn{background:#fff0c0;color:#8a6000}
+      .v40144-adjustment-detail{white-space:nowrap;padding:5px 10px;border-radius:7px;border:1px solid #b7cceb;background:#f3f7fd;color:#164781;font:inherit;font-weight:750;cursor:pointer}
+      .v40144-adjustment-detail:hover{background:#e2edfd}
+      .v40144-adjustment-totals{display:flex;gap:12px;flex-wrap:wrap;padding:9px 13px;background:#f7f9fd;border-top:1px solid #dfe7f2;font-size:10px}
+      .v40144-adjustment-totals strong{color:#15365a}
+      .v40144-detail-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:10px}
+      .v40144-detail-table th,.v40144-detail-table td{border-bottom:1px solid #e5ebf3;padding:9px 7px;text-align:left}
+      .v40144-detail-table th{background:#eef3fa;color:#183a60;font-size:9px;text-transform:uppercase}
+      .v40144-detail-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+      .v40144-money-negative{color:#bf3127;font-weight:850}
+      .v40144-money-positive{color:#128043;font-weight:850}
+      .v40144-money-neutral{color:#17395e;font-weight:850}
       .v4071-section{background:#fff;border-radius:11px;box-shadow:0 2px 8px rgba(0,0,0,.055);margin:0 0 14px;overflow:hidden}.v4071-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:12px 14px;border-bottom:1px solid var(--cinza-borda)}.v4071-section-head strong{display:block;color:var(--azul);font-size:13px}.v4071-section-head small{display:block;color:var(--texto-suave);font-size:9.5px;margin-top:3px;line-height:1.35}
       .v4071-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}.v4071-chart-card{background:#fff;border-radius:11px;box-shadow:0 2px 8px rgba(0,0,0,.055);padding:11px 12px;min-width:0}.v4071-chart-card h3{font-size:13px;font-weight:850;color:#0d2b4e;margin:0 0 4px}.v4071-chart-card p{font-size:10.5px;font-weight:600;color:#465a70;margin:0 0 10px;line-height:1.4}.v4071-chart-wrap{position:relative;height:345px}.v4071-chart-wrap.tall{height:405px}.v4071-chart-empty{height:100%;display:flex;align-items:center;justify-content:center;color:var(--texto-suave);font-size:10px;text-align:center;padding:20px}
       .v4071-table-wrap{overflow:auto;max-height:49vh}.v4071-table{min-width:980px}.v4071-table th,.v4071-table td{font-variant-numeric:tabular-nums}.v4071-table th.num,.v4071-table td.num{text-align:right}.v4071-table th.clickable{cursor:pointer}.v4071-table td.main{font-weight:750;color:var(--azul)}.v4071-table td small{display:block;color:var(--texto-suave);font-size:8.5px;margin-top:2px;font-weight:500}
@@ -340,7 +353,14 @@
     return rows.filter(t=>!isExcludedManagerialPackage(t?.pacote_origem) && !isExcludedManagerialPackage(t?.pacote_destino) && !isExcludedManagerialPackage(t?.pacote_origem_original) && !isExcludedManagerialPackage(t?.pacote_destino_original));
   }
   function allMovements() {
-    const rows=Array.isArray(mgr.raw?.movimentos) ? mgr.raw.movimentos : [];
+    // Mesma fonte consolidada do KPI de CAPEX: inclui lançamentos históricos
+    // e aportes pendentes contabilizados no KPI, sem registros cancelados.
+    const rows=Array.isArray(mgr.adjustmentRaw?.movimentos)
+      ? mgr.adjustmentRaw.movimentos.map(m=>({...m,
+          nome:m.obra||m.nome_lancamento||'',
+          data:m.data||(m.mes?m.mes+'-01':null),
+          pacote:canonicalPackage(m.pacote)}))
+      : (Array.isArray(mgr.raw?.movimentos) ? mgr.raw.movimentos : []);
     return rows.filter(m=>!isExcludedManagerialPackage(m?.pacote));
   }
 
@@ -520,6 +540,83 @@
     return [...map.values()].map(x=>({...x,liquido:x.aporte-x.conting})).sort((a,b)=>(b.aporte+b.conting)-(a.aporte+a.conting));
   }
 
+  // V40.0.144: base única de ajustes por OI/obra, reconciliável com o KPI do Controle.
+  // O backend já unifica histórico da Curva com lançamentos recentes sem duplicar IDs.
+  function adjustmentMovementsFiltered(){
+    if(!mgr.adjustmentRaw || !Array.isArray(mgr.adjustmentRaw.movimentos))return [];
+    const allowedOis=mgr.saldo!=='all' ? filteredOiSet():null;
+    return mgr.adjustmentRaw.movimentos.filter(m=>{
+      const pacote=canonicalPackage(m.pacote);
+      if(mgr.pacote && pacote!==mgr.pacote)return false;
+      if(mgr.head && String(m.head||'Sem classificação')!==mgr.head)return false;
+      if(!monthInPeriod(m.mes||m.data))return false;
+      if(mgr.query && !queryMatches([m.oi,m.obra,m.nome_lancamento,m.pacote,m.head]))return false;
+      if(allowedOis && !allowedOis.has(String(m.oi)))return false;
+      return true;
+    });
+  }
+  function adjustmentRows(movements){
+    const map=new Map();
+    movements.forEach(m=>{
+      const oi=String(m.oi||'').trim();
+      const obra=String(m.obra||m.nome_lancamento||'Obra não identificada').trim();
+      // Identidade da obra, quando confirmada; caso contrário, agrupa pela mesma descrição.
+      // Não agrupa obras diferentes apenas por um fragmento parecido do nome.
+      const key=m.obra_id?'ID:'+m.obra_id:('NOME:'+norm(obra));
+      if(!map.has(key))map.set(key,{key,obra,ois:new Set(),aporte:0,conting:0,liquido:0,qtd:0,lancamentos:[]});
+      const row=map.get(key);
+      if(oi)row.ois.add(oi);
+      const amount=n(m.valor);
+      if(m.tipo==='aporte')row.aporte+=amount;
+      else if(m.tipo==='contingenciamento')row.conting+=amount;
+      else return;
+      row.qtd++;row.lancamentos.push({...m,valor:amount});
+      row.liquido=row.aporte-row.conting;
+    });
+    return [...map.values()].map(r=>({ ...r, ois:[...r.ois].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true})),
+      lancamentos:r.lancamentos.sort((a,b)=>String(a.mes||a.data||'').localeCompare(String(b.mes||b.data||'')))}))
+      .sort((a,b)=>(b.aporte+b.conting)-(a.aporte+a.conting));
+  }
+  function adjustmentColumns(){
+    return [
+      {key:'obra',label:'Obra / OI',value:r=>r.obra+' '+r.ois.join(', '),totalLabel:true,render:r=>`<strong class="main">${esc(r.obra)}</strong><small>${esc(r.ois.join(', ')||'OI não identificada')}</small>`},
+      {key:'conting',label:'Contingenciamentos (−)',type:'number',num:true,totalFormat:'money',value:r=>-r.conting,render:r=>`<span class="v40144-money-negative">${money(-r.conting)}</span>`},
+      {key:'aporte',label:'Aportes extras (+)',type:'number',num:true,totalFormat:'money',value:r=>r.aporte,render:r=>`<span class="v40144-money-positive">+${money(r.aporte)}</span>`},
+      {key:'liquido',label:'Saldo líquido',type:'number',num:true,totalFormat:'money',value:r=>r.liquido,className:r=>r.liquido<0?'v4071-negative':r.liquido>0?'v4071-positive':'v4071-neutral',render:r=>`<strong>${money(r.liquido)}</strong>`},
+      {key:'qtd',label:'Lançamentos',type:'number',num:true,totalFormat:'int',value:r=>r.qtd,render:r=>intFmt.format(r.qtd)},
+      {key:'acao',label:'Histórico mensal',total:false,value:r=>r.obra,render:r=>`<button type="button" class="v40144-adjustment-detail" data-v40144-detail="${esc(r.key)}">Detalhar</button>`}
+    ];
+  }
+  function adjustmentsTableHtml(s){
+    if(mgr.adjustmentError)return `<section class="v4071-section"><div class="v4071-section-head"><div><strong>Aportes e contingenciamentos por obra</strong><small>Consulta indisponível: ${esc(mgr.adjustmentError)}. Nenhum valor parcial foi apresentado.</small></div></div></section>`;
+    if(!mgr.adjustmentRaw)return '';
+    return renderManagerialTable({id:'adjustments',title:'Aportes e contingenciamentos por obra',
+      description:`Contingenciamentos negativos + aportes positivos = saldo líquido. Clique em Detalhar para consultar os meses. ${periodLabel()}. Filtragem por exercício, OI/obra, pacote, HEAD e período.`,
+      rows:s.adjustmentRows,columns:adjustmentColumns(),empty:'Não há aportes ou contingenciamentos no período selecionado.'});
+  }
+  function adjustmentMonthLabel(m){
+    const found=String(m.mes||m.data||'').match(/^(\d{4})-(\d{2})/);
+    const month=found?Number(found[2]):0;
+    return month>=1&&month<=12?`${monthLabel(month)}/${found[1]}`:'Sem mês';
+  }
+  function openAdjustmentDetail(key){
+    const s=summaryData();
+    const row=s.adjustmentRows.find(x=>x.key===key);
+    if(!row)return;
+    document.getElementById('v40144-detail-modal')?.remove();
+    const modal=document.createElement('div');
+    modal.id='v40144-detail-modal';modal.className='modal-backdrop';
+    const headers='<th>Mês</th><th>OI</th><th>Movimento</th><th>Descrição</th><th>Valor</th>';
+    const body=row.lancamentos.map(m=>`<tr><td>${esc(adjustmentMonthLabel(m))}</td><td>${esc(m.oi||'—')}</td><td>${m.tipo==='aporte'?'Aporte extra':'Contingenciamento'}</td><td>${esc(m.nome_lancamento||m.obra||'—')}</td><td class="num ${m.tipo==='aporte'?'v40144-money-positive':'v40144-money-negative'}">${money((m.tipo==='aporte'?1:-1)*n(m.valor))}</td></tr>`).join('');
+    modal.innerHTML=`<div class="modal-box modal-wide" style="max-width:960px;width:calc(100vw - 30px);max-height:88vh;overflow:auto"><h2>Aportes e contingenciamentos · ${esc(row.obra)}</h2><p class="sub">OI(s): ${esc(row.ois.join(', ')||'Não identificada')} · Exercício ${esc(mgr.raw?.exercicio||'')}</p>
+      <div class="v40144-adjustment-totals"><span>Contingenciado: <strong>${money(-row.conting)}</strong></span><span>Aporte extra: <strong>${money(row.aporte)}</strong></span><span>Saldo líquido: <strong>${money(row.liquido)}</strong></span></div>
+      <div style="overflow-x:auto"><table class="v40144-detail-table"><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" data-v40144-close>Fechar</button></div></div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('[data-v40144-close]').onclick=()=>modal.remove();
+    modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+  }
+
   function monthlyRealized(rows) {
     const year=Number(mgr.raw?.exercicio||new Date().getFullYear());
     let cumulative=0;
@@ -560,7 +657,9 @@
     const conting=movements.filter(m=>m.tipo==='contingenciamento').reduce((s,m)=>s+n(m.valor),0);
     const unresolvedTransferTotal=unresolvedTransfers.reduce((s,t)=>s+n(t.valor),0);
     const capexComparison=capexComparisonRows();
-    return {ois,transfers,unresolvedTransfers,movements,packages,heads,nets,routes,moves,monthly,top,pending,totalAttr,totalComp,totalSaldo,totalReal,transferTotal,transferDirector,transferInternal,aporte,conting,unresolvedTransferTotal,capexComparison};
+    const adjustments=adjustmentMovementsFiltered();
+    const workAdjustments=adjustmentRows(adjustments);
+    return {ois,transfers,unresolvedTransfers,movements,packages,heads,nets,routes,moves,monthly,top,pending,totalAttr,totalComp,totalSaldo,totalReal,transferTotal,transferDirector,transferInternal,aporte,conting,unresolvedTransferTotal,capexComparison,adjustmentMovements:adjustments,adjustmentRows:workAdjustments};
   }
 
   function optionHtml(value,label,current) {
@@ -735,6 +834,7 @@
     if(id==='net') return transferNetTableHtml(s);
     if(id==='top') return topOisTableHtml(s);
     if(id==='routes') return routesTableHtml(s);
+    if(id==='adjustments') return adjustmentsTableHtml(s);
     return '';
   }
   function refreshManagerialTable(id,focusKey='',caret=null) {
@@ -743,6 +843,7 @@
     const next=holder.firstElementChild; if(!next)return;
     current.replaceWith(next);
     bindManagerialTableControls(next);
+    if(id==='adjustments')next.querySelectorAll('[data-v40144-detail]').forEach(btn=>btn.addEventListener('click',()=>openAdjustmentDetail(btn.dataset.v40144Detail)));
     if(focusKey){
       const input=next.querySelector(`[data-v4078-filter-key="${CSS.escape(focusKey)}"]`);
       if(input){ input.focus(); if(Number.isInteger(caret)) try{input.setSelectionRange(caret,caret);}catch(_){} }
@@ -781,13 +882,14 @@
     const content=document.getElementById('v4071-content'); if(!content || !mgr.raw) return;
     const s=summaryData();
     const summary=document.getElementById('v4071-filter-summary'); if(summary) summary.innerHTML=filtersSummaryHtml(s);
-    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}${topOisTableHtml(s)}${capexComparisonTableHtml(s)}${packageTableHtml(s)}${headTableHtml(s)}${transferNetTableHtml(s)}${routesTableHtml(s)}`;
+    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${adjustmentsTableHtml(s)}${chartGridHtml()}${topOisTableHtml(s)}${capexComparisonTableHtml(s)}${packageTableHtml(s)}${headTableHtml(s)}${transferNetTableHtml(s)}${routesTableHtml(s)}`;
     bindContentActions();
     renderCharts(s);
   }
 
   function bindContentActions() {
     bindManagerialTableControls(document);
+    document.querySelectorAll('[data-v40144-detail]').forEach(btn=>btn.addEventListener('click',()=>openAdjustmentDetail(btn.dataset.v40144Detail)));
     document.querySelectorAll('[data-v4071-edit-oi]').forEach(btn=>btn.addEventListener('click',()=>{
       const id=btn.getAttribute('data-v4071-edit-oi');
       if(!mgr.raw?.somente_leitura && typeof editarOi==='function' && id) void editarOi(id);
@@ -827,10 +929,16 @@
     mgr.loading=true;
     appEl.innerHTML='<div class="session-loading"><div class="session-loading-card"><strong>Gerencial</strong><span>Consolidando dados e indicadores...</span></div></div>';
     const requestedYear=window.HAP_V40139?.getSelectedYear?.() ?? null;
-    const {data,error}=await sb.rpc('obter_gerencial_controle_v4082',{p_exercicio:requestedYear});
+    const [managerialResponse,adjustmentResponse]=await Promise.all([
+      sb.rpc('obter_gerencial_controle_v4082',{p_exercicio:requestedYear}),
+      sb.rpc('obter_ajustes_obra_gerencial_v40144',{p_exercicio:requestedYear})
+    ]);
+    const {data,error}=managerialResponse;
     mgr.loading=false;
     if(error){appEl.innerHTML=`<div class="error-msg">Não foi possível carregar o Gerencial: ${esc(error.message||error)}</div>`;return;}
     mgr.raw=data||{};
+    mgr.adjustmentRaw=adjustmentResponse.error?null:adjustmentResponse.data;
+    mgr.adjustmentError=adjustmentResponse.error?String(adjustmentResponse.error.message||'Falha de consulta'):'';
     appEl.classList.toggle('v40139-managerial-historical',mgr.raw.somente_leitura===true);
     let fullName='';try{fullName=state?.fullName||'';}catch(_){}
     appEl.innerHTML=`<header class="topbar"><div><div class="brand-eyebrow">Controle de Capex</div><div class="brand-title">Gerencial</div></div>${navHtml(true)}<div class="user-chip">${esc(fullName)} <span class="role-badge">Admin</span><button class="btn btn-secondary" type="button" onclick="voltarAoSeletorHapcapex()">⇄ Trocar sistema</button><button class="btn btn-secondary" id="logout-btn">Sair</button></div></header>
@@ -923,6 +1031,14 @@
     {const tx=[...s.transfers,...s.unresolvedTransfers];const r=tx.map(t=>({Data:t.data,Documento:t.numero_documento,OI_Origem:t.oi_origem,Obra_Origem:t.nome_origem,Pacote_Origem:t.pacote_origem,HEAD_Origem:t.head_origem,OI_Destino:t.oi_destino,Obra_Destino:t.nome_destino,Pacote_Destino:t.pacote_destino,HEAD_Destino:t.head_destino,Valor:n(t.valor),Status_Classificacao:transferClassifiable(t)?'Classificada':'Histórica sem pacote',Exige_Diretoria:transferClassifiable(t)?(t.exige_autorizacao?'Sim':'Não'):'Indeterminado',Justificativa:t.justificativa}));XLSX.utils.book_append_sheet(wb,workbookSheet(withTotalRow(r,{Data:'TOTAL',Documento:tx.length,OI_Origem:'',Obra_Origem:'',Pacote_Origem:'',HEAD_Origem:'',OI_Destino:'',Obra_Destino:'',Pacote_Destino:'',HEAD_Destino:'',Valor:tx.reduce((a,t)=>a+n(t.valor),0),Status_Classificacao:'',Exige_Diretoria:'',Justificativa:''}),[12,16,12,36,32,28,12,36,32,28,18,15,45]),'Transferencias');}
     {const r=s.monthly.map(x=>({Mes:x.label,Realizado:x.valor,Acumulado_Periodo:x.acumulado}));XLSX.utils.book_append_sheet(wb,workbookSheet(withTotalRow(r,{Mes:'TOTAL',Realizado:s.monthly.reduce((a,x)=>a+n(x.valor),0),Acumulado_Periodo:s.monthly.length?n(s.monthly[s.monthly.length-1].acumulado):0}),[12,20,20]),'Realizado Mensal');}
     {const r=s.moves.map(x=>({Pacote:x.pacote,Aportes:x.aporte,Contingenciamentos:x.conting,Liquido:x.liquido,Qtd_Aportes:x.qtd_aporte,Qtd_Conting:x.qtd_conting}));XLSX.utils.book_append_sheet(wb,workbookSheet(withTotalRow(r,{Pacote:'TOTAL',Aportes:s.moves.reduce((a,x)=>a+n(x.aporte),0),Contingenciamentos:s.moves.reduce((a,x)=>a+n(x.conting),0),Liquido:s.moves.reduce((a,x)=>a+n(x.liquido),0),Qtd_Aportes:s.moves.reduce((a,x)=>a+n(x.qtd_aporte),0),Qtd_Conting:s.moves.reduce((a,x)=>a+n(x.qtd_conting),0)}),[34,18,20,18,12,12]),'Aportes Conting');}
+    if(!mgr.adjustmentError && mgr.adjustmentRaw){
+      const rows=tableView('adjustments',s.adjustmentRows,adjustmentColumns());
+      const summary=rows.map(r=>({Obra:r.obra,OIs:r.ois.join(', '),Contingenciamentos:-r.conting,Aportes_Extras:r.aporte,Saldo_Liquido:r.liquido,Lancamentos:r.qtd}));
+      const total={Obra:'TOTAL',OIs:'',Contingenciamentos:rows.reduce((a,r)=>a-r.conting,0),Aportes_Extras:rows.reduce((a,r)=>a+r.aporte,0),Saldo_Liquido:rows.reduce((a,r)=>a+r.liquido,0),Lancamentos:rows.reduce((a,r)=>a+r.qtd,0)};
+      XLSX.utils.book_append_sheet(wb,workbookSheet(withTotalRow(summary,total),[48,22,22,22,22,14]),'Ajustes por Obra');
+      const details=rows.flatMap(r=>r.lancamentos.map(m=>({Mes:adjustmentMonthLabel(m),Obra:r.obra,OI:m.oi||'',Tipo:m.tipo,Valor_Com_Sinal:(m.tipo==='aporte'?1:-1)*n(m.valor),Descricao:m.nome_lancamento||'',Origem:m.origem||'',Movimento_ID:m.id||''})));
+      XLSX.utils.book_append_sheet(wb,workbookSheet(details,[15,48,15,22,22,44,22,38]),'Detalhe Ajustes');
+    }
     XLSX.utils.book_append_sheet(wb,workbookSheet(s.pending.map(o=>({OI:o.oi,Obra:o.nome,Sem_Pacote:o.pacote_faltante?'Sim':'Não',Sem_HEAD:o.head_faltante?'Sim':'Não'})),[12,44,14,14]),'Pendencias Cadastro');
     const safe=`Gerencial_HAPCAPEX_${mgr.raw?.exercicio||''}_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb,safe);
@@ -991,6 +1107,15 @@
       doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.7,cellPadding:1.4},head:[['Pacote','OIs','CAPEX','% CAPEX','Comprom.','Realizado','Saldo']],body:s.packages.map(x=>[x.label,x.qtd_ois,money(x.atribuido),pct(x.pct_capex),money(x.compromissado),money(x.realizado),money(x.saldo)]),foot:[['TOTAL',intFmt.format(s.packages.reduce((a,x)=>a+n(x.qtd_ois),0)),money(s.packages.reduce((a,x)=>a+n(x.atribuido),0)),pct(s.packages.reduce((a,x)=>a+n(x.pct_capex),0)),money(s.packages.reduce((a,x)=>a+n(x.compromissado),0)),money(s.packages.reduce((a,x)=>a+n(x.realizado),0)),money(s.packages.reduce((a,x)=>a+n(x.saldo),0))]],headStyles:{fillColor:[13,43,78]},footStyles:{fillColor:[234,241,250],textColor:[13,43,78],fontStyle:'bold'}});
       doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · HEAD');
       doc.autoTable({startY:23,theme:'striped',styles:{fontSize:6.5,cellPadding:1.3},head:[['HEAD','OIs','CAPEX','% CAPEX','Comprom.','Realizado','Saldo']],body:s.heads.map(x=>[x.label,x.qtd_ois,money(x.atribuido),pct(x.pct_capex),money(x.compromissado),money(x.realizado),money(x.saldo)]),foot:[['TOTAL',intFmt.format(s.heads.reduce((a,x)=>a+n(x.qtd_ois),0)),money(s.heads.reduce((a,x)=>a+n(x.atribuido),0)),pct(s.heads.reduce((a,x)=>a+n(x.pct_capex),0)),money(s.heads.reduce((a,x)=>a+n(x.compromissado),0)),money(s.heads.reduce((a,x)=>a+n(x.realizado),0)),money(s.heads.reduce((a,x)=>a+n(x.saldo),0))]],headStyles:{fillColor:[13,43,78]},footStyles:{fillColor:[234,241,250],textColor:[13,43,78],fontStyle:'bold'}});
+      if(!mgr.adjustmentError && mgr.adjustmentRaw){
+        const rows=tableView('adjustments',s.adjustmentRows,adjustmentColumns());
+        doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · Aportes e contingenciamentos por obra');
+        doc.autoTable({startY:23,theme:'striped',styles:{fontSize:7,cellPadding:1.4},
+          head:[['Obra / OIs','Contingenciamentos (−)','Aportes extras (+)','Saldo líquido','Movimentos']],
+          body:rows.map(r=>[r.obra+(r.ois.length?' · '+r.ois.join(', '):''),money(-r.conting),money(r.aporte),money(r.liquido),String(r.qtd)]),
+          foot:[['TOTAL',money(-rows.reduce((a,r)=>a+r.conting,0)),money(rows.reduce((a,r)=>a+r.aporte,0)),money(rows.reduce((a,r)=>a+r.liquido,0)),String(rows.reduce((a,r)=>a+r.qtd,0))]],
+          headStyles:{fillColor:[13,43,78]},footStyles:{fillColor:[234,241,250],textColor:[13,43,78],fontStyle:'bold'} });
+      }
       if(s.pending.length){doc.addPage('a4','landscape');addHeader('HAPCAPEX · Gerencial · Pendências de cadastro');doc.autoTable({startY:23,theme:'grid',styles:{fontSize:7,cellPadding:1.6},head:[['OI','Obra','Sem Pacote','Sem HEAD']],body:s.pending.map(o=>[o.oi,o.nome,o.pacote_faltante?'Sim':'Não',o.head_faltante?'Sim':'Não']),headStyles:{fillColor:[224,112,32]}});}
       footer();
       doc.save(`Gerencial_HAPCAPEX_${mgr.raw?.exercicio||''}_${new Date().toISOString().slice(0,10)}.pdf`);
