@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-52-caixa-importacao-segundo-plano-tabela-comparativa-20261019';
+const CACHE_NAME = 'hapcapex-v40-1-53-comparativo-mensal-largura-total-20261019';
 const APP_SHELL = [
   './',
   './index.html',
@@ -766,6 +766,43 @@ function patchManagerCashV40152(source) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.53 — Remove apenas o gráfico de saldo líquido de transferências
+// e dá largura total ao comparativo mensal Realizado x Desembolsado.
+// Tabelas, indicadores e operações de transferências continuam intactos.
+function patchManagerCashV40153(source) {
+  if (!source || source.includes('HAPCAPEX_V40153_FULLWIDTH')) return {text:source,applied:true};
+  let text=source;
+  const helper='    const card=(id,title,desc,tall=false)=>`<div class="v4071-chart-card"><h3>';
+  const helperNew='    // HAPCAPEX_V40153_FULLWIDTH: o comparativo ocupa as duas colunas da grade gerencial.\n    const card=(id,title,desc,tall=false)=>`<div class="v4071-chart-card"${id==="v4071-chart-realized-cash" ? " style=\\"grid-column:1 / -1\\"" : ""}><h3>';
+  const wideHelper=helperNew;
+  const obsoleteCard="      ${card('v4071-chart-transfer','Saldo líquido de transferências por pacote','Recebido − Doado. Movimentações internas do mesmo pacote gerencial não alteram o líquido.')}\n";
+  const netStart='    const net=s.nets.slice(0,14);\n';
+  const netEnd='    const bal=s.packages.slice(0,14);';
+  const pdfChartStart="    if(id==='v4071-chart-transfer'){\n";
+  const pdfChartEnd="    if(id==='v4071-chart-balance'){";
+  const pdfIds="'v4071-chart-realized-cash','v4071-chart-transfer','v4071-chart-balance'";
+  const pdfTitles="'Realizado x Desembolsado','Saldo líquido de transferências','Compromissado x saldo livre'";
+  const a=text.indexOf(netStart,text.indexOf('  async function renderCharts('));
+  const b=text.indexOf(netEnd,a+netStart.length);
+  const p=text.indexOf(pdfChartStart,text.indexOf('  function pdfChartTableSpec('));
+  const q=text.indexOf(pdfChartEnd,p+pdfChartStart.length);
+  if (!text.includes(helper)||!text.includes(obsoleteCard)||a<0||b<a||p<0||q<p
+      ||!text.includes(pdfIds)||!text.includes(pdfTitles))
+    return {text:source,applied:false,failed:'Origem gerencial incompatível: estrutura da grade, gráfico ou exportação mudou.'};
+  text=text.replace(helper,wideHelper);
+  text=text.replace(obsoleteCard,'');
+  // Remover a criação de Chart.js e a especificação do PDF sem afetar os dados de transferências.
+  let i=text.indexOf(netStart,text.indexOf('  async function renderCharts('));
+  let j=text.indexOf(netEnd,i+netStart.length);
+  text=text.slice(0,i)+text.slice(j);
+  i=text.indexOf(pdfChartStart,text.indexOf('  function pdfChartTableSpec('));
+  j=text.indexOf(pdfChartEnd,i+pdfChartStart.length);
+  text=text.slice(0,i)+text.slice(j);
+  text=text.replace(pdfIds,"'v4071-chart-realized-cash','v4071-chart-balance'");
+  text=text.replace(pdfTitles,"'Realizado x Desembolsado','Compromissado x saldo livre'");
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -776,14 +813,15 @@ async function decorateControlManagerialResponse(response) {
   const excelPatch = patchManagerExcelFiltersV4098(chartTogglePatch.text);
   const cashPatch=patchManagerCashV40150(excelPatch.text);
   const cashLatestPatch=patchManagerCashV40152(cashPatch.text);
-  return responseWithText(response, cashLatestPatch.text, 'application/javascript; charset=utf-8', {
+  const cashLayoutPatch=patchManagerCashV40153(cashLatestPatch.text);
+  return responseWithText(response, cashLayoutPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied) ? 'v40.1.52' : 'source-incompatible'
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashLayoutPatch.applied) ? 'v40.1.53' : 'source-incompatible'
   });
 }
 
