@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-53-comparativo-mensal-largura-total-20261019';
+const CACHE_NAME = 'hapcapex-v40-1-54-comparativo-visual-definitivo-20261019';
 const APP_SHELL = [
   './',
   './index.html',
@@ -803,6 +803,28 @@ function patchManagerCashV40153(source) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.54 — Integração resiliente com a montagem da Gerencial.
+// O quadro é removido antes da criação dos charts, de forma idempotente.
+// Não altera valores nem tabelas de transferências.
+function patchManagerCashV40154(source) {
+  if (!source) return {text:source,applied:false,failed:'Origem gerencial ausente'};
+  if (source.includes('HAPCAPEX_V40154_REMOVE_TRANSFER_CHART')) return {text:source,applied:true};
+  const start=source.indexOf('  function renderContent() {');
+  const end=source.indexOf('  function bindContentActions() {',start);
+  if (start<0 || end<=start) return {text:source,applied:false,failed:'renderContent ausente'};
+  const chunk=source.slice(start,end);
+  const anchor='    bindContentActions();\n    renderCharts(s);';
+  if (!chunk.includes(anchor)) return {text:source,applied:false,failed:'Ponto de montagem gerencial incompatível'};
+  const fixed=chunk.replace(anchor, `    // HAPCAPEX_V40154_REMOVE_TRANSFER_CHART: remover quadro e ampliar comparativo antes de Chart.js.
+    const transferCard=document.getElementById('v4071-chart-transfer')?.closest('.v4071-chart-card');
+    if(transferCard)transferCard.remove();
+    const comparisonCard=document.getElementById('v4071-chart-realized-cash')?.closest('.v4071-chart-card');
+    if(comparisonCard)comparisonCard.style.gridColumn='1 / -1';
+    bindContentActions();
+    renderCharts(s);`);
+  return {text:source.slice(0,start)+fixed+source.slice(end),applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -814,14 +836,15 @@ async function decorateControlManagerialResponse(response) {
   const cashPatch=patchManagerCashV40150(excelPatch.text);
   const cashLatestPatch=patchManagerCashV40152(cashPatch.text);
   const cashLayoutPatch=patchManagerCashV40153(cashLatestPatch.text);
-  return responseWithText(response, cashLayoutPatch.text, 'application/javascript; charset=utf-8', {
+  const cashFinalPatch=patchManagerCashV40154(cashLayoutPatch.text);
+  return responseWithText(response, cashFinalPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashLayoutPatch.applied) ? 'v40.1.53' : 'source-incompatible'
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied) ? 'v40.1.54' : 'source-incompatible'
   });
 }
 
