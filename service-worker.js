@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-57-alinhamento-cabecalhos-filtros-20261019';
+const CACHE_NAME = 'hapcapex-v40-1-58-carryover-obras-vs-faturas-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -858,6 +858,54 @@ function patchManagerChartsAndWorkV40155(source){
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.58 — classificação de faturas por exercício de origem.
+function patchManagerCarryoverV40158(source) {
+  if(!source)return {text:source,applied:false,failed:"Origem gerencial vazia"};
+  if(source.includes("HAPCAPEX_V40158_SPLIT"))return {text:source,applied:true};
+  let text=source;
+  const doReplace=(oldVal,newVal,step)=>{
+    const a=text.indexOf(oldVal);
+    if(a<0 || text.indexOf(oldVal,a+oldVal.length)!==-1)throw new Error("V40158 marcação ausente ou duplicada: "+step);
+    text=text.slice(0,a)+newVal+text.slice(a+oldVal.length);
+  };
+  const doBetween=(left,right,newVal,step)=>{
+    const a=text.indexOf(left);
+    if(a<0 || text.indexOf(left,a+left.length)!==-1)throw new Error("V40158 início inválido: "+step);
+    const b=text.indexOf(right,a+left.length);
+    if(b<0)throw new Error("V40158 fim inválido: "+step);
+    text=text.slice(0,a)+newVal+text.slice(b);
+  };
+  try {
+    doBetween("  function monthlyCash(rows) {","  function cashTotal(rows) {","  // HAPCAPEX_V40158_SPLIT: exercício da despesa e do pagamento são independentes.\n  function monthlyCash(rows) {\n    const selected=cashSelectedOis(rows);\n    const raw=Array.isArray(mgr.cashRaw?.mensal)?mgr.cashRaw.mensal:[];\n    const monthSet=new Set(Array.isArray(mgr.cashRaw?.meses)?mgr.cashRaw.meses:[]);\n    const year=Number(mgr.raw?.exercicio||new Date().getFullYear());\n    const byMonth=new Map();\n    for(const r of raw){\n      if(!selected.has(String(r.oi)))continue;\n      const x=byMonth.get(r.mes)||{total:0,vigente:0,anterior:0,pendente:0};\n      x.total+=n(r.valor);x.vigente+=n(r.vigente);x.anterior+=n(r.anterior);x.pendente+=n(r.pendente);\n      byMonth.set(r.mes,x);\n    }\n    const result=[];let cumulative=0,complete=true;\n    for(let i=Math.min(mgr.monthStart,mgr.monthEnd);i<=Math.max(mgr.monthStart,mgr.monthEnd);i++){\n      const mes=`${year}-${String(i).padStart(2,'0')}`;\n      const available=monthSet.has(mes),x=byMonth.get(mes)||{total:0,vigente:0,anterior:0,pendente:0};\n      if(!available)complete=false;\n      if(available)cumulative+=x.total;\n      result.push({mes,label:`${monthLabel(i)}/${String(year).slice(-2)}`,\n        valor:available?x.total:null,vigente:available?x.vigente:null,\n        anterior:available?x.anterior:null,pendente:available?x.pendente:null,\n        acumulado:complete?cumulative:null,disponivel:available});\n    }\n    return result;\n  }\n","cash monthly series");
+    doBetween("    const cashValues=new Map(), imported=new Set(mgr.cashRaw?.meses||[]);","    return {...s,ois,transfers,movements,packages,heads,monthly,monthlyCashValues,","    const cashValues=new Map(), imported=new Set(mgr.cashRaw?.meses||[]);\n    (mgr.cashRaw?.mensal||[]).forEach(v=>{\n      if(!cashIds.has(String(v.oi)))return;\n      const c=cashValues.get(v.mes)||{total:0,vigente:0,anterior:0,pendente:0};\n      c.total+=n(v.valor);c.vigente+=n(v.vigente);c.anterior+=n(v.anterior);c.pendente+=n(v.pendente);\n      cashValues.set(v.mes,c);\n    });\n    let accrued=0,contiguous=true;\n    const monthlyCashValues=monthly.map(m=>{\n      const available=imported.has(m.mes),c=cashValues.get(m.mes)||{total:0,vigente:0,anterior:0,pendente:0};\n      if(!available)contiguous=false;\n      if(available)accrued+=c.total;\n      return {mes:m.mes,label:m.label,valor:available?c.total:null,\n        vigente:available?c.vigente:null,anterior:available?c.anterior:null,\n        pendente:available?c.pendente:null,acumulado:contiguous?accrued:null,disponivel:available};\n    });\n","filtered charts");
+    doReplace("sb.rpc('obter_desembolso_gerencial_v1',{p_exercicio:requestedYear})","sb.rpc('obter_desembolso_gerencial_v2',{p_exercicio:requestedYear})","reader V2");
+    doReplace("sb.rpc('inserir_linhas_desembolso_v1',{p_lote_id:id,p_linhas:items.slice(i,i+200)})","sb.rpc('inserir_linhas_desembolso_v2',{p_lote_id:id,p_linhas:items.slice(i,i+200)})","writer V2");
+    doReplace("&& txt(29).includes('NUMDOC') && txt(33).includes('VALOR')","&& txt(29).includes('NUMDOC') && txt(33).includes('VALOR') && txt(16).includes('CATEGORIAORC') && txt(17).includes('DETALHAMENTOORC') && txt(23).includes('EXERCICIO')","required worksheet columns");
+    doReplace("Cabeçalhos não encontrados em F/J/L/AD/AH. Verifique se o arquivo é a Visão Caixa.","Cabeçalhos não encontrados em F/J/L/Q/R/X/AD/AH. Selecione a Visão Caixa completa, incluindo CATEGORIA ORC, DETALHAMENTO ORC e EXERCICIO.","workbook error");
+    doReplace("        const cents=parseCashCents(r[33]);","        const cents=parseCashCents(r[33]);\n        const categoria_orc=String(r[16]??'').trim(),detalhamento_orc=String(r[17]??'').trim();\n        const exercicio_origem=Number(r[23]);\n        const descricaoAno=detalhamento_orc.match(/\\b20\\d{2}\\b/);\n        const anoPagamento=Number(competencia?.slice(0,4));\n        const contraditorio= (categoria_orc==='Despesas - Anos Anteriores' &&\n           (exercicio_origem>=anoPagamento || (descricaoAno && Number(descricaoAno[0])!==exercicio_origem))) ||\n           (categoria_orc==='Carry Over' && exercicio_origem<anoPagamento);","validate provenance");
+    doReplace("if(!competencia||!/^\\d{5,10}$/.test(oi)||cents===null){","if(!competencia||!/^\\d{5,10}$/.test(oi)||cents===null||!Number.isInteger(exercicio_origem)||exercicio_origem<2020||exercicio_origem>anoPagamento||!categoria_orc||!detalhamento_orc||contraditorio){","reject inconsistent import");
+    doReplace("items.push({linha_excel:i+1,competencia,oi,pedido,fatura,centavos:cents});total+=cents;","items.push({linha_excel:i+1,competencia,oi,pedido,fatura,centavos:cents,exercicio_origem,categoria_orc,detalhamento_orc});total+=cents;","persist budget classification");
+    doReplace("Importação bloqueada: linhas com competência, OI ou valor inválidos","Importação bloqueada: linhas com competência, OI, valor ou classificação Q/R/X inconsistentes","clarify import errors");
+    doReplace("      const byMonth=new Map();\n      items.forEach(r=>{const x=byMonth.get(r.competencia)","      const passadoCentavos=items.reduce((a,r)=>a+(r.exercicio_origem<Number(r.competencia.slice(0,4))?r.centavos:0),0);\n      const byMonth=new Map();\n      items.forEach(r=>{const x=byMonth.get(r.competencia)","import preview budget year");
+    doReplace("linhas · Total ${money(total/100)}</p><p>A confirmação substituirá","linhas · Total ${money(total/100)}</p><p><strong>CAPEX vigente:</strong> ${money((total-passadoCentavos)/100)} · <strong>CAPEX anterior (faturas):</strong> ${money(passadoCentavos/100)}. Carry Over de obras permanece no exercício orçamentário da coluna X.</p><p>A confirmação substituirá","import preview split");
+    doReplace("  function cashWorkMonthlyRows(s) {","  function cashWorkMonthlyRowsBase(s) {","wrap work aggregation");
+    doReplace("  function cashWorkExcelRows(s) {","  // Consolida obras, preservando a categoria de origem de cada fatura, sem criar OIs.\n  function cashWorkMonthlyRows(s) {\n    const base=cashWorkMonthlyRowsBase(s), cash=new Map();\n    for(const v of (mgr.cashRaw?.mensal||[]))cash.set(`${v.oi}|${v.mes}`,v);\n    const months=periodKeys(), available=new Set(mgr.cashRaw?.meses||[]);\n    return base.map(g=>{\n      const anteriores={},vigentes={},pendentes={};\n      for(const mes of months){\n        if(!available.has(mes))continue;\n        for(const oi of g.ois){\n          const v=cash.get(`${oi}|${mes}`);\n          anteriores[mes]=(anteriores[mes]||0)+n(v?.anterior);\n          vigentes[mes]=(vigentes[mes]||0)+n(v?.vigente);\n          pendentes[mes]=(pendentes[mes]||0)+n(v?.pendente);\n        }\n      }\n      const soma=values=>months.reduce((a,m)=>a+n(values[m]),0);\n      return {...g,anteriores,vigentes,pendentes,\n        totalAnterior:soma(anteriores),totalVigente:soma(vigentes),totalPendente:soma(pendentes)};\n    });\n  }\n  function cashWorkExcelRows(s) {","wrap rows");
+    doReplace("    const html=renderManagerialTable({id:'realizado-desembolso-obra',title:'Realizado x Desembolsado mensal por obra',","    // Total pago mantém todas as origens; estas colunas explicitam o exercício financiador.\n    cols.push({key:'total_capex_vigente',label:'D · Vigente',type:'number',num:true,totalFormat:'number',\n      value:g=>g.temCaixa?g.totalVigente:null,\n      total:visible=>visible.some(g=>g.temCaixa)?visible.reduce((sum,g)=>sum+n(g.totalVigente),0):null,\n      render:g=>g.temCaixa?`<strong title=\"${esc(money(g.totalVigente))}\">${numberBR(g.totalVigente)}</strong>`:'—'});\n    cols.push({key:'total_capex_anterior',label:'D · Anterior',type:'number',num:true,totalFormat:'number',\n      value:g=>g.temCaixa?g.totalAnterior:null,\n      total:visible=>visible.some(g=>g.temCaixa)?visible.reduce((sum,g)=>sum+n(g.totalAnterior),0):null,\n      render:g=>g.temCaixa?`<strong title=\"${esc(money(g.totalAnterior))}\">${numberBR(g.totalAnterior)}</strong>`:'—'});\n    if(rows.some(g=>g.totalPendente))cols.push({key:'total_capex_pendente',label:'D · Revisar',type:'number',num:true,totalFormat:'number',\n      value:g=>g.totalPendente,render:g=>numberBR(g.totalPendente)});\n    const html=renderManagerialTable({id:'realizado-desembolso-obra',title:'Realizado x Desembolsado mensal por obra',","work totals columns");
+    doReplace("description:'Todos os meses do período · R = Realizado · D = Desembolsado · Valores em R$ · Filtros por coluna e totais dinâmicos.'","description:'Todos os meses · R = Realizado · D = Desembolsado total · Vigente = verba do ano selecionado · Anterior = faturas do CAPEX de exercícios anteriores · Valores em R$.'","work table legend");
+    doReplace("      row.Total_Desembolsado=g.temCaixa?g.total:'Sem dados';","      row.Total_Desembolsado=g.temCaixa?g.total:'Sem dados';\n      row.Desembolso_CAPEX_Vigente=g.temCaixa?g.totalVigente:'Sem dados';\n      row.Desembolso_CAPEX_Anterior=g.temCaixa?g.totalAnterior:'Sem dados';\n      row.Desembolso_Origem_Pendente=g.temCaixa?g.totalPendente:'Sem dados';","export work breakdown");
+    doReplace("row[m+' Desembolsado']=available.has(m)?n(g.meses[m]):'Sem dados';","row[m+' Desembolsado']=available.has(m)?n(g.meses[m]):'Sem dados';\n        row[m+' D CAPEX vigente']=available.has(m)?n(g.vigentes[m]):'Sem dados';\n        row[m+' D CAPEX anterior']=available.has(m)?n(g.anteriores[m]):'Sem dados';","export monthly prior breakdown");
+    doReplace("{type:'bar',label:'Desembolso mensal',data:s.monthlyCashValues.map(x=>x.valor),backgroundColor:'#3876af',borderWidth:0,yAxisID:'y'},","{type:'bar',label:'Desembolso CAPEX vigente',data:s.monthlyCashValues.map(x=>x.vigente),backgroundColor:'#3876af',borderWidth:0,yAxisID:'y'},\n      {type:'bar',label:'Desembolso CAPEX anterior',data:s.monthlyCashValues.map(x=>x.anterior),backgroundColor:'#91a4b8',borderWidth:0,yAxisID:'y'},\n      ...(s.monthlyCashValues.some(x=>x.pendente)?[{type:'bar',label:'Origem não classificada',data:s.monthlyCashValues.map(x=>x.pendente),backgroundColor:'#d5a15d',borderWidth:0,yAxisID:'y'}]:[]),","cash chart grouping");
+    doReplace("{label:'Desembolsado',data:s.monthlyCashValues.map(x=>x.valor),backgroundColor:'#1a4b8c',borderWidth:0}","{label:'Desembolsado CAPEX vigente',data:s.monthlyCashValues.map(x=>x.vigente),backgroundColor:'#1a4b8c',borderWidth:0},\n      {label:'Desembolsado CAPEX anterior',data:s.monthlyCashValues.map(x=>x.anterior),backgroundColor:'#91a4b8',borderWidth:0},\n      ...(s.monthlyCashValues.some(x=>x.pendente)?[{label:'Origem não classificada',data:s.monthlyCashValues.map(x=>x.pendente),backgroundColor:'#d5a15d',borderWidth:0}]:[])","compare chart grouping");
+    doReplace("'Comparativo mensal — Realizado x Desembolsado','Comparação mês a mês na mesma seleção de filtros.'","'Comparativo mensal — Realizado x Desembolsado','Realizado x caixa do CAPEX vigente x pagamentos de exercícios anteriores. Filtros acumulativos.'","chart help");
+    doReplace("'Evolução mensal do Desembolso','Barras mensais + linha acumulada dentro do período selecionado.'","'Evolução mensal do Desembolso','Barras separadas por exercício de origem e acumulado total de caixa.'","cash help");
+    doBetween("    if(id==='v4071-chart-cash'){","    if(id==='v4071-chart-balance'){","    if(id==='v4071-chart-cash'){\n      const rows=s.monthlyCashValues;\n      return {head:[['Mês','CAPEX vigente','CAPEX anterior','Pendente','Caixa total','Acumulado total']],\n        body:rows.map(x=>[x.label,...['vigente','anterior','pendente','valor','acumulado'].map(k=>x[k]===null?'Sem dados':money(x[k]))])};\n    }\n    if(id==='v4071-chart-realized-cash'){\n      return {head:[['Mês','Realizado','Caixa vigente','Caixa anterior','A classificar','Caixa total']],\n        body:s.monthly.map((x,i)=>{const c=s.monthlyCashValues[i];return [x.label,money(x.valor),...['vigente','anterior','pendente','valor'].map(k=>c?.[k]===null||c?.[k]===undefined?'Sem dados':money(c[k]))]})};\n    }\n","pdf chart breakdown");
+    doReplace("Desembolsado:s.monthlyCashValues[i]?.valor??'Sem dados',Acumulado_Desembolsado:","Desembolsado:s.monthlyCashValues[i]?.valor??'Sem dados',CAPEX_Vigente:s.monthlyCashValues[i]?.vigente??'Sem dados',CAPEX_Anterior:s.monthlyCashValues[i]?.anterior??'Sem dados',Origem_Pendente:s.monthlyCashValues[i]?.pendente??'Sem dados',Acumulado_Desembolsado:","Excel summary");
+    doReplace("[50,33,...periodKeys().flatMap(()=>[20,22]),20,22]","[50,33,...periodKeys().flatMap(()=>[20,22,22,22]),20,22,22,22,22]","cash workbook widths");
+    doReplace("[14,22,22,24]),'Realizado x Caixa'","[14,22,22,22,22,22,24]),'Realizado x Caixa'","summary workbook widths");
+    return {text,applied:true};
+  }catch(err){return {text:source,applied:false,failed:String(err?.message||err)};}
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -871,14 +919,16 @@ async function decorateControlManagerialResponse(response) {
   const cashLayoutPatch=patchManagerCashV40153(cashLatestPatch.text);
   const cashFinalPatch=patchManagerCashV40154(cashLayoutPatch.text);
   const cashV55Patch=patchManagerChartsAndWorkV40155(cashFinalPatch.text);
-  return responseWithText(response, cashV55Patch.text, 'application/javascript; charset=utf-8', {
+  const carryoverPatch=patchManagerCarryoverV40158(cashV55Patch.text);
+  return responseWithText(response, carryoverPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied) ? 'v40.1.55' : 'source-incompatible'
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied) ? 'v40.1.58' : 'source-incompatible',
+    'x-hapcapex-carryover': carryoverPatch.applied ? 'origem-orcamentaria-v2' : 'incompatible-'+String(carryoverPatch.failed||'unknown').slice(0,90)
   });
 }
 
