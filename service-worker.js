@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-62-nomes-historicos-caixa-2025-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-63-kpi-desembolso-head-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -1075,6 +1075,73 @@ function patchManagerHistoricalNamesV40162(source) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.63 — KPI Desembolsado no período, HEAD Operação e origem orçamentária.
+// As OIs históricas sem HEAD confirmado continuam identificadas como "Sem HEAD (histórico)".
+// Não altera lançamentos, cadastro CAPEX ou o agrupamento oficial de obras.
+function patchManagerCashKpiHeadV40163(source) {
+  if(!source || !source.includes('HAPCAPEX_V40162_HISTORIC_IDENTITIES') || !source.includes('HAPCAPEX_V40160_ORIGIN_SEPARATE_ROWS'))
+    return {text:source,applied:false,failed:'V40.1.60 e V40.1.62 obrigatórias'};
+  if(source.includes('HAPCAPEX_V40163_KPI_HEAD'))return {text:source,applied:true};
+  let text=source;
+  const replacements=[
+    ["sb.rpc('obter_desembolso_gerencial_v3',{p_exercicio:requestedYear})",
+     "sb.rpc('obter_desembolso_gerencial_v5',{p_exercicio:requestedYear})",'RPC com HEAD histórico'],
+    ["    if(/^\\d{8,10}$/.test(query)) {",
+     "    if(/^\\d{8,10}$/.test(query)) {",'noop'],
+    ["      <div class=\"kpi-card\" style=\"border-left-color:var(--verde)\"><div class=\"label\">Saldo livre</div>",
+     "      ${v163KpiHtml(s)}\n      <div class=\"kpi-card\" style=\"border-left-color:var(--verde)\"><div class=\"label\">Saldo livre</div>",'KPI na grade após Realizado'],
+    ["        <label>HEAD Operação<select id=\"v4071-filter-head\"><option value=\"\">Todos os HEADs</option>${heads.map(x=>optionHtml(x,x,mgr.head)).join('')}</select></label>",
+     "        <label>HEAD Operação<select id=\"v4071-filter-head\"><option value=\"\">Todos os HEADs</option>${heads.map(x=>optionHtml(x,x,mgr.head)).join('')}</select></label>",'noop head select'],
+    ["    const heads=uniq(allOis().filter(o=>isOperationalHead(o?.head)).map(o=>o.head)).sort((a,b)=>String(a).localeCompare(String(b),'pt-BR'));",
+     "    const heads=uniq([...allOis().filter(o=>isOperationalHead(o?.head)).map(o=>o.head),...(mgr.cashRaw?.nomes_historicos||[]).map(h=>h.head||'Sem HEAD (histórico)')]).sort((a,b)=>String(a).localeCompare(String(b),'pt-BR'));",'inclui HEAD histórico não classificado'],
+    ["    const out=new Set(rows.map(x=>String(x.oi)));\n    const query=String(mgr.query||'').trim();",
+     "    const out=new Set(rows.map(x=>String(x.oi)));\n    const query=String(mgr.query||'').trim();\n    // OIs históricas não integram o orçamento corrente. Filtrar pelo HEAD documental,\n    // sem atribuir pacote, verba ou realizado fictícios ao exercício vigente.\n    if(!mgr.pacote && mgr.saldo==='all'){\n      const q=norm(query);\n      for(const h of (mgr.cashRaw?.nomes_historicos||[])){\n        const historicalHead=String(h.head||'Sem HEAD (histórico)');\n        if(mgr.head && historicalHead!==mgr.head)continue;\n        if(q && !norm(h.oi).includes(q) && !norm(h.nome).includes(q))continue;\n        out.add(String(h.oi));\n      }\n    }",'HEAD e busca histórica'],
+    ["{Indicador:'Desembolsado no período',Valor:cashTotal(s.monthlyCashValues)}",
+     "{Indicador:'Desembolsado no período',Valor:v163KpiAmounts(s).total??'Sem dados'},{Indicador:'Desembolsado CAPEX vigente',Valor:v163KpiAmounts(s).vigente??'Sem dados'},{Indicador:'Desembolsado CAPEX anterior',Valor:v163KpiAmounts(s).anterior??'Sem dados'}",'Resumo Excel conciliado ao KPI'],
+    ["doc.autoTable({startY:23,theme:'grid',styles:{fontSize:8,cellPadding:2},head:[['CAPEX','Compromissado','Realizado período','Saldo livre','OIs','Transferido','Aportes','Conting.']],body:[[money(s.totalAttr),money(s.totalComp),money(s.totalReal),money(s.totalSaldo),String(s.ois.length),money(s.transferTotal),money(s.aporte),money(s.conting)]],headStyles:{fillColor:[26,75,140]}});",
+     "doc.autoTable({startY:23,theme:'grid',styles:{fontSize:7.5,cellPadding:1.8},head:[['CAPEX','Compromissado','Realizado período','Desembolsado período','Saldo livre','OIs','Transferido','Aportes','Conting.']],body:[[money(s.totalAttr),money(s.totalComp),money(s.totalReal),v163KpiAmounts(s).total===null?'Sem dados':money(v163KpiAmounts(s).total),money(s.totalSaldo),String(s.ois.length),money(s.transferTotal),money(s.aporte),money(s.conting)]],headStyles:{fillColor:[26,75,140]}});",'Resumo PDF com Desembolso'],
+  ];
+  const fail=[];
+  for(const [a,b,label] of replacements){
+    if(label.startsWith('noop'))continue;
+    const count=text.split(a).length-1;
+    if(count!==1)fail.push(label+' ('+count+')');
+    else text=text.replace(a,b);
+  }
+  if(fail.length)return {text:source,applied:false,failed:fail.join('; ')};
+  const anchor='  function cashSelectedOis(rows) {';
+  // Funções compartilham o mesmo conjunto de linhas da tabela, garantindo filtros
+  // por obra/OI/pacote/HEAD/mês/origem e conciliação em centavos.
+  const helpers=`  // HAPCAPEX_V40163_KPI_HEAD
+  function v163KpiAmounts(s) {
+    const months=periodKeys(), available=new Set(mgr.cashRaw?.meses||[]);
+    if(!mgr.cashRaw || !months.some(m=>available.has(m)))
+      return {total:null,vigente:null,anterior:null,pendente:null,meses:0};
+    const data=cashWorkMonthlyRows(s);
+    const filtered=window.HAP_XF?.apply?.('mgr-realizado-desembolso-obra',data)||data;
+    const sum=key=>filtered.reduce((acc,row)=>acc+Math.round(n(row[key])*100),0)/100;
+    return {total:sum('total'),vigente:sum('totalVigente'),anterior:sum('totalAnterior'),
+      pendente:sum('totalPendente'),meses:months.filter(m=>available.has(m)).length};
+  }
+  function v163KpiHtml(s) {
+    const a=v163KpiAmounts(s);
+    if(a.total===null)return \`<div class="kpi-card" style="border-left-color:#1a4b8c"><div class="label">Desembolsado no período</div>
+      <div class="value">—</div><div class="v4071-kpi-sub">Sem dados da Visão Caixa para os meses selecionados</div></div>\`;
+    const partial=a.meses<periodKeys().length?' · período parcialmente importado':'';
+    return \`<div class="kpi-card" style="border-left-color:#1a4b8c"><div class="label">Desembolsado no período</div>
+      <div class="value" style="color:#1a4b8c">\${money(a.total)}</div>
+      <div class="v4071-kpi-sub">CAPEX vigente: <strong>\${money(a.vigente)}</strong></div>
+      <div class="v4071-kpi-sub">CAPEX anterior: <strong>\${money(a.anterior)}</strong>\${a.pendente?\` · Origem a revisar: \${money(a.pendente)}\`:''}</div>
+      <div class="v4071-kpi-sub">\${periodLabel()}\${partial}</div></div>\`;
+  }
+`;
+  if(text.split(anchor).length!==2)return {text:source,applied:false,failed:'Helpers não encontraram função de OIs'};
+  // Desfazer escapes necessários apenas para representar templates aninhados.
+  const js=helpers.replace(/\\\`/g,'`').replace(/\\\\\$/g,'$');
+  text=text.replace(anchor,js+anchor);
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -1092,18 +1159,20 @@ async function decorateControlManagerialResponse(response) {
   const priorVisibilityPatch=patchManagerPriorBarVisibilityV40159(carryoverPatch.text);
   const originRowsPatch=patchManagerCashOriginRowsV40160(priorVisibilityPatch.text);
   const historicalNamesPatch=patchManagerHistoricalNamesV40162(originRowsPatch.text);
-  return responseWithText(response, historicalNamesPatch.text, 'application/javascript; charset=utf-8', {
+  const desembolsoKpiPatch=patchManagerCashKpiHeadV40163(historicalNamesPatch.text);
+  return responseWithText(response, desembolsoKpiPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied && originRowsPatch.applied && historicalNamesPatch.applied) ? 'v40.1.62' : 'source-incompatible',
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied && originRowsPatch.applied && historicalNamesPatch.applied && desembolsoKpiPatch.applied) ? 'v40.1.63' : 'source-incompatible',
     'x-hapcapex-carryover': carryoverPatch.applied ? 'origem-orcamentaria-v2' : 'incompatible-'+String(carryoverPatch.failed||'unknown').slice(0,90),
     'x-hapcapex-prior-bars': priorVisibilityPatch.applied ? 'v40.1.59-color-and-minbar' : 'incompatible-'+String(priorVisibilityPatch.failed||'unknown').slice(0,90),
     'x-hapcapex-origin-work-rows': originRowsPatch.applied ? 'v40.1.60-separated' : 'incompatible-'+String(originRowsPatch.failed||'unknown').slice(0,90),
-    'x-hapcapex-historical-names': historicalNamesPatch.applied ? 'v40.1.62-read-v3' : 'incompatible-'+String(historicalNamesPatch.failed||'unknown').slice(0,90)
+    'x-hapcapex-historical-names': historicalNamesPatch.applied ? 'v40.1.62-read-v3' : 'incompatible-'+String(historicalNamesPatch.failed||'unknown').slice(0,90),
+    'x-hapcapex-desembolso-kpi': desembolsoKpiPatch.applied ? 'v40.1.63-head-origem' : 'incompatible-'+String(desembolsoKpiPatch.failed||'unknown').slice(0,90)
   });
 }
 
