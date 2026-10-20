@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-58-carryover-obras-vs-faturas-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-59-barras-capex-anterior-contrastadas-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -906,6 +906,41 @@ function patchManagerCarryoverV40158(source) {
   }catch(err){return {text:source,applied:false,failed:String(err?.message||err)};}
 }
 
+// HAPCAPEX V40.1.59 — barras pequenas do CAPEX de exercícios anteriores.
+// O eixo continua com a escala real: minBarLength altera somente a altura mínima desenhada.
+// Zero vira null para não desenhar barras inexistentes; o tooltip mantém o valor financeiro exato.
+function patchManagerPriorBarVisibilityV40159(source) {
+  if (!source || !source.includes('HAPCAPEX_V40158_SPLIT'))
+    return {text:source,applied:false,failed:'Classificação de origem V40.1.58 ausente'};
+  if (source.includes('HAPCAPEX_V40159_PRIOR_VISIBLE'))
+    return {text:source,applied:true};
+  let text=source;
+  const exchanges=[
+    [
+      "{type:'bar',label:'Desembolso CAPEX anterior',data:s.monthlyCashValues.map(x=>x.anterior),backgroundColor:'#91a4b8',borderWidth:0,yAxisID:'y'},",
+      "{type:'bar',label:'Desembolso CAPEX anterior',data:s.monthlyCashValues.map(x=>x.anterior==null||Number(x.anterior)===0?null:x.anterior),backgroundColor:'#7ea6d8',borderColor:'#4e76a5',borderWidth:1,borderSkipped:false,minBarLength:12,yAxisID:'y'},"
+    ],
+    [
+      "{label:'Desembolsado CAPEX anterior',data:s.monthlyCashValues.map(x=>x.anterior),backgroundColor:'#91a4b8',borderWidth:0},",
+      "{label:'Desembolsado CAPEX anterior',data:s.monthlyCashValues.map(x=>x.anterior==null||Number(x.anterior)===0?null:x.anterior),backgroundColor:'#7ea6d8',borderColor:'#4e76a5',borderWidth:1,borderSkipped:false,minBarLength:12},"
+    ],
+    [
+      "'Realizado x caixa do CAPEX vigente x pagamentos de exercícios anteriores. Filtros acumulativos.'",
+      "'Realizado x caixa do CAPEX vigente x pagamentos de exercícios anteriores. Filtros acumulativos. Barras pequenas de CAPEX anterior têm altura mínima visual (valor real no tooltip). HAPCAPEX_V40159_PRIOR_VISIBLE'"
+    ],
+    [
+      "'Barras separadas por exercício de origem e acumulado total de caixa.'",
+      "'Barras separadas por exercício de origem e acumulado total de caixa. CAPEX anterior pequeno recebe altura mínima visual; os valores e a escala continuam reais.'"
+    ]
+  ];
+  for (const [oldText,newText] of exchanges) {
+    const count=text.split(oldText).length-1;
+    if (count!==1)return {text:source,applied:false,failed:'Marcador do gráfico ausente/duplicado ('+count+'): '+oldText.slice(0,90)};
+    text=text.replace(oldText,newText);
+  }
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -920,15 +955,17 @@ async function decorateControlManagerialResponse(response) {
   const cashFinalPatch=patchManagerCashV40154(cashLayoutPatch.text);
   const cashV55Patch=patchManagerChartsAndWorkV40155(cashFinalPatch.text);
   const carryoverPatch=patchManagerCarryoverV40158(cashV55Patch.text);
-  return responseWithText(response, carryoverPatch.text, 'application/javascript; charset=utf-8', {
+  const priorVisibilityPatch=patchManagerPriorBarVisibilityV40159(carryoverPatch.text);
+  return responseWithText(response, priorVisibilityPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied) ? 'v40.1.58' : 'source-incompatible',
-    'x-hapcapex-carryover': carryoverPatch.applied ? 'origem-orcamentaria-v2' : 'incompatible-'+String(carryoverPatch.failed||'unknown').slice(0,90)
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied) ? 'v40.1.59' : 'source-incompatible',
+    'x-hapcapex-carryover': carryoverPatch.applied ? 'origem-orcamentaria-v2' : 'incompatible-'+String(carryoverPatch.failed||'unknown').slice(0,90),
+    'x-hapcapex-prior-bars': priorVisibilityPatch.applied ? 'v40.1.59-color-and-minbar' : 'incompatible-'+String(priorVisibilityPatch.failed||'unknown').slice(0,90)
   });
 }
 
