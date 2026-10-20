@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-66-inicial-curva-controle-shell-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-67-graficos-atualizados-sem-recriacao-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -661,12 +661,56 @@ function patchDashboardCoreV4098(source) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.67 — reaproveitamento seguro das instâncias Chart.js da Curva.
+// Mantém as mesmas séries, valores, opções, tooltips e filtros; apenas evita
+// destruir o canvas quando o gráfico e o seu tipo continuam sendo os mesmos.
+function patchDashboardCoreChartsV40167(source) {
+  if (!source || source.includes('HAPCAPEX_V40167_CURVE_UPSERT'))
+    return {text:source,applied:!!source?.includes('HAPCAPEX_V40167_CURVE_UPSERT')};
+  const names=['chartLine','chartDesvio','chartStacked','chartAcumulado','manChartLine','manChartBar'];
+  const needles=names.map(name=>`  if (${name}) ${name}.destroy();\n  ${name} = new Chart(`);
+  const anchor='function renderCharts() {';
+  if (source.split(anchor).length!==2 || needles.some(needle=>source.split(needle).length!==2))
+    return {text:source,applied:false,failed:'Não foi possível identificar os seis gráficos esperados da Curva'};
+  const helper=`// HAPCAPEX_V40167_CURVE_UPSERT — atualiza instâncias, sem gráficos duplicados.
+function hapV40167ChartUpsert(previous,element,configuration) {
+  if(!element) {try{previous?.destroy();}catch(_){} return null;}
+  let destroyed=false;
+  if(previous && previous.canvas===element && previous.config?.type===configuration.type) {
+    try {
+      previous.data=configuration.data;
+      previous.options=configuration.options;
+      previous.update('none');
+      const metric=window.HAPCAPEX_DESEMPENHO_GRAFICOS ||= {curva_atualizados:0,curva_criados:0,gerencial_atualizados:0,gerencial_criados:0};
+      metric.curva_atualizados++;
+      return previous;
+    } catch(_) {try{previous.destroy();destroyed=true;}catch(__){}}
+  }
+  if(previous && !destroyed){try{previous.destroy();}catch(_){}}
+  const chart=new Chart(element,configuration);
+  const metric=window.HAPCAPEX_DESEMPENHO_GRAFICOS ||= {curva_atualizados:0,curva_criados:0,gerencial_atualizados:0,gerencial_criados:0};
+  metric.curva_criados++;
+  return chart;
+}
+
+`;
+  let text=source.replace(anchor,helper+anchor);
+  names.forEach((name,i)=>{text=text.replace(needles[i],`  ${name} = hapV40167ChartUpsert(${name},`);});
+  // Antes o clique de status recalculava KPIs duas vezes; applyFilter já os atualiza.
+  const duplicate='  activeStatusFilter = activeStatusFilter === status ? null : status;\n  renderKPIs(); // re-renderiza para atualizar visual dos cards\n  applyFilter();';
+  if(text.includes(duplicate)) text=text.replace(duplicate,'  activeStatusFilter = activeStatusFilter === status ? null : status;\n  applyFilter();');
+  return {text,applied:true};
+}
+
 async function decorateDashboardCoreResponse(response) {
   if (!response || !response.ok) return response;
   const original=await response.text();
   const patched=patchDashboardCoreV4098(original);
-  return responseWithText(response,patched.text,'application/javascript; charset=utf-8',{
-    'x-hapcapex-functional':'v40.0.111','x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied'
+  const chartPatch=patchDashboardCoreChartsV40167(patched.text);
+  return responseWithText(response,chartPatch.text,'application/javascript; charset=utf-8',{
+    'x-hapcapex-functional':'v40.1.67',
+    'x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied',
+    'x-hapcapex-chart-reuse':chartPatch.applied?'six-curve-charts':'source-incompatible'
   });
 }
 
@@ -1189,6 +1233,72 @@ function patchManagerNavigationPerformanceV40165(source){
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.67 — preservar os canvases da Gerencial ao filtrar.
+// O HTML das tabelas continua a ser reconstruído, mas os gráficos persistem
+// no mesmo canvas e usam Chart.update('none') com o novo conjunto de dados.
+function patchManagerChartReuseV40167(source) {
+  if(!source || source.includes('HAPCAPEX_V40167_MANAGER_CHART_REUSE'))
+    return {text:source,applied:!!source?.includes('HAPCAPEX_V40167_MANAGER_CHART_REUSE')};
+  const prefix='    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}';
+  const chartDestroy='    Object.values(mgr.charts).forEach(c=>{try{c?.destroy();}catch(_){}});mgr.charts={};';
+  const oldMake="    const make=(id,config)=>{const el=document.getElementById(id);if(!el)return null;const c=new Chart(el.getContext('2d'),config);mgr.charts[id]=c;return c;};";
+  if(source.split(prefix).length!==2 || source.split(chartDestroy).length!==2 ||
+     source.split(oldMake).length!==2)
+    return {text:source,applied:false,failed:'Estrutura de gráficos/tabelas da Gerencial incompatível'};
+  const preserve=`    // HAPCAPEX_V40167_MANAGER_CHART_REUSE: conservar apenas o DOM dos gráficos.
+    // O restante do conteúdo é renderizado normalmente, inclusive totais e filtros.
+    const previousChartGrid=content.querySelector(':scope > .v4071-grid-2');
+    if(previousChartGrid)previousChartGrid.remove();
+`;
+  const reinstate=`    if(previousChartGrid) {
+      const replacement=content.querySelector(':scope > .v4071-grid-2');
+      const priorIds=[...previousChartGrid.querySelectorAll('canvas[id]')].map(el=>el.id);
+      if(replacement && priorIds.length && priorIds.every(id=>replacement.querySelector('canvas[id="'+id+'"]')))
+        replacement.replaceWith(previousChartGrid);
+    }
+`;
+  let text=source.replace(prefix,preserve+prefix);
+  // Só há um renderContent() no módulo; a substituição ocorre após o HTML novo.
+  const marker='    // HAPCAPEX_V40154_REMOVE_TRANSFER_CHART:';
+  if(text.split(marker).length!==2) return {text:source,applied:false,failed:'Âncora do comparativo não encontrada'};
+  text=text.replace(marker,reinstate+marker);
+  text=text.replace(chartDestroy,`    const previousCharts=mgr.charts;
+    // Os gráficos antigos pertencem aos canvases preservados no renderContent.
+    // Destruir apenas gráficos cujos canvases deixaram de estar ativos.
+    Object.entries(previousCharts).forEach(([id,old])=>{
+      if(!old || old.canvas!==document.getElementById(id)){
+        try{old?.destroy();}catch(_){}
+        delete previousCharts[id];
+      }
+    });
+    mgr.charts={};`);
+  const newMake=`    const make=(id,config)=>{
+      const el=document.getElementById(id);
+      if(!el)return null;
+      let previous=previousCharts[id],chart=null,destroyed=false;
+      if(previous && previous.canvas===el && previous.config?.type===config.type){
+        try{
+          previous.data=config.data;
+          previous.options=config.options;
+          previous.update('none');
+          chart=previous;
+          const metric=window.HAPCAPEX_DESEMPENHO_GRAFICOS ||= {curva_atualizados:0,curva_criados:0,gerencial_atualizados:0,gerencial_criados:0};
+          metric.gerencial_atualizados++;
+        }catch(_){try{previous.destroy();destroyed=true;}catch(__){}}
+      }
+      if(!chart){
+        if(previous && !destroyed){try{previous.destroy();}catch(_){}}
+        chart=new Chart(el.getContext('2d'),config);
+        const metric=window.HAPCAPEX_DESEMPENHO_GRAFICOS ||= {curva_atualizados:0,curva_criados:0,gerencial_atualizados:0,gerencial_criados:0};
+        metric.gerencial_criados++;
+      }
+      mgr.charts[id]=chart;
+      return chart;
+    };`;
+  text=text.replace(oldMake,newMake);
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -1209,8 +1319,10 @@ async function decorateControlManagerialResponse(response) {
   const desembolsoKpiPatch=patchManagerCashKpiHeadV40163(historicalNamesPatch.text);
   const kpiOrderPatch=patchManagerKpiOrderV40164(desembolsoKpiPatch.text);
   const performancePatch=patchManagerNavigationPerformanceV40165(kpiOrderPatch.text);
-  return responseWithText(response, performancePatch.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.1.65',
+  const chartReusePatch=patchManagerChartReuseV40167(performancePatch.text);
+  return responseWithText(response, chartReusePatch.text, 'application/javascript; charset=utf-8', {
+    'x-hapcapex-functional': 'v40.1.67',
+    'x-hapcapex-managerial-chart-reuse': chartReusePatch.applied ? 'preserve-canvases-and-update' : 'source-incompatible',
     'x-hapcapex-phase1-navigation': performancePatch.applied ? 'memory-and-metrics' : 'source-incompatible',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
