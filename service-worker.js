@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-65-navegacao-cache-metricas-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-66-inicial-curva-controle-shell-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -1230,6 +1230,32 @@ async function decorateControlManagerialResponse(response) {
 async function decorateBootstrapResponse(response) {
   if (!response || !response.ok) return response;
   let text = await response.text();
+  // HAPCAPEX_V40166_BOOT_STATIC — reutiliza as versões de JS que já integram
+  // o pacote estático do Service Worker, sem Date.now() ou URLs novas por sessão.
+  // Ao atualizar os arquivos, incrementar seus parâmetros de versão no APP_SHELL.
+  const coreAnchor="script.src = 'dashboard-core.js?v=' + Date.now();";
+  if (text.includes(coreAnchor)) {
+    text=text.replace(coreAnchor,"// HAPCAPEX_V40166_CORE_PIN\n    script.src = 'dashboard-core.js?v=29';");
+  }
+  const addonAnchor="v36CurveAddon.src = 'v36-curve-addon.js?v=37.0';";
+  if (text.includes(addonAnchor)) {
+    text=text.replace(addonAnchor,"// HAPCAPEX_V40166_CURVE_PIN\n      v36CurveAddon.src = 'v36-curve-addon.js?v=38.1.0';");
+  }
+  // Métrica de consulta+preparação da Curva, sem armazenar dados pessoais.
+  const bootAnchor='async function loadApp() {';
+  const bootEnd='  void ensureAutomaticBackup();\n}';
+  if(!text.includes('HAPCAPEX_V40166_BOOT_METRIC') && text.includes(bootAnchor)
+     && text.includes(bootEnd)) {
+    text=text.replace(bootAnchor,`${bootAnchor}
+  // HAPCAPEX_V40166_BOOT_METRIC
+  const __hapBootStart=performance.now();`);
+    text=text.replace(bootEnd,`  window.HAPCAPEX_DESEMPENHO_INICIAL={
+    modulo:'Curva',etapa:'dados_e_preparacao',
+    duracao_ms:Math.round(performance.now()-__hapBootStart),
+    momento:new Date().toISOString()
+  };
+${bootEnd}`);
+  }
   if (!text.includes('HAP_V40_PASSWORD_PREAUTH_CURVE')) {
     const re = /(\s*currentProfile\s*=\s*profile;\s*)(\$\('#authGate'\)\.hidden\s*=\s*true;)/;
     if (re.test(text)) {
@@ -1520,27 +1546,69 @@ self.addEventListener('activate', event => {
     }));
   })());
 });
+// HAPCAPEX_V40166_SHELL_NAV — HTML público com cache-first e revalidação
+// em segundo plano. Nunca guarda JSON do Supabase, respostas RPC, páginas
+// externas, cookies ou dados financeiros: somente o shell estático.
+const HAP_V40166_STATIC_URLS=new Set(APP_SHELL
+  .filter(path=>/\.(?:js|css|png|svg|webp|webmanifest)(?:\?|$)/i.test(path))
+  .map(path=>new URL(path,self.registration.scope).href));
+const HAP_V40166_SHELL_PATHS=new Set([
+  new URL('./',self.registration.scope).pathname,
+  new URL('./index.html',self.registration.scope).pathname,
+  new URL('./controle-capex.html',self.registration.scope).pathname
+]);
+
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  const forcedRefresh=request.cache==='reload'||request.cache==='no-store';
+  const staticAsset=HAP_V40166_STATIC_URLS.has(url.href);
+  const navigableShell=request.mode==='navigate' &&
+    HAP_V40166_SHELL_PATHS.has(url.pathname);
+  const shellStatic=staticAsset && !forcedRefresh;
+  const shellNavigation=navigableShell && !forcedRefresh;
+
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    try {
-      const networkResponse = await fetch(request, { cache: 'no-cache' });
-      const response = await decorateResponse(networkResponse, url);
-      if (response && response.ok) cache.put(request, response.clone());
-      return response;
-    } catch (error) {
-      const cached = await cache.match(request, { ignoreSearch: true });
-      if (cached) {
-        return decorateResponse(cached, url);
+    if(shellStatic) {
+      const cached=await cache.match(request);
+      if(cached?.ok) return decorateResponse(cached,url);
+    }
+    if(shellNavigation) {
+      const cached=await cache.match(request,{ignoreSearch:true});
+      if(cached?.ok) {
+        // O usuário recebe o HTML imediato; o próximo acesso poderá usar uma
+        // versão mais recente. Nunca interrompe a navegação por falha de rede.
+        const update=fetch(request,{cache:'no-cache'}).then(async res=>{
+          if(res?.ok && (res.headers.get('content-type')||'').includes('text/html')) {
+            await cache.put(request,res.clone()); // Salvar HTML bruto; decorar só ao servir.
+          }
+        }).catch(()=>{});
+        event.waitUntil(update);
+        return decorateHtmlResponse(cached,url);
       }
-      if (request.mode === 'navigate') {
-        const fallback = await cache.match('./index.html');
-        if (fallback) return decorateHtmlResponse(fallback, new URL('./index.html', self.location.href));
+    }
+    try {
+      const networkResponse = await fetch(request,{cache:'no-cache'});
+      if(staticAsset && networkResponse?.ok) {
+        await cache.put(request,networkResponse.clone()); // Sempre código estático bruto.
+      } else if(navigableShell && networkResponse?.ok &&
+                (networkResponse.headers.get('content-type')||'').includes('text/html')) {
+        await cache.put(request,networkResponse.clone());
+      }
+      const response=await decorateResponse(networkResponse,url);
+      if(response?.ok && !staticAsset && !navigableShell)
+        void cache.put(request,response.clone());
+      return response;
+    } catch(error) {
+      const cached=await cache.match(request,{ignoreSearch:true});
+      if(cached) return decorateResponse(cached,url);
+      if(request.mode==='navigate') {
+        const fallback=await cache.match('./index.html');
+        if(fallback) return decorateHtmlResponse(fallback,new URL('./index.html',self.location.href));
       }
       throw error;
     }
