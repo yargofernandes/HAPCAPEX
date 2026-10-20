@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-63-kpi-desembolso-head-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-64-kpis-reordenados-alerta-admin-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -1142,6 +1142,33 @@ function patchManagerCashKpiHeadV40163(source) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.64: reordenação exclusivamente visual dos KPIs e alerta administrativo compacto.
+function patchManagerKpiOrderV40164(source) {
+  if(!source || !source.includes('HAPCAPEX_V40163_KPI_HEAD'))
+    return {text:source,applied:false,failed:'A V40.1.63 do KPI Desembolso não foi encontrada'};
+  if(source.includes('HAPCAPEX_V40164_KPI_SEQUENCE'))return {text:source,applied:true};
+  const kpiStart=source.indexOf('  function kpiHtml(s) {');
+  const kpiEnd=source.indexOf('\n  function chartGridHtml() {',kpiStart);
+  const pendingStart=source.indexOf('  function pendingHtml(s) {');
+  const pendingEnd=source.indexOf('\n  function renderContent() {',pendingStart);
+  if(kpiStart<0 || kpiEnd<=kpiStart || pendingStart<0 || pendingEnd<=pendingStart)
+    return {text:source,applied:false,failed:'Estrutura KPI/Pendências diferente da versão esperada'};
+  const oldKpi=source.slice(kpiStart,kpiEnd);
+  const oldPending=source.slice(pendingStart,pendingEnd);
+  if(!oldKpi.includes('Pendências cadastro') || !oldKpi.includes('${v163KpiHtml(s)}') ||
+     !oldPending.includes('if(s.unresolvedTransfers.length) html+=') || !oldPending.includes('if(s.pending.length)'))
+    return {text:source,applied:false,failed:'Âncoras de KPI ou avisos alteradas'};
+  const transferStart=oldPending.indexOf('    if(s.unresolvedTransfers.length) html+=');
+  const newPending = "  // HAPCAPEX_V40164_ADMIN_ONLY_PENDENCIES\n  function pendingHtml(s) {\n    let html='';\n    let isAdmin=false;\n    try { isAdmin=String(state?.role||'').toLowerCase()==='admin'; } catch (_) {}\n    if(isAdmin && s.pending.length){\n      const canEdit=mgr.raw?.somente_leitura!==true;\n      html+=`<aside class=\"v40164-admin-pending-alert\" role=\"status\" style=\"background:#fff8e8;border:1px solid #ead49d;border-left:3px solid #b7791f;border-radius:9px;margin:0 0 12px;padding:9px 12px;color:#6e4b19;font-size:11px\">\n        <details id=\"v4071-pending-section\">\n          <summary style=\"cursor:pointer;display:list-item;font-weight:750;line-height:1.5\"><strong>⚠ ${intFmt.format(s.pending.length)} OI(s) com pendência de cadastro</strong><span style=\"font-weight:500;margin-left:8px\">Ver detalhes</span></summary>\n          <div class=\"v4071-pending-list\" style=\"padding:8px 0 0\">\n            ${s.pending.map(o=>`<div class=\"v4071-pending-row\"><div><strong>OI ${esc(o.oi)} · ${esc(o.nome||'Sem nome')}</strong><small>${o.pacote_faltante?'Sem Pacote CAPEX':''}${o.pacote_faltante&&o.head_faltante?' · ':''}${o.head_faltante?'Sem HEAD Operação':''}</small></div>${canEdit?`<button class=\"v4071-edit\" data-v4071-edit-oi=\"${esc(o.id)}\">Corrigir classificação</button>`:''}</div>`).join('')}\n          </div>\n        </details>\n      </aside>`;\n    }\n" + oldPending.slice(transferStart);
+  let text=source.slice(0,kpiStart)+"  // HAPCAPEX_V40164_KPI_SEQUENCE\n  function kpiHtml(s) {\n    const compPct=s.totalAttr ? s.totalComp/s.totalAttr*100 : 0;\n    const realPct=s.totalAttr ? s.totalReal/s.totalAttr*100 : 0;\n    return `<div class=\"kpi-grid\">\n      <div class=\"kpi-card\"><div class=\"label\">OIs selecionadas</div><div class=\"value\">${intFmt.format(s.ois.length)}</div><div class=\"v4071-kpi-sub\">Após filtros globais</div></div>\n      <div class=\"kpi-card\"><div class=\"label\">CAPEX atual</div><div class=\"value\">${money(s.totalAttr)}</div><div class=\"v4071-kpi-sub\">Snapshot atual · filtros de Pacote/HEAD/OI</div></div>\n      <div class=\"kpi-card\" style=\"border-left-color:var(--azul-claro)\"><div class=\"label\">Compromissado</div><div class=\"value\">${money(s.totalComp)}</div><div class=\"v4071-kpi-sub\">${pct(compPct)} do CAPEX</div></div>\n      <div class=\"kpi-card\" style=\"border-left-color:var(--verde)\"><div class=\"label\">Saldo livre</div><div class=\"value\" style=\"color:var(--verde)\">${money(s.totalSaldo)}</div><div class=\"v4071-kpi-sub\">CAPEX − compromissado</div></div>\n      <div class=\"kpi-card\"><div class=\"label\">Valores Transferido</div><div class=\"value\">${money(s.transferTotal)}</div><div class=\"v4071-kpi-sub\">${intFmt.format(s.transfers.length)} transferência(s) entre pacotes identificados</div></div>\n      <div class=\"kpi-card\" style=\"border-left-color:var(--verde)\"><div class=\"label\">Aportes no período</div><div class=\"value\" style=\"color:var(--verde)\">${money(s.aporte)}</div><div class=\"v4071-kpi-sub\">Histórico consolidado da Curva</div></div>\n      <div class=\"kpi-card\" style=\"border-left-color:var(--vermelho)\"><div class=\"label\">Contingenciamentos</div><div class=\"value\" style=\"color:var(--vermelho)\">${money(s.conting)}</div><div class=\"v4071-kpi-sub\">Histórico consolidado da Curva · período</div></div>\n      <div class=\"kpi-card\" style=\"border-left-color:var(--laranja)\"><div class=\"label\">Realizado no período</div><div class=\"value\" style=\"color:var(--laranja)\">${money(s.totalReal)}</div><div class=\"v4071-kpi-sub\">${periodLabel()} · ${pct(realPct)} do CAPEX</div></div>\n      ${v163KpiHtml(s)}\n    </div>`;\n  }\n"+source.slice(kpiEnd);
+  const pendStartNew=text.indexOf('  function pendingHtml(s) {');
+  const pendEndNew=text.indexOf('\n  function renderContent() {',pendStartNew);
+  text=text.slice(0,pendStartNew)+newPending+text.slice(pendEndNew);
+  const stale="    const pending=document.getElementById('v4071-pending-kpi');\n    if(pending) pending.addEventListener('click',()=>document.getElementById('v4071-pending-section')?.scrollIntoView({behavior:'smooth',block:'start'}));\n";
+  if(text.split(stale).length===2)text=text.replace(stale,'');
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -1160,19 +1187,21 @@ async function decorateControlManagerialResponse(response) {
   const originRowsPatch=patchManagerCashOriginRowsV40160(priorVisibilityPatch.text);
   const historicalNamesPatch=patchManagerHistoricalNamesV40162(originRowsPatch.text);
   const desembolsoKpiPatch=patchManagerCashKpiHeadV40163(historicalNamesPatch.text);
-  return responseWithText(response, desembolsoKpiPatch.text, 'application/javascript; charset=utf-8', {
+  const kpiOrderPatch=patchManagerKpiOrderV40164(desembolsoKpiPatch.text);
+  return responseWithText(response, kpiOrderPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied && originRowsPatch.applied && historicalNamesPatch.applied && desembolsoKpiPatch.applied) ? 'v40.1.63' : 'source-incompatible',
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied && originRowsPatch.applied && historicalNamesPatch.applied && desembolsoKpiPatch.applied && kpiOrderPatch.applied) ? 'v40.1.64' : 'source-incompatible',
     'x-hapcapex-carryover': carryoverPatch.applied ? 'origem-orcamentaria-v2' : 'incompatible-'+String(carryoverPatch.failed||'unknown').slice(0,90),
     'x-hapcapex-prior-bars': priorVisibilityPatch.applied ? 'v40.1.59-color-and-minbar' : 'incompatible-'+String(priorVisibilityPatch.failed||'unknown').slice(0,90),
     'x-hapcapex-origin-work-rows': originRowsPatch.applied ? 'v40.1.60-separated' : 'incompatible-'+String(originRowsPatch.failed||'unknown').slice(0,90),
     'x-hapcapex-historical-names': historicalNamesPatch.applied ? 'v40.1.62-read-v3' : 'incompatible-'+String(historicalNamesPatch.failed||'unknown').slice(0,90),
-    'x-hapcapex-desembolso-kpi': desembolsoKpiPatch.applied ? 'v40.1.63-head-origem' : 'incompatible-'+String(desembolsoKpiPatch.failed||'unknown').slice(0,90)
+    'x-hapcapex-desembolso-kpi': desembolsoKpiPatch.applied ? 'v40.1.63-head-origem' : 'incompatible-'+String(desembolsoKpiPatch.failed||'unknown').slice(0,90),
+    'x-hapcapex-kpi-order': kpiOrderPatch.applied ? 'v40.1.64-admin-only-warning' : 'incompatible-'+String(kpiOrderPatch.failed||'unknown').slice(0,90)
   });
 }
 
