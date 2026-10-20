@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-61-origem-capex-em-linhas-separadas-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-62-nomes-historicos-caixa-2025-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -1032,6 +1032,49 @@ function patchManagerCashOriginRowsV40160(source) {
   }catch(err){return {text:source,applied:false,failed:String(err?.message||err)};}
 }
 
+// HAPCAPEX V40.1.62 — identificações históricas fornecidas para OIs de CAPEX anterior.
+// Mantém OIs fora da carteira corrente: não cria OI, obra, pacote ou orçamento.
+// A descrição é lida do cadastro de histórico pelo RPC versionado V3.
+function patchManagerHistoricalNamesV40162(source) {
+  if (!source || !source.includes('HAPCAPEX_V40160_ORIGIN_SEPARATE_ROWS'))
+    return {text:source,applied:false,failed:'Separação histórica V40.1.60 ausente'};
+  if (source.includes('HAPCAPEX_V40162_HISTORIC_IDENTITIES'))
+    return {text:source,applied:true};
+  let text=source;
+  const rpcOld="sb.rpc('obter_desembolso_gerencial_v2',{p_exercicio:requestedYear})";
+  const rpcNew="sb.rpc('obter_desembolso_gerencial_v3',{p_exercicio:requestedYear})";
+  const oldName="        const cleanName=g.nome.replace(/ · histórica\\/sem classificação$/,'');";
+  const newName=`        // HAPCAPEX_V40162_HISTORIC_IDENTITIES: nome documental somente na linha de CAPEX anterior.
+        // OIs oficialmente agrupadas continuam com o nome da obra oficial, sem alteração.
+        const historico=g.semVinculo && kind==='anterior' && g.ois.length===1
+          ? (mgr.cashRaw?.nomes_historicos||[]).find(h=>String(h.oi)===String(g.ois[0])
+              && Number(h.exercicio_origem)<ano && String(h.nome||'').trim())
+          : null;
+        const cleanName=String(historico?.nome||g.nome).replace(/ · histórica\\/sem classificação$/,'');`;
+  const searchOld="    if(!query)return out;\n    const links=Array.isArray(mgr.cashRaw?.vinculos)?mgr.cashRaw.vinculos:[];";
+  const searchNew=`    if(!query)return out;
+    // Permitir busca pelo nome histórico de OIs não cadastradas no exercício atual.
+    // Não relaxar seleção de Pacote/HEAD/Saldo, se estiverem ativos.
+    if(!mgr.pacote && !mgr.head && mgr.saldo==='all'){
+      const normalized=norm(query);
+      for(const h of (mgr.cashRaw?.nomes_historicos||[])){
+        if(normalized && norm(h.nome).includes(normalized))out.add(String(h.oi));
+      }
+    }
+    const links=Array.isArray(mgr.cashRaw?.vinculos)?mgr.cashRaw.vinculos:[];`;
+  const inBlock=(begin,end,needle)=>{
+    const a=text.indexOf(begin), b=text.indexOf(end,a+begin.length);
+    return a>=0 && b>a && text.slice(a,b).split(needle).length===2;
+  };
+  if(text.split(rpcOld).length!==2 || !inBlock('  function cashWorkMonthlyRows(s) {','  function cashWorkExcelRows(s) {',oldName)
+     || !inBlock('  function cashSelectedOis(rows) {','  function cashExpandedOis(rows) {',searchOld))
+    return {text:source,applied:false,failed:'Âncoras do RPC V2 e nomes de obras incompatíveis'};
+  text=text.replace(rpcOld,rpcNew);
+  text=text.replace(oldName,newName);
+  text=text.replace(searchOld,searchNew);
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -1048,17 +1091,19 @@ async function decorateControlManagerialResponse(response) {
   const carryoverPatch=patchManagerCarryoverV40158(cashV55Patch.text);
   const priorVisibilityPatch=patchManagerPriorBarVisibilityV40159(carryoverPatch.text);
   const originRowsPatch=patchManagerCashOriginRowsV40160(priorVisibilityPatch.text);
-  return responseWithText(response, originRowsPatch.text, 'application/javascript; charset=utf-8', {
+  const historicalNamesPatch=patchManagerHistoricalNamesV40162(originRowsPatch.text);
+  return responseWithText(response, historicalNamesPatch.text, 'application/javascript; charset=utf-8', {
     'x-hapcapex-functional': 'v40.0.111',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-head-balance': headBalancePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-managerial-chart-toggle': chartTogglePatch.applied ? 'active' : 'not-applied',
     'x-hapcapex-excel-filters': excelPatch.applied ? 'managerial-active' : 'not-applied',
-    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied && originRowsPatch.applied) ? 'v40.1.60' : 'source-incompatible',
+    'x-hapcapex-cash': (cashPatch.applied && cashLatestPatch.applied && cashFinalPatch.applied && cashV55Patch.applied && carryoverPatch.applied && priorVisibilityPatch.applied && originRowsPatch.applied && historicalNamesPatch.applied) ? 'v40.1.62' : 'source-incompatible',
     'x-hapcapex-carryover': carryoverPatch.applied ? 'origem-orcamentaria-v2' : 'incompatible-'+String(carryoverPatch.failed||'unknown').slice(0,90),
     'x-hapcapex-prior-bars': priorVisibilityPatch.applied ? 'v40.1.59-color-and-minbar' : 'incompatible-'+String(priorVisibilityPatch.failed||'unknown').slice(0,90),
-    'x-hapcapex-origin-work-rows': originRowsPatch.applied ? 'v40.1.60-separated' : 'incompatible-'+String(originRowsPatch.failed||'unknown').slice(0,90)
+    'x-hapcapex-origin-work-rows': originRowsPatch.applied ? 'v40.1.60-separated' : 'incompatible-'+String(originRowsPatch.failed||'unknown').slice(0,90),
+    'x-hapcapex-historical-names': historicalNamesPatch.applied ? 'v40.1.62-read-v3' : 'incompatible-'+String(historicalNamesPatch.failed||'unknown').slice(0,90)
   });
 }
 
