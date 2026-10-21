@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hapcapex-v40-1-67-graficos-atualizados-sem-recriacao-20261020';
+const CACHE_NAME = 'hapcapex-v40-1-68-tabelas-incrementais-gerencial-curva-20261020';
 const APP_SHELL = [
   './',
   './index.html',
@@ -702,15 +702,91 @@ function hapV40167ChartUpsert(previous,element,configuration) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.68 — tabelas da Curva: preserva tabela e linhas inalteradas.
+function patchDashboardCoreTablesV40168(source) {
+  if(!source || source.includes('HAPCAPEX_V40168_CURVE_TABLES'))
+    return {text:source,applied:!!source?.includes('HAPCAPEX_V40168_CURVE_TABLES')};
+  const anchors=[
+    ['function renderTablePrev(', '  wrapper.innerHTML = html;', 1],
+    ['function renderTableReal(', '  wrapper.innerHTML = html;', 1],
+    ['function renderManTable(', '    wrapper.innerHTML = html;', 1],
+    ['function renderManTable(', "  document.getElementById('man-table-wrapper').innerHTML = html;", 1]
+  ];
+  const required=['function renderTablePrev(', 'function renderTableReal(', 'function renderManTable('];
+  if(required.some(x=>source.split(x).length!==2))
+    return {text:source,applied:false,failed:'Funções da Curva ausentes'};
+  const helper=`// HAPCAPEX_V40168_CURVE_TABLES — alteração incremental; linhas e totais sempre atualizados.
+function hapV40168CommitTable(wrapper,html) {
+  if(!wrapper)return;
+  const metrics=window.HAPCAPEX_DESEMPENHO_TABELAS ||= {curva_linhas_atualizadas:0,curva_renderizacoes_evitadas:0,gerencial_secoes_preservadas:0,gerencial_secoes_alteradas:0};
+  if(wrapper.__hapV40168LastHtml===html && wrapper.firstElementChild){metrics.curva_renderizacoes_evitadas++;return;}
+  const tpl=document.createElement('template');
+  tpl.innerHTML=html;
+  const next=tpl.content.firstElementChild,old=wrapper.firstElementChild;
+  // Layout móvel, tabelas adicionais ou estruturas inesperadas usam a via antiga.
+  const safe=!!(old && next && wrapper.childElementCount===1 &&
+    old.tagName==='TABLE' && next.tagName==='TABLE' &&
+    old.tBodies.length===1 && next.tBodies.length===1 &&
+    old.className===next.className && old.getAttribute('style')===next.getAttribute('style'));
+  if(!safe){wrapper.innerHTML=html;wrapper.__hapV40168LastHtml=html;return;}
+  const priorHead=old.tHead,freshHead=next.tHead;
+  if(!!priorHead!==!!freshHead){wrapper.innerHTML=html;wrapper.__hapV40168LastHtml=html;return;}
+  // Não altera elementos com conteúdo idêntico: reduz mutações e preserva rolagem.
+  const headMarkup=freshHead?.outerHTML||'';
+  if(priorHead && (wrapper.__hapV40168HeadMarkup||'')!==headMarkup){priorHead.replaceWith(freshHead);}
+  wrapper.__hapV40168HeadMarkup=headMarkup;
+  const body=old.tBodies[0],fresh=next.tBodies[0];
+  const existing=[...body.children],incoming=[...fresh.children];
+  for(let i=0;i<incoming.length;i++){
+    const row=incoming[i],previous=existing[i];
+    if(!previous){body.appendChild(row);metrics.curva_linhas_atualizadas++;}
+    else if(previous.outerHTML!==row.outerHTML){previous.replaceWith(row);metrics.curva_linhas_atualizadas++;}
+  }
+  for(let i=existing.length-1;i>=incoming.length;i--){existing[i].remove();metrics.curva_linhas_atualizadas++;}
+  const oldFoot=old.tFoot,nextFoot=next.tFoot;
+  if(oldFoot && nextFoot){if(oldFoot.outerHTML!==nextFoot.outerHTML)oldFoot.replaceWith(nextFoot);}
+  else if(oldFoot)oldFoot.remove();
+  else if(nextFoot)old.appendChild(nextFoot);
+  wrapper.__hapV40168LastHtml=html;
+}
+
+`;
+  let text=source.replace('function renderTablePrev(',helper+'function renderTablePrev(');
+  // Modifica apenas o corpo das três rotinas de tabela, nunca outras telas.
+  const spans=[
+    ['function renderTablePrev(', 'function renderTableReal('],
+    ['function renderTableReal(', 'function renderCharts('],
+    ['function renderManTable(', 'function openManPacotePanel(']
+  ];
+  let successful=true;
+  spans.forEach(([start,end],i)=>{
+    const from=text.indexOf(start),to=text.indexOf(end,from+start.length);
+    if(from<0||to<0){successful=false;return;}
+    let part=text.slice(from,to);
+    if(i<2){if(part.split('  wrapper.innerHTML = html;').length!==2){successful=false;return;}
+      part=part.replace('  wrapper.innerHTML = html;','  hapV40168CommitTable(wrapper,html);');}
+    else{
+      if(part.split('    wrapper.innerHTML = html;').length!==2 ||
+          part.split("  document.getElementById('man-table-wrapper').innerHTML = html;").length!==2){successful=false;return;}
+      part=part.replace('    wrapper.innerHTML = html;','    hapV40168CommitTable(wrapper,html);');
+      part=part.replace("  document.getElementById('man-table-wrapper').innerHTML = html;","  hapV40168CommitTable(document.getElementById('man-table-wrapper'),html);");
+    }
+    text=text.slice(0,from)+part+text.slice(to);
+  });
+  return successful?{text,applied:true}:{text:source,applied:false,failed:'Âncora das tabelas incompatível'};
+}
+
 async function decorateDashboardCoreResponse(response) {
   if (!response || !response.ok) return response;
   const original=await response.text();
   const patched=patchDashboardCoreV4098(original);
   const chartPatch=patchDashboardCoreChartsV40167(patched.text);
-  return responseWithText(response,chartPatch.text,'application/javascript; charset=utf-8',{
-    'x-hapcapex-functional':'v40.1.67',
+  const tablePatch=patchDashboardCoreTablesV40168(chartPatch.text);
+  return responseWithText(response,tablePatch.text,'application/javascript; charset=utf-8',{
+    'x-hapcapex-functional':'v40.1.68',
     'x-hapcapex-excel-filters':patched.applied?'curve-active':'not-applied',
-    'x-hapcapex-chart-reuse':chartPatch.applied?'six-curve-charts':'source-incompatible'
+    'x-hapcapex-chart-reuse':chartPatch.applied?'six-curve-charts':'source-incompatible',
+    'x-hapcapex-tables':tablePatch.applied?'curve-row-diff':'source-incompatible'
   });
 }
 
@@ -1299,6 +1375,70 @@ function patchManagerChartReuseV40167(source) {
   return {text,applied:true};
 }
 
+// HAPCAPEX V40.1.68 — Gerencial: reconciliação de seções sem reexibir tudo.
+function patchManagerIncrementalTablesV40168(source) {
+  if(!source || source.includes('HAPCAPEX_V40168_MANAGER_TABLES'))
+    return {text:source,applied:!!source?.includes('HAPCAPEX_V40168_MANAGER_TABLES')};
+  const anchor="    content.innerHTML=`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}";
+  const end="${adjustmentsTableHtml(s)}`;";
+  const must=['  function renderContent() {','  function bindManagerialTableControls(scope=document) {',
+              "scope.querySelectorAll('[data-v4078-sort-table]').forEach(th=>th.addEventListener",
+              "scope.querySelectorAll('[data-v4078-filter-table]').forEach(input=>input.addEventListener",
+              "scope.querySelectorAll('[data-v4078-table-clear]').forEach(btn=>btn.addEventListener"];
+  if(must.some(x=>source.split(x).length!==2)||source.split(anchor).length!==2||source.split(end).length!==2)
+    return {text:source,applied:false,failed:'Estrutura das tabelas Gerenciais incompatível'};
+  const helper=`// HAPCAPEX_V40168_MANAGER_TABLES: atualiza somente seções alteradas.
+// Nunca guarda dados financeiros em armazenamento persistente.
+function hapV40168ReconcileManagerContent(content,html) {
+  if(!content)return;
+  const metrics=window.HAPCAPEX_DESEMPENHO_TABELAS ||= {curva_linhas_atualizadas:0,curva_renderizacoes_evitadas:0,gerencial_secoes_preservadas:0,gerencial_secoes_alteradas:0};
+  if(content.__hapV40168LastHtml===html && content.children.length && content.querySelector(':scope > .v4071-grid-2')){
+    metrics.gerencial_secoes_preservadas+=content.children.length;
+    return;
+  }
+  const tpl=document.createElement('template');tpl.innerHTML=html;
+  const fresh=[...tpl.content.children],old=[...content.children];
+  const key=(el,i)=>el.id?'id:'+el.id:(el.classList.contains('kpi-grid')?'hap:kpis':
+    el.classList.contains('v4071-grid-2')?'hap:charts':('pos:'+i+':'+el.tagName));
+  const oldByKey=new Map(old.map((el,i)=>[key(el,i),el]));
+  const keep=new Set();
+  fresh.forEach((incoming,i)=>{
+    const identity=key(incoming,i),previous=oldByKey.get(identity),markup=incoming.outerHTML;
+    let use=incoming;
+    if(previous && previous.__hapV40168OriginalMarkup===markup){
+      use=previous;metrics.gerencial_secoes_preservadas++;
+    }else{
+      metrics.gerencial_secoes_alteradas++;
+      if(previous && previous.parentNode===content)previous.replaceWith(incoming);
+    }
+    use.__hapV40168OriginalMarkup=markup;
+    const at=content.children[i];
+    if(use.parentNode!==content || at!==use)content.insertBefore(use,at||null);
+    keep.add(use);
+  });
+  old.forEach(el=>{if(el.parentNode===content && !keep.has(el))el.remove();});
+  content.__hapV40168LastHtml=html;
+}
+
+`;
+  let text=source.replace('  function renderContent() {',helper+'  function renderContent() {');
+  text=text.replace(anchor,'    hapV40168ReconcileManagerContent(content,`${kpiHtml(s)}${pendingHtml(s)}${chartGridHtml()}');
+  text=text.replace(end,"${adjustmentsTableHtml(s)}`);");
+  // Preservar eventos das seções mantidas; binds atuais adicionariam handlers duplicados.
+  const binders=[
+    ["scope.querySelectorAll('[data-v4078-sort-table]').forEach",'th'],
+    ["scope.querySelectorAll('[data-v4078-filter-table]').forEach",'input'],
+    ["scope.querySelectorAll('[data-v4078-table-clear]').forEach",'btn'],
+    ["document.querySelectorAll('[data-v40144-detail]').forEach",'btn'],
+    ["document.querySelectorAll('[data-v4071-edit-oi]').forEach",'btn']
+  ];
+  binders.forEach(([old,el])=>{
+    if(text.includes(old))text=text.replace(old,
+      `Array.from(${old.replace('.forEach','')}).filter(${el}=>{if(${el}.hasAttribute('data-hapv40168-bound'))return false;${el}.setAttribute('data-hapv40168-bound','1');return true;}).forEach`);
+  });
+  return {text,applied:true};
+}
+
 async function decorateControlManagerialResponse(response) {
   if (!response || !response.ok) return response;
   const original = await response.text();
@@ -1320,9 +1460,11 @@ async function decorateControlManagerialResponse(response) {
   const kpiOrderPatch=patchManagerKpiOrderV40164(desembolsoKpiPatch.text);
   const performancePatch=patchManagerNavigationPerformanceV40165(kpiOrderPatch.text);
   const chartReusePatch=patchManagerChartReuseV40167(performancePatch.text);
-  return responseWithText(response, chartReusePatch.text, 'application/javascript; charset=utf-8', {
-    'x-hapcapex-functional': 'v40.1.67',
+  const tablePatch=patchManagerIncrementalTablesV40168(chartReusePatch.text);
+  return responseWithText(response, tablePatch.text, 'application/javascript; charset=utf-8', {
+    'x-hapcapex-functional': 'v40.1.68',
     'x-hapcapex-managerial-chart-reuse': chartReusePatch.applied ? 'preserve-canvases-and-update' : 'source-incompatible',
+    'x-hapcapex-managerial-table-reuse': tablePatch.applied ? 'incremental-sections' : 'source-incompatible',
     'x-hapcapex-phase1-navigation': performancePatch.applied ? 'memory-and-metrics' : 'source-incompatible',
     'x-hapcapex-managerial-head-scope': headPatch.applied ? 'operational-only' : 'not-applied',
     'x-hapcapex-managerial-package-groups': packagePatch.applied ? 'active' : 'not-applied',
