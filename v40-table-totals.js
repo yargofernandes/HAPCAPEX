@@ -129,7 +129,7 @@
   start();
 })();
 
-/* HAPCAPEX V40.0.146 — Extensão da aba Gerencial sem criar tabela ou arquivo novo.
+/* HAPCAPEX V40.0.149 — Histórico Gerencial com filtros Excel encadeados e totais dinâmicos.
  * Substitui a seção existente de aportes/contingenciamentos pelo histórico da obra.
  * Mantém verificações de divergência FORA da interface, exclusivamente na auditoria.
  */
@@ -144,16 +144,17 @@
   const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
   let cached=null, loading=null, key='', activeRows=[], shownRows=[], busy=false, queued=false;
-  const filters={obra:'',capex_inicial:'',conting:'',aporte:'',transferencias:'',capex_atual:''};
-  let sort={key:'current',dir:-1};
+  const HISTORY_XF_ID='mgr-historico-capex-obra';
+  let xfStore=null, renderedYear=null;
   const style=document.createElement('style');style.id='hap-v40146-gerencial-historico';
   style.textContent=`#v4078-table-top,#v4071-top-n{display:none!important}
     #v4078-table-adjustments .v40146-work{min-width:265px}
     #v4078-table-adjustments td{font-variant-numeric:tabular-nums}
     #v4078-table-adjustments td.num,#v4078-table-adjustments th.num{text-align:right;white-space:nowrap}
     #v4078-table-adjustments .v40146-detail{padding:5px 10px;border:1px solid #bacfe9;background:#f3f7fd;border-radius:7px;color:#164781;font-weight:700;cursor:pointer}
-    #v4078-table-adjustments input.v40146-filter{width:100%;min-width:76px;box-sizing:border-box;font:inherit;font-size:10px;padding:6px;border:1px solid #d4deea;border-radius:6px}
-    #v4078-table-adjustments th[data-v40146-sort]{cursor:pointer}
+    #v4078-table-adjustments .hap-xf-head{padding-right:29px!important}
+    #v4078-table-adjustments .v40149-clear{padding:5px 9px;border:1px solid #c2d0e2;border-radius:6px;background:#f4f8fc;color:#194a7e;font-size:10px;cursor:pointer}
+    #v4078-table-adjustments .v40149-clear:disabled{opacity:.5;cursor:default}
     .v40146-modal{position:fixed;inset:0;z-index:100000;background:rgba(5,20,41,.72);display:flex;align-items:center;justify-content:center;padding:14px}
     .v40146-dialog{background:#fff;color:#172b45;border-radius:12px;padding:20px;max-width:1100px;width:100%;max-height:90vh;overflow:auto;box-sizing:border-box}
     .v40146-dialog h2{margin:0 0 9px;font-size:20px}.v40146-dialog h3{margin:18px 0 6px;font-size:14px}
@@ -254,35 +255,86 @@
       return true;
     });
   }
+  // Mesmas colunas do HAP_XF (filtros estilo Excel) das demais abas.
+  // A chave é igual à propriedade financeira de cada linha, evitando duplicar cálculos.
   const cols=[
     ['obra','Obra / OIs',false],['initial','CAPEX inicial',true],['conting','Contingenciamentos (−)',true],
     ['aporte','Aportes extras (+)',true],['transfers','Saldo de transferências',true],['current','CAPEX atual',true]
   ];
   function value(w,k){return k==='conting'?-w.conting:k==='obra'?w.nome+' '+w.ois.join(' '):n(w[k]);}
-  function matchesFilter(w,k,q){
-    q=String(q||'').trim();if(!q)return true;
-    if(k==='obra')return norm(value(w,k)).includes(norm(q));
-    const v=value(w,k),raw=q.replace(/R\$|\s/g,'').replace(/\./g,'').replace(',','.');
-    const m=raw.match(/^(>=|<=|>|<|=)(-?\d+(?:\.\d+)?)$/);
-    if(m){const num=Number(m[2]);return m[1]==='>='?v>=num:m[1]==='<='?v<=num:m[1]==='>'?v>num:m[1]==='<'?v<num:Math.abs(v-num)<.005;}
-    return norm(money(v)).includes(norm(q))||String(v).includes(raw);
+  const historyColumns=cols.map(([key,label,numeric],index)=>({
+    key,label,type:numeric?'number':'text',index,get:row=>value(row,key)
+  }));
+  // O componente central do sistema preserva seus próprios filtros selecionados.
+  // Para montar a lista de opções de uma coluna, consideram-se apenas filtros das
+  // OUTRAS colunas. Assim uma seleção não bloqueia outras opções da própria coluna.
+  function matchesOtherColumns(w,ignoredKey){
+    if(!xfStore)return true;
+    for(const [key,f] of Object.entries(xfStore.filters||{})){
+      if(key===ignoredKey)continue;
+      const col=historyColumns.find(x=>x.key===key);
+      if(!col)continue;
+      const v=value(w,key);
+      if(f.selected instanceof Set && !f.selected.has(window.HAP_XF.canon(col.type,v)))return false;
+      if(!f.op)continue;
+      if(col.type==='number'){
+        const x=window.HAP_XF.parseNumber(v),a=window.HAP_XF.parseNumber(f.a),b=window.HAP_XF.parseNumber(f.b);
+        if(x===null||a===null)return false;
+        switch(f.op){
+          case 'eq':if(Math.abs(x-a)>=0.0000001)return false;break;
+          case 'neq':if(Math.abs(x-a)<0.0000001)return false;break;
+          case 'gt':if(!(x>a))return false;break;
+          case 'gte':if(!(x>=a))return false;break;
+          case 'lt':if(!(x<a))return false;break;
+          case 'lte':if(!(x<=a))return false;break;
+          case 'between':if(b===null||x<Math.min(a,b)||x>Math.max(a,b))return false;break;
+        }
+      }
+    }
+    return true;
+  }
+  function filterOptionsFor(key){
+    return activeRows.filter(w=>matchesOtherColumns(w,key)).map(w=>value(w,key));
+  }
+  function bindHistoryExcel(table){
+    const XF=window.HAP_XF;
+    if(!XF || typeof XF.bind!=='function')return;
+    xfStore=XF.register({
+      id:HISTORY_XF_ID,rows:activeRows,columns:historyColumns,
+      onChange:display,valuesProvider:filterOptionsFor
+    });
+    XF.bind({
+      id:HISTORY_XF_ID,table,rows:activeRows,columns:historyColumns,
+      onChange:display,valuesProvider:filterOptionsFor
+    });
   }
   function display(){
     const section=document.getElementById('v4078-table-adjustments');if(!section)return;
-    shownRows=activeRows.filter(w=>cols.every(([k])=>matchesFilter(w,k,filters[k])));
-    if(sort.key)shownRows.sort((a,b)=>{
-      const av=value(a,sort.key),bv=value(b,sort.key);
-      return sort.dir*(typeof av==='number'?(av-bv):String(av).localeCompare(String(bv),'pt-BR',{numeric:true}));
-    });
-    const head=cols.map(([k,label,num])=>'<th class="'+(num?'num':'')+'" data-v40146-sort="'+k+'">'+esc(label)+(sort.key===k?(sort.dir===-1?' ↓':' ↑'):' ↕')+'</th>').join('')+'<th>Movimentações</th>';
-    const inputs=cols.map(([k])=>'<th><input class="v40146-filter" data-v40146-filter="'+k+'" value="'+esc(filters[k])+'" placeholder="Filtrar"></th>').join('')+'<th></th>';
+    const XF=window.HAP_XF;
+    if(XF){
+      xfStore=XF.register({id:HISTORY_XF_ID,rows:activeRows,columns:historyColumns,
+        onChange:display,valuesProvider:filterOptionsFor});
+      shownRows=XF.apply(HISTORY_XF_ID,activeRows);
+    } else {
+      // Enquanto o núcleo de filtros ainda carrega, nunca exibir falsos totais.
+      shownRows=[...activeRows];
+    }
+    if(!xfStore?.sort?.dir)shownRows=[...shownRows].sort((a,b)=>n(b.current)-n(a.current));
+    const head=cols.map(([k,label,num])=>'<th class="'+(num?'num':'')+'">'+esc(label)+'</th>').join('')+'<th>Movimentações</th>';
     const rows=shownRows.map(w=>'<tr><td class="v40146-work"><strong>'+esc(w.nome)+'</strong><small>'+esc(w.ois.join(', ')||'OI não identificada')+'</small></td>'+
       ['initial','conting','aporte','transfers','current'].map(k=>'<td class="num">'+(k==='current'?'<strong>':'')+money(value(w,k))+(k==='current'?'</strong>':'')+'</td>').join('')+
       '<td><button class="v40146-detail" data-v40146-detail="'+esc(w.key)+'">Detalhar</button></td></tr>').join('');
-    const totals=cols.map(([k])=>'<td class="'+(k==='obra'?'':'num')+'">'+(k==='obra'?'TOTAL ('+shownRows.length+' obra(s))':money(shownRows.reduce((sum,w)=>sum+value(w,k),0)))+'</td>').join('')+'<td></td>';
-    section.innerHTML='<div class="v4071-section-head"><div><strong>Histórico de CAPEX por Obra</strong><small>CAPEX inicial, ajustes, transferências e CAPEX atual registrado. Histórico integral do exercício (o filtro de meses não altera os valores acumulados). Consulte o detalhe da obra.</small></div><span class="v4078-table-count">'+shownRows.length+' de '+activeRows.length+' obras</span></div>'+
-      '<div class="v4071-table-wrap"><table class="v4071-table"><thead><tr>'+head+'</tr><tr class="v4078-filter-row">'+inputs+'</tr></thead><tbody>'+(rows||'<tr><td colspan="7">Nenhuma obra encontrada.</td></tr>')+'</tbody><tfoot><tr class="v40146-footer">'+totals+'</tr></tfoot></table></div>';
+    // Total calculado SEMPRE a partir das linhas após todos os filtros locais e globais.
+    // A linha de total existe inclusive com nenhum resultado (todos os valores = R$ 0,00).
+    const totals=cols.map(([k])=>'<td class="'+(k==='obra'?'':'num')+'">'+(k==='obra'?'TOTAL VISÍVEL ('+shownRows.length+' obra(s))':money(shownRows.reduce((sum,w)=>sum+value(w,k),0)))+'</td>').join('')+'<td></td>';
+    const filtered=!!XF?.hasAnyFilter?.(HISTORY_XF_ID);
+    const controls='<div class="v4078-table-actions"><span class="v4078-table-count">'+shownRows.length+' de '+activeRows.length+' obras</span>'+
+      '<button type="button" class="v40149-clear" data-v40149-clear '+(filtered?'':'disabled')+'>Limpar filtros da tabela</button></div>';
+    section.innerHTML='<div class="v4071-section-head"><div><strong>Histórico de CAPEX por Obra</strong><small>CAPEX inicial, ajustes, transferências e CAPEX atual registrado. Histórico integral do exercício (o filtro de meses não altera os valores acumulados). Consulte o detalhe da obra.</small></div>'+controls+'</div>'+
+      '<div class="v4071-table-wrap"><table class="v4071-table"><thead><tr>'+head+'</tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="empty-state">Nenhuma obra encontrada.</td></tr>')+'</tbody><tfoot><tr class="v40146-footer">'+totals+'</tr></tfoot></table></div>';
     section.dataset.v40146='yes';
+    bindHistoryExcel(section.querySelector('table'));
+    section.querySelector('[data-v40149-clear]')?.addEventListener('click',()=>window.HAP_XF?.clear(HISTORY_XF_ID));
   }
   function detail(k){
     const w=activeRows.find(x=>x.key===k);if(!w)return;
@@ -301,6 +353,10 @@
     const container=document.getElementById('v4078-table-adjustments');
     if(container.dataset.v40146==='yes')return;
     const year=currentYear();if(!year)return;
+    if(renderedYear!==year){
+      window.HAP_XF?.clear(HISTORY_XF_ID,{silent:true});
+      xfStore=null;renderedYear=year;
+    }
     const requestId=year+'-'+String(Date.now());key=requestId;
     const section=container;
     try{
@@ -317,14 +373,9 @@
     clearTop();if(busy)return;busy=true;
     requestAnimationFrame(()=>{void run();});
   }
-  document.addEventListener('input',e=>{
-    const k=e.target?.getAttribute?.('data-v40146-filter');
-    if(!k)return;filters[k]=e.target.value;const pos=e.target.selectionStart;display();
-    const inp=document.querySelector('[data-v40146-filter="'+k+'"]');if(inp){inp.focus();try{inp.setSelectionRange(pos,pos);}catch(_){}}
-  });
   document.addEventListener('click',e=>{
-    const btn=e.target.closest?.('[data-v40146-detail]');if(btn){detail(btn.dataset.v40146Detail);return;}
-    const th=e.target.closest?.('[data-v40146-sort]');if(th){const k=th.dataset.v40146Sort;if(sort.key===k)sort.dir*=-1;else sort={key:k,dir:-1};display();}
+    const btn=e.target.closest?.('[data-v40146-detail]');
+    if(btn)detail(btn.dataset.v40146Detail);
   });
   const observer=new MutationObserver(mutations=>{
     if(!gerencialVisible())return;
