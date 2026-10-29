@@ -129,7 +129,7 @@
   start();
 })();
 
-/* HAPCAPEX V40.0.149 — Histórico Gerencial com filtros Excel encadeados e totais dinâmicos.
+/* HAPCAPEX V40.0.150 — Histórico Gerencial: doações com filtros Excel e totais dinâmicos.
  * Substitui a seção existente de aportes/contingenciamentos pelo histórico da obra.
  * Mantém verificações de divergência FORA da interface, exclusivamente na auditoria.
  */
@@ -190,7 +190,7 @@
         client.rpc('obter_ajustes_obra_gerencial_v40144',{p_exercicio:year})
       ]);
       if(a.error)throw a.error;if(b.error)throw b.error;
-      if(!Array.isArray(a.data?.capex_inicial_itens)||!Array.isArray(a.data?.ois)||!Array.isArray(a.data?.obra_vinculos)||!Array.isArray(b.data?.movimentos))
+      if(!Array.isArray(a.data?.capex_inicial_itens)||!Array.isArray(a.data?.ois)||!Array.isArray(a.data?.obra_vinculos)||!Array.isArray(a.data?.doacoes_obras)||!Array.isArray(b.data?.movimentos))
         throw new Error('Histórico incompleto. Verifique a atualização da consulta Gerencial.');
       return {year,at:Date.now(),main:a.data,adjust:b.data};
     })();
@@ -205,7 +205,7 @@
       const oi=String(v||'').trim(),link=links.get(oi),groupId=String(link?.obra_id||id||'').trim();
       const label=String(link?.obra||name||'Obra não identificada').trim();
       const k=groupId?'OBRA:'+groupId:(oi?'OI:'+oi:'NOME:'+norm(label));
-      if(!works.has(k))works.set(k,{key:k,nome:label,ois:new Set(),initial:0,conting:0,aporte:0,transfers:0,current:0,baseline:[],movements:[],transferLines:[],currentLines:[]});
+      if(!works.has(k))works.set(k,{key:k,nome:label,ois:new Set(),initial:0,conting:0,aporte:0,donations:0,transfers:0,current:0,baseline:[],movements:[],donationLines:[],transferLines:[],currentLines:[]});
       const w=works.get(k);
       if(oi){w.ois.add(oi);oiMap.set(oi,k);}
       return w;
@@ -224,6 +224,16 @@
       const w=get(m.oi,m.obra||m.nome_lancamento,m.obra_id),val=n(m.valor);
       if(m.tipo==='aporte')w.aporte+=val;else w.conting+=val;
       w.movements.push({...m,valor:val});
+    });
+    // Doações efetivas do exercício: somente as aplicadas ao CAPEX atual.
+    // Doações históricas (afeta_estado_atual=false) e canceladas são excluídas
+    // no servidor para impedir dupla contabilização de transferências antigas.
+    raw.main.doacoes_obras.forEach(d=>{
+      const oi=String(d.oi||'').trim();
+      if(!oi||n(d.valor)<=0)return;
+      const w=get(oi,d.nome_obra||d.descricao||'Doação de CAPEX'),val=n(d.valor);
+      w.donations+=val;
+      w.donationLines.push({oi,data:d.data,destino:d.destino,descricao:d.descricao,observacao:d.observacao,valor:val,id:d.id});
     });
     (raw.main.transferencias||[]).forEach(t=>{
       const val=n(t.valor);if(!val)return;
@@ -259,9 +269,9 @@
   // A chave é igual à propriedade financeira de cada linha, evitando duplicar cálculos.
   const cols=[
     ['obra','Obra / OIs',false],['initial','CAPEX inicial',true],['conting','Contingenciamentos (−)',true],
-    ['aporte','Aportes extras (+)',true],['transfers','Saldo de transferências',true],['current','CAPEX atual',true]
+    ['aporte','Aportes extras (+)',true],['donations','Doações (−)',true],['transfers','Saldo de transferências',true],['current','CAPEX atual',true]
   ];
-  function value(w,k){return k==='conting'?-w.conting:k==='obra'?w.nome+' '+w.ois.join(' '):n(w[k]);}
+  function value(w,k){return k==='conting'?-w.conting:k==='donations'?-w.donations:k==='obra'?w.nome+' '+w.ois.join(' '):n(w[k]);}
   const historyColumns=cols.map(([key,label,numeric],index)=>({
     key,label,type:numeric?'number':'text',index,get:row=>value(row,key)
   }));
@@ -322,7 +332,7 @@
     if(!xfStore?.sort?.dir)shownRows=[...shownRows].sort((a,b)=>n(b.current)-n(a.current));
     const head=cols.map(([k,label,num])=>'<th class="'+(num?'num':'')+'">'+esc(label)+'</th>').join('')+'<th>Movimentações</th>';
     const rows=shownRows.map(w=>'<tr><td class="v40146-work"><strong>'+esc(w.nome)+'</strong><small>'+esc(w.ois.join(', ')||'OI não identificada')+'</small></td>'+
-      ['initial','conting','aporte','transfers','current'].map(k=>'<td class="num">'+(k==='current'?'<strong>':'')+money(value(w,k))+(k==='current'?'</strong>':'')+'</td>').join('')+
+      ['initial','conting','aporte','donations','transfers','current'].map(k=>'<td class="num">'+(k==='current'?'<strong>':'')+money(value(w,k))+(k==='current'?'</strong>':'')+'</td>').join('')+
       '<td><button class="v40146-detail" data-v40146-detail="'+esc(w.key)+'">Detalhar</button></td></tr>').join('');
     // Total calculado SEMPRE a partir das linhas após todos os filtros locais e globais.
     // A linha de total existe inclusive com nenhum resultado (todos os valores = R$ 0,00).
@@ -330,8 +340,8 @@
     const filtered=!!XF?.hasAnyFilter?.(HISTORY_XF_ID);
     const controls='<div class="v4078-table-actions"><span class="v4078-table-count">'+shownRows.length+' de '+activeRows.length+' obras</span>'+
       '<button type="button" class="v40149-clear" data-v40149-clear '+(filtered?'':'disabled')+'>Limpar filtros da tabela</button></div>';
-    section.innerHTML='<div class="v4071-section-head"><div><strong>Histórico de CAPEX por Obra</strong><small>CAPEX inicial, ajustes, transferências e CAPEX atual registrado. Histórico integral do exercício (o filtro de meses não altera os valores acumulados). Consulte o detalhe da obra.</small></div>'+controls+'</div>'+
-      '<div class="v4071-table-wrap"><table class="v4071-table"><thead><tr>'+head+'</tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="empty-state">Nenhuma obra encontrada.</td></tr>')+'</tbody><tfoot><tr class="v40146-footer">'+totals+'</tr></tfoot></table></div>';
+    section.innerHTML='<div class="v4071-section-head"><div><strong>Histórico de CAPEX por Obra</strong><small>CAPEX inicial, contingenciamentos, aportes, doações, transferências e CAPEX atual registrado. Histórico integral do exercício (o filtro de meses não altera os valores acumulados). Consulte o detalhe da obra.</small></div>'+controls+'</div>'+
+      '<div class="v4071-table-wrap"><table class="v4071-table"><thead><tr>'+head+'</tr></thead><tbody>'+(rows||'<tr><td colspan="8" class="empty-state">Nenhuma obra encontrada.</td></tr>')+'</tbody><tfoot><tr class="v40146-footer">'+totals+'</tr></tfoot></table></div>';
     section.dataset.v40146='yes';
     bindHistoryExcel(section.querySelector('table'));
     section.querySelector('[data-v40149-clear]')?.addEventListener('click',()=>window.HAP_XF?.clear(HISTORY_XF_ID));
@@ -342,10 +352,11 @@
     const table=(heads,rows)=>'<div class="v40146-overflow"><table><thead><tr>'+heads.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'">Nenhum registro</td></tr>')+'</tbody></table></div>';
     const initial=table(['Linha','OI','Obra do orçamento','CAPEX inicial'],w.baseline.map(x=>'<tr><td>'+esc(x.linha||'—')+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.nome)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const adj=table(['Mês','OI','Tipo','Descrição','Valor'],w.movements.map(x=>'<tr><td>'+esc(x.mes||x.data||'—')+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.tipo)+'</td><td>'+esc(x.nome_lancamento||'')+'</td><td class="num">'+money((x.tipo==='aporte'?1:-1)*x.valor)+'</td></tr>').join(''));
+    const donations=table(['Data','OI','Destino','Descrição','Observação','Valor (−)'],w.donationLines.map(x=>'<tr><td>'+esc(x.data||'—')+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.destino||'—')+'</td><td>'+esc(x.descricao||'—')+'</td><td>'+esc(x.observacao||'—')+'</td><td class="num">'+money(-x.valor)+'</td></tr>').join(''));
     const transfers=table(['Data','Documento','OI','Contraparte','Movimento','Valor'],w.transferLines.map(x=>'<tr><td>'+esc(x.data||'—')+'</td><td>'+esc(x.documento||'—')+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.outra||'—')+'</td><td>'+esc(x.sentido)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const current=table(['OI','Nome','CAPEX atual'],w.currentLines.map(x=>'<tr><td>'+esc(x.oi)+'</td><td>'+esc(x.nome)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const el=document.createElement('div');el.className='v40146-modal';
-    el.innerHTML='<div class="v40146-dialog"><button type="button" class="v40146-close">Fechar</button><h2>'+esc(w.nome)+'</h2><p>OI(s): '+esc(w.ois.join(', ')||'Sem OI')+'</p><div class="v40146-totals"><span>Inicial: <b>'+money(w.initial)+'</b></span><span>Contingenciamentos: <b>'+money(-w.conting)+'</b></span><span>Aportes: <b>'+money(w.aporte)+'</b></span><span>Transferências: <b>'+money(w.transfers)+'</b></span><span>Atual: <b>'+money(w.current)+'</b></span></div><h3>CAPEX inicial</h3>'+initial+'<h3>Aportes e contingenciamentos</h3>'+adj+'<h3>Transferências</h3>'+transfers+'<h3>CAPEX atual por OI</h3>'+current+'</div>';
+    el.innerHTML='<div class="v40146-dialog"><button type="button" class="v40146-close">Fechar</button><h2>'+esc(w.nome)+'</h2><p>OI(s): '+esc(w.ois.join(', ')||'Sem OI')+'</p><div class="v40146-totals"><span>Inicial: <b>'+money(w.initial)+'</b></span><span>Contingenciamentos: <b>'+money(-w.conting)+'</b></span><span>Aportes: <b>'+money(w.aporte)+'</b></span><span>Doações: <b>'+money(-w.donations)+'</b></span><span>Transferências: <b>'+money(w.transfers)+'</b></span><span>Atual: <b>'+money(w.current)+'</b></span></div><h3>CAPEX inicial</h3>'+initial+'<h3>Aportes e contingenciamentos</h3>'+adj+'<h3>Doações</h3>'+donations+'<h3>Transferências</h3>'+transfers+'<h3>CAPEX atual por OI</h3>'+current+'</div>';
     document.body.appendChild(el);el.querySelector('.v40146-close').onclick=()=>el.remove();el.onclick=e=>{if(e.target===el)el.remove();};
   }
   async function run(){
@@ -409,12 +420,13 @@
       addSheet(book,'Aportes Conting',(s.moves||[]).map(x=>({Pacote:x.pacote,Aportes:x.aporte,Contingenciamentos:x.conting,Liquido:x.liquido})),[35,20,22,20]);
       addSheet(book,'Pendencias Cadastro',(s.pending||[]).map(o=>({OI:o.oi,Obra:o.nome,Sem_Pacote:o.pacote_faltante?'Sim':'Não',Sem_HEAD:o.head_faltante?'Sim':'Não'})),[14,48,15,15]);
     }
-    const clean=rows.map(w=>({Obra:w.nome,OIs:w.ois.join(', '),CAPEX_Inicial:w.initial,Contingenciamentos:-w.conting,Aportes_Extras:w.aporte,Saldo_Transferencias:w.transfers,CAPEX_Atual:w.current}));
-    const total={Obra:'TOTAL',OIs:'',CAPEX_Inicial:rows.reduce((t,w)=>t+w.initial,0),Contingenciamentos:-rows.reduce((t,w)=>t+w.conting,0),Aportes_Extras:rows.reduce((t,w)=>t+w.aporte,0),Saldo_Transferencias:rows.reduce((t,w)=>t+w.transfers,0),CAPEX_Atual:rows.reduce((t,w)=>t+w.current,0)};
-    addSheet(book,'Historico CAPEX Obras',[...clean,total],[55,26,22,22,20,24,22]);
+    const clean=rows.map(w=>({Obra:w.nome,OIs:w.ois.join(', '),CAPEX_Inicial:w.initial,Contingenciamentos:-w.conting,Aportes_Extras:w.aporte,Doacoes:-w.donations,Saldo_Transferencias:w.transfers,CAPEX_Atual:w.current}));
+    const total={Obra:'TOTAL',OIs:'',CAPEX_Inicial:rows.reduce((t,w)=>t+w.initial,0),Contingenciamentos:-rows.reduce((t,w)=>t+w.conting,0),Aportes_Extras:rows.reduce((t,w)=>t+w.aporte,0),Doacoes:-rows.reduce((t,w)=>t+w.donations,0),Saldo_Transferencias:rows.reduce((t,w)=>t+w.transfers,0),CAPEX_Atual:rows.reduce((t,w)=>t+w.current,0)};
+    addSheet(book,'Historico CAPEX Obras',[...clean,total],[55,26,22,22,20,20,24,22]);
     const details=rows.flatMap(w=>[
       ...w.baseline.map(v=>({Obra:w.nome,OI:v.oi,Data:'Inicial',Tipo:'CAPEX inicial',Valor:v.valor,Referencia:v.nome,Documento:''})),
       ...w.movements.map(m=>({Obra:w.nome,OI:m.oi,Data:m.mes||m.data,Tipo:m.tipo,Valor:(m.tipo==='aporte'?1:-1)*m.valor,Referencia:m.nome_lancamento||'',Documento:''})),
+      ...w.donationLines.map(d=>({Obra:w.nome,OI:d.oi,Data:d.data||'',Tipo:'Doação',Valor:-d.valor,Referencia:[d.destino,d.descricao,d.observacao].filter(Boolean).join(' · '),Documento:''})),
       ...w.transferLines.map(t=>({Obra:w.nome,OI:t.oi,Data:t.data,Tipo:'Transferência '+t.sentido,Valor:t.valor,Referencia:t.outra,Documento:t.documento})),
       ...w.currentLines.map(v=>({Obra:w.nome,OI:v.oi,Data:'Atual',Tipo:'CAPEX atual',Valor:v.valor,Referencia:v.nome,Documento:''}))
     ]);
@@ -471,9 +483,9 @@
       }
       const totals=fn=>rows.reduce((a,w)=>a+n(fn(w)),0);
       table('HAPCAPEX · Gerencial · Histórico de CAPEX por Obra',
-        ['Obra / OIs','CAPEX inicial','Conting. (−)','Aportes (+)','Transfer. líquidas','CAPEX atual'],
-        rows.map(w=>[w.nome+' · '+w.ois.join(', '),asBr(w.initial),asBr(-w.conting),asBr(w.aporte),asBr(w.transfers),asBr(w.current)]),
-        ['TOTAL',asBr(totals(w=>w.initial)),asBr(-totals(w=>w.conting)),asBr(totals(w=>w.aporte)),asBr(totals(w=>w.transfers)),asBr(totals(w=>w.current))]);
+        ['Obra / OIs','CAPEX inicial','Conting. (−)','Aportes (+)','Doações (−)','Transfer. líquidas','CAPEX atual'],
+        rows.map(w=>[w.nome+' · '+w.ois.join(', '),asBr(w.initial),asBr(-w.conting),asBr(w.aporte),asBr(-w.donations),asBr(w.transfers),asBr(w.current)]),
+        ['TOTAL',asBr(totals(w=>w.initial)),asBr(-totals(w=>w.conting)),asBr(totals(w=>w.aporte)),asBr(-totals(w=>w.donations)),asBr(totals(w=>w.transfers)),asBr(totals(w=>w.current))]);
       const pages=doc.getNumberOfPages();for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(115);doc.text(String(i)+'/'+String(pages),W-18,H-6);}
       doc.save('Gerencial_HAPCAPEX_'+currentYear()+'_'+new Date().toISOString().slice(0,10)+'.pdf');
     }catch(err){console.error('[HAPCAPEX exportação PDF]',err);alert('Não foi possível gerar o PDF: '+String(err?.message||err));}
