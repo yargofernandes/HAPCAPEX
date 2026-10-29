@@ -129,7 +129,7 @@
   start();
 })();
 
-/* HAPCAPEX V40.0.151 — Histórico Gerencial: doações com filtros Excel e totais dinâmicos.
+/* HAPCAPEX V40.0.152 — Histórico Gerencial: doações, filtros e cabeçalho fixo unificado.
  * Substitui a seção existente de aportes/contingenciamentos pelo histórico da obra.
  * Mantém verificações de divergência FORA da interface, exclusivamente na auditoria.
  */
@@ -153,6 +153,18 @@
     #v4078-table-adjustments td.num,#v4078-table-adjustments th.num{text-align:right;white-space:nowrap}
     #v4078-table-adjustments .v40146-detail{padding:5px 10px;border:1px solid #bacfe9;background:#f3f7fd;border-radius:7px;color:#164781;font-weight:700;cursor:pointer}
     #v4078-table-adjustments .hap-xf-head{padding-right:29px!important}
+    /* V40.0.152: o cabeçalho inteiro segue a mesma referência de rolagem.
+       Impede que a última coluna (Movimentações) fique solta ou desça
+       independentemente das outras células ao rolar verticalmente.
+       Mantém os THs como referência relativa para os botões HAP_XF. */
+    #v4078-table-adjustments .v4071-table-wrap{overflow:auto;position:relative}
+    #v4078-table-adjustments .v4071-table{border-collapse:separate;border-spacing:0}
+    #v4078-table-adjustments .v4071-table thead{position:sticky!important;top:0!important;z-index:12}
+    #v4078-table-adjustments .v4071-table thead tr>th{
+      position:relative!important;top:auto!important;bottom:auto!important;
+      left:auto!important;right:auto!important;z-index:auto!important;
+      background:#0d2b4e!important;color:#fff!important
+    }
     #v4078-table-adjustments .v40149-clear{padding:5px 9px;border:1px solid #c2d0e2;border-radius:6px;background:#f4f8fc;color:#194a7e;font-size:10px;cursor:pointer}
     #v4078-table-adjustments .v40149-clear:disabled{opacity:.5;cursor:default}
     .v40146-modal{position:fixed;inset:0;z-index:100000;background:rgba(5,20,41,.72);display:flex;align-items:center;justify-content:center;padding:14px}
