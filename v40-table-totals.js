@@ -129,7 +129,7 @@
   start();
 })();
 
-/* HAPCAPEX V40.0.150 — Histórico Gerencial: doações com filtros Excel e totais dinâmicos.
+/* HAPCAPEX V40.0.151 — Histórico Gerencial: doações com filtros Excel e totais dinâmicos.
  * Substitui a seção existente de aportes/contingenciamentos pelo histórico da obra.
  * Mantém verificações de divergência FORA da interface, exclusivamente na auditoria.
  */
@@ -225,15 +225,16 @@
       if(m.tipo==='aporte')w.aporte+=val;else w.conting+=val;
       w.movements.push({...m,valor:val});
     });
-    // Doações efetivas do exercício: somente as aplicadas ao CAPEX atual.
-    // Doações históricas (afeta_estado_atual=false) e canceladas são excluídas
-    // no servidor para impedir dupla contabilização de transferências antigas.
+    // Todas as doações ativas do exercício são apresentadas no histórico.
+    // As históricas (TI/Recheio Qualivida) já estavam debitadas via transferência
+    // SAP e são DEDUPLICADAS na RPC, por isso NÃO podem reduzir transferências de novo.
+    // A soma Doações + Transferências conserva o CAPEX atual; doações canceladas não entram.
     raw.main.doacoes_obras.forEach(d=>{
       const oi=String(d.oi||'').trim();
       if(!oi||n(d.valor)<=0)return;
       const w=get(oi,d.nome_obra||d.descricao||'Doação de CAPEX'),val=n(d.valor);
       w.donations+=val;
-      w.donationLines.push({oi,data:d.data,destino:d.destino,descricao:d.descricao,observacao:d.observacao,valor:val,id:d.id});
+      w.donationLines.push({oi,data:d.data,destino:d.destino,descricao:d.descricao,observacao:d.observacao,valor:val,id:d.id,historica:!!d.historica});
     });
     (raw.main.transferencias||[]).forEach(t=>{
       const val=n(t.valor);if(!val)return;
@@ -318,6 +319,111 @@
       onChange:display,valuesProvider:filterOptionsFor
     });
   }
+  // V40.0.151 — A seleção do histórico participa do mesmo motor de crossfilter
+  // da Gerencial, sem mudar a Base OI e sem cadastrar novos filtros no banco.
+  // O v55 já instalado na Gerencial interpreta a origem 'mgr-adjustments' como
+  // seleção de OIs e recalcula os gráficos e KPIs a partir das OIs escolhidas.
+  let nativeXF=null, bridgeProxy=null, bridgeSignature='', bridgeSelection=new Set(),
+      bridgeEnabled=false, bridgePending=false, bridgeBusy=false, bridgeTimer=null;
+  function rowOis(row){
+    if(Array.isArray(row.ois))return row.ois.map(String);
+    if(row.oi)return [String(row.oi)];
+    return [];
+  }
+  function bridgeRelevant(id,row){
+    if(!bridgeEnabled||!String(id).startsWith('mgr-')||id===HISTORY_XF_ID||id==='mgr-adjustments')return true;
+    const ids=rowOis(row);
+    if(ids.length)return ids.some(oi=>bridgeSelection.has(oi));
+    const allSelected=activeRows.filter(w=>w.ois.some(oi=>bridgeSelection.has(oi)));
+    const selectedOis=allSelected.flatMap(w=>w.currentLines).filter(x=>bridgeSelection.has(String(x.oi)));
+    const values=(arr,key)=>new Set(arr.map(x=>String(x[key]||'')));
+    const pacote=values(selectedOis,'pacote'),head=values(selectedOis,'head');
+    if(id==='mgr-heads')return head.has(String(row.key||row.label||''));
+    if(['mgr-packages','mgr-compare','mgr-net','mgr-moves'].includes(id))
+      return pacote.has(String(row.pacote||row.key||row.label||''));
+    if(id==='mgr-routes')return pacote.has(String(row.origem||''))||pacote.has(String(row.destino||''));
+    if(row.oi_origem||row.oi_destino)return bridgeSelection.has(String(row.oi_origem))||bridgeSelection.has(String(row.oi_destino));
+    return true;
+  }
+  // Para tabelas agregadas, reconstituir as métricas financeiras a partir das OIs
+  // efetivamente selecionadas, nunca mostrar como parcial o total do pacote inteiro.
+  function scopedManagerRows(id,rows){
+    if(!bridgeEnabled||!String(id).startsWith('mgr-')||id===HISTORY_XF_ID||id==='mgr-adjustments')return rows;
+    const chosen=activeRows.flatMap(w=>w.currentLines).filter(o=>bridgeSelection.has(String(o.oi)));
+    const selectedBy=key=>{
+      const out=new Map();
+      for(const o of chosen){const k=String(o[key]||'Sem classificação');if(!out.has(k))out.set(k,[]);out.get(k).push(o);}
+      return out;
+    };
+    const groups=id==='mgr-packages'?selectedBy('pacote'):id==='mgr-heads'?selectedBy('head'):null;
+    if(groups){
+      const s=window.HAP_V4071_CONTROL_MANAGERIAL?.summaryData?.();
+      const all=new Map((s?.ois||[]).map(o=>[String(o.oi),o]));
+      const first=Number(document.getElementById('v4071-month-start')?.value)||1;
+      const last=Number(document.getElementById('v4071-month-end')?.value)||12;
+      const year=currentYear();
+      const sum=(a,field)=>a.reduce((v,o)=>v+n(o[field]),0);
+      const realized=o=>{
+        const monthly=o.realizado_mensal||{};let total=0;
+        for(let month=Math.min(first,last);month<=Math.max(first,last);month++)
+          total+=n(monthly[year+'-'+String(month).padStart(2,'0')]);
+        return total;
+      };
+      const allSelectedRows=chosen.map(o=>all.get(String(o.oi))).filter(Boolean);
+      const totalAttr=sum(allSelectedRows,'atribuido');
+      return rows.filter(r=>groups.has(String(r.key||r.label||''))).map(r=>{
+        const list=(groups.get(String(r.key||r.label))||[]).map(o=>all.get(String(o.oi))).filter(Boolean);
+        const atribuido=sum(list,'atribuido'),compromissado=sum(list,'compromissado'),saldo=sum(list,'saldo');
+        const real=list.reduce((a,o)=>a+realized(o),0);
+        return {...r,qtd_ois:list.length,atribuido,compromissado,saldo,realizado:real,
+          aporte:sum(list,'aporte_atual'),conting:sum(list,'conting_atual'),
+          pct_capex:totalAttr?atribuido/totalAttr*100:0,
+          pct_compromissado:atribuido?compromissado/atribuido*100:0,
+          pct_realizado:atribuido?real/atribuido*100:0};
+      });
+    }
+    return rows.filter(r=>bridgeRelevant(id,r));
+  }
+  function installHistoryBridge(){
+    const xf=window.HAP_XF;
+    if(!xf)return false;
+    if(bridgeProxy&&window.HAP_XF===bridgeProxy)return true;
+    if(typeof xf.register!=='function'||typeof xf.apply!=='function')return false;
+    nativeXF=xf;
+    bridgeProxy=Object.assign({},xf);
+    bridgeProxy.apply=(id,rows)=>{
+        if(id==='mgr-adjustments'&&bridgePending){
+          bridgePending=false;
+          return [...bridgeSelection].map(oi=>({ois:[oi],oi,obra:oi}));
+        }
+        const result=xf.apply(id,rows);
+        return Array.isArray(result)?scopedManagerRows(id,result):result;
+      };
+    bridgeProxy.hasAnyFilter=id=>id==='mgr-adjustments'&&bridgeBusy
+      ?bridgeEnabled:xf.hasAnyFilter(id);
+    window.HAP_XF=bridgeProxy;
+    return true;
+  }
+  function sendSelectionToManager(){
+    if(!installHistoryBridge())return;
+    const store=nativeXF.register({id:'mgr-adjustments'});
+    if(typeof store.onChange!=='function')return;
+    if(bridgeBusy)return;
+    bridgeBusy=true;bridgePending=bridgeEnabled;
+    try{store.onChange();}catch(err){console.warn('[HAPCAPEX Histórico] crossfilter não aplicado',err?.message||'');}
+    finally{bridgePending=false;bridgeBusy=false;}
+  }
+  function publishCrossfilter(){
+    const enabled=!!nativeXF?.hasAnyFilter?.(HISTORY_XF_ID);
+    const ids=new Set(shownRows.flatMap(rowOis));
+    const signature=(enabled?'active:':'clear:')+[...ids].sort().join(',')+':'+currentYear();
+    if(signature===bridgeSignature)return;
+    bridgeSignature=signature;bridgeEnabled=enabled;bridgeSelection=ids;
+    if(bridgeTimer)clearTimeout(bridgeTimer);
+    // Aguarda o fechamento do menu HAP_XF para preservar a seleção confirmada.
+    bridgeTimer=setTimeout(sendSelectionToManager,0);
+  }
+
   function display(){
     const section=document.getElementById('v4078-table-adjustments');if(!section)return;
     const XF=window.HAP_XF;
@@ -345,6 +451,7 @@
     section.dataset.v40146='yes';
     bindHistoryExcel(section.querySelector('table'));
     section.querySelector('[data-v40149-clear]')?.addEventListener('click',()=>window.HAP_XF?.clear(HISTORY_XF_ID));
+    if(installHistoryBridge())publishCrossfilter();
   }
   function detail(k){
     const w=activeRows.find(x=>x.key===k);if(!w)return;
@@ -352,7 +459,7 @@
     const table=(heads,rows)=>'<div class="v40146-overflow"><table><thead><tr>'+heads.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'">Nenhum registro</td></tr>')+'</tbody></table></div>';
     const initial=table(['Linha','OI','Obra do orçamento','CAPEX inicial'],w.baseline.map(x=>'<tr><td>'+esc(x.linha||'—')+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.nome)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const adj=table(['Mês','OI','Tipo','Descrição','Valor'],w.movements.map(x=>'<tr><td>'+esc(x.mes||x.data||'—')+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.tipo)+'</td><td>'+esc(x.nome_lancamento||'')+'</td><td class="num">'+money((x.tipo==='aporte'?1:-1)*x.valor)+'</td></tr>').join(''));
-    const donations=table(['Data','OI','Destino','Descrição','Observação','Valor (−)'],w.donationLines.map(x=>'<tr><td>'+esc(x.data||'—')+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.destino||'—')+'</td><td>'+esc(x.descricao||'—')+'</td><td>'+esc(x.observacao||'—')+'</td><td class="num">'+money(-x.valor)+'</td></tr>').join(''));
+    const donations=table(['Data','OI','Destino','Descrição','Observação','Valor (−)'],w.donationLines.map(x=>'<tr><td>'+esc(x.data||(x.historica?'Histórica':'—'))+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.destino||'—')+'</td><td>'+esc(x.descricao||'—')+'</td><td>'+esc(x.observacao||'—')+'</td><td class="num">'+money(-x.valor)+'</td></tr>').join(''));
     const transfers=table(['Data','Documento','OI','Contraparte','Movimento','Valor'],w.transferLines.map(x=>'<tr><td>'+esc(x.data||'—')+'</td><td>'+esc(x.documento||'—')+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.outra||'—')+'</td><td>'+esc(x.sentido)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const current=table(['OI','Nome','CAPEX atual'],w.currentLines.map(x=>'<tr><td>'+esc(x.oi)+'</td><td>'+esc(x.nome)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const el=document.createElement('div');el.className='v40146-modal';
@@ -366,7 +473,8 @@
     const year=currentYear();if(!year)return;
     if(renderedYear!==year){
       window.HAP_XF?.clear(HISTORY_XF_ID,{silent:true});
-      xfStore=null;renderedYear=year;
+      xfStore=null;renderedYear=year;bridgeSignature='';
+      bridgeEnabled=false;bridgeSelection=new Set();
     }
     const requestId=year+'-'+String(Date.now());key=requestId;
     const section=container;
@@ -426,7 +534,7 @@
     const details=rows.flatMap(w=>[
       ...w.baseline.map(v=>({Obra:w.nome,OI:v.oi,Data:'Inicial',Tipo:'CAPEX inicial',Valor:v.valor,Referencia:v.nome,Documento:''})),
       ...w.movements.map(m=>({Obra:w.nome,OI:m.oi,Data:m.mes||m.data,Tipo:m.tipo,Valor:(m.tipo==='aporte'?1:-1)*m.valor,Referencia:m.nome_lancamento||'',Documento:''})),
-      ...w.donationLines.map(d=>({Obra:w.nome,OI:d.oi,Data:d.data||'',Tipo:'Doação',Valor:-d.valor,Referencia:[d.destino,d.descricao,d.observacao].filter(Boolean).join(' · '),Documento:''})),
+      ...w.donationLines.map(d=>({Obra:w.nome,OI:d.oi,Data:d.data||(d.historica?'Histórica':''),Tipo:'Doação',Valor:-d.valor,Referencia:[d.destino,d.descricao,d.observacao].filter(Boolean).join(' · '),Documento:''})),
       ...w.transferLines.map(t=>({Obra:w.nome,OI:t.oi,Data:t.data,Tipo:'Transferência '+t.sentido,Valor:t.valor,Referencia:t.outra,Documento:t.documento})),
       ...w.currentLines.map(v=>({Obra:w.nome,OI:v.oi,Data:'Atual',Tipo:'CAPEX atual',Valor:v.valor,Referencia:v.nome,Documento:''}))
     ]);
