@@ -129,7 +129,7 @@
   start();
 })();
 
-/* HAPCAPEX V40.0.152 — Histórico Gerencial: doações, filtros e cabeçalho fixo unificado.
+/* HAPCAPEX V40.0.154 — Histórico Gerencial: datas legíveis no painel Detalhar.
  * Substitui a seção existente de aportes/contingenciamentos pelo histórico da obra.
  * Mantém verificações de divergência FORA da interface, exclusivamente na auditoria.
  */
@@ -143,6 +143,21 @@
   const n=x=>Number.isFinite(Number(x))?Number(x):0;
   const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+  // A apresentação não altera as datas de origem nem os valores exportados.
+  // Quando o registro só possui o mês (AAAA-MM), não inventa o dia da operação.
+  const formatDetailDate=value=>{
+    const raw=String(value??'').trim();
+    const full=raw.match(/^(\d{4})-(\d{2})-(\d{2})(?=$|[T\s])/);
+    if(full){
+      const [,year,month,day]=full;
+      const dt=new Date(Date.UTC(Number(year),Number(month)-1,Number(day)));
+      if(dt.getUTCFullYear()===Number(year) && dt.getUTCMonth()+1===Number(month) && dt.getUTCDate()===Number(day))
+        return `${day}/${month}/${year}`;
+    }
+    const partial=raw.match(/^(\d{4})-(\d{2})$/);
+    if(partial&&Number(partial[2])>=1&&Number(partial[2])<=12)return `${partial[2]}/${partial[1]}`;
+    return raw||'—';
+  };
   let cached=null, loading=null, key='', activeRows=[], shownRows=[], busy=false, queued=false;
   const HISTORY_XF_ID='mgr-historico-capex-obra';
   let xfStore=null, renderedYear=null;
@@ -171,7 +186,19 @@
     .v40146-dialog{background:#fff;color:#172b45;border-radius:12px;padding:20px;max-width:1100px;width:100%;max-height:90vh;overflow:auto;box-sizing:border-box}
     .v40146-dialog h2{margin:0 0 9px;font-size:20px}.v40146-dialog h3{margin:18px 0 6px;font-size:14px}
     .v40146-dialog table{border-collapse:collapse;width:100%;min-width:620px;font-size:11px}.v40146-dialog th,.v40146-dialog td{padding:9px;border-bottom:1px solid #e2e9f3;text-align:left}
-    .v40146-dialog th{background:#eef3fa}.v40146-dialog td.num{text-align:right;white-space:nowrap}
+    /* A tabela do modal usa fundo claro. Isola as cores do TH dos estilos globais
+       (que exigem cabeçalho branco sobre azul na tabela principal). */
+    .v40146-dialog .v40146-overflow table thead tr th{
+      background:#e9f0f9!important;color:#143454!important;
+      font-size:11px!important;font-weight:800!important;
+      text-shadow:none!important;opacity:1!important;
+    }
+    .v40146-dialog td.num{text-align:right;white-space:nowrap}
+    .v40146-dialog td.v40153-other{min-width:235px;max-width:365px;vertical-align:middle}
+    .v40146-dialog td.v40153-other strong{display:block;color:#143454;font-weight:750;white-space:normal}
+    .v40146-dialog td.v40153-other small{display:block;margin-top:3px;color:#435c76!important;
+      font-size:10px;line-height:1.4;font-weight:600;white-space:normal;overflow-wrap:anywhere}
+    
     .v40146-dialog .v40146-overflow{overflow:auto}.v40146-totals{display:flex;flex-wrap:wrap;gap:15px;padding:12px;background:#f3f6fb}
     .v40146-dialog .v40146-close{float:right;border:1px solid #a8bad4;border-radius:6px;padding:6px 12px;background:#fff;cursor:pointer}
     #v4078-table-adjustments .v40146-footer td{position:sticky;bottom:0;background:#edf3fb;font-weight:850;border-top:2px solid #9fb6d6}
@@ -210,8 +237,17 @@
     try {cached=await promise;return cached;}finally{if(loading?.promise===promise)loading=null;}
   }
   function buildHistory(raw){
-    const works=new Map(),links=new Map(),oiMap=new Map();
+    const works=new Map(),links=new Map(),oiMap=new Map(),oiNames=new Map();
+    // Nomes das OIs vigentes do próprio retorno autenticado. Sem nova API ou permissões.
+    (raw.main.ois||[]).forEach(o=>{
+      const id=String(o?.oi||'').trim(),label=String(o?.nome||'').trim();
+      if(id&&label)oiNames.set(id,label);
+    });
     raw.main.obra_vinculos.forEach(v=>{if(v?.oi && v?.obra_id)links.set(String(v.oi),v);});
+    const otherWorkName=(otherOi,documentName)=>{
+      const oi=String(otherOi||'').trim();
+      return String(oiNames.get(oi)||links.get(oi)?.obra||documentName||'').trim();
+    };
     raw.adjust.movimentos.forEach(m=>{if(m?.oi && m?.obra_id && !links.has(String(m.oi)))links.set(String(m.oi),{obra_id:m.obra_id,obra:m.obra});});
     const get=(v,name,id)=>{
       const oi=String(v||'').trim(),link=links.get(oi),groupId=String(link?.obra_id||id||'').trim();
@@ -253,11 +289,15 @@
       const from=String(t.oi_origem||'').trim(),to=String(t.oi_destino||'').trim();
       if(/^\d+$/.test(from)){
         const w=get(from,t.nome_origem);w.transfers-=val;
-        w.transferLines.push({data:t.data,documento:t.numero_documento,oi:from,outra:to,sentido:'Saída',valor:-val,descricao:t.justificativa});
+        w.transferLines.push({data:t.data,documento:t.numero_documento,oi:from,
+          outra:to,outraNome:otherWorkName(to,t.nome_destino),sentido:'Saída',
+          valor:-val,descricao:t.justificativa});
       }
       if(/^\d+$/.test(to)){
         const w=get(to,t.nome_destino);w.transfers+=val;
-        w.transferLines.push({data:t.data,documento:t.numero_documento,oi:to,outra:from,sentido:'Entrada',valor:val,descricao:t.justificativa});
+        w.transferLines.push({data:t.data,documento:t.numero_documento,oi:to,
+          outra:from,outraNome:otherWorkName(from,t.nome_origem),sentido:'Entrada',
+          valor:val,descricao:t.justificativa});
       }
     });
     return [...works.values()].map(w=>({...w,ois:[...w.ois].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}))}));
@@ -470,9 +510,18 @@
     document.querySelector('.v40146-modal')?.remove();
     const table=(heads,rows)=>'<div class="v40146-overflow"><table><thead><tr>'+heads.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+(rows||'<tr><td colspan="'+heads.length+'">Nenhum registro</td></tr>')+'</tbody></table></div>';
     const initial=table(['Linha','OI','Obra do orçamento','CAPEX inicial'],w.baseline.map(x=>'<tr><td>'+esc(x.linha||'—')+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.nome)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
-    const adj=table(['Mês','OI','Tipo','Descrição','Valor'],w.movements.map(x=>'<tr><td>'+esc(x.mes||x.data||'—')+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.tipo)+'</td><td>'+esc(x.nome_lancamento||'')+'</td><td class="num">'+money((x.tipo==='aporte'?1:-1)*x.valor)+'</td></tr>').join(''));
-    const donations=table(['Data','OI','Destino','Descrição','Observação','Valor (−)'],w.donationLines.map(x=>'<tr><td>'+esc(x.data||(x.historica?'Histórica':'—'))+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.destino||'—')+'</td><td>'+esc(x.descricao||'—')+'</td><td>'+esc(x.observacao||'—')+'</td><td class="num">'+money(-x.valor)+'</td></tr>').join(''));
-    const transfers=table(['Data','Documento','OI','Contraparte','Movimento','Valor'],w.transferLines.map(x=>'<tr><td>'+esc(x.data||'—')+'</td><td>'+esc(x.documento||'—')+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.outra||'—')+'</td><td>'+esc(x.sentido)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
+    const adj=table(['Mês','OI','Tipo','Descrição','Valor'],w.movements.map(x=>'<tr><td>'+esc(formatDetailDate(x.mes||x.data||'—'))+'</td><td>'+esc(x.oi||'—')+'</td><td>'+esc(x.tipo)+'</td><td>'+esc(x.nome_lancamento||'')+'</td><td class="num">'+money((x.tipo==='aporte'?1:-1)*x.valor)+'</td></tr>').join(''));
+    const donations=table(['Data','OI','Destino','Descrição','Observação','Valor (−)'],w.donationLines.map(x=>'<tr><td>'+esc(formatDetailDate(x.data||(x.historica?'Histórica':'—')))+'</td><td>'+esc(x.oi)+'</td><td>'+esc(x.destino||'—')+'</td><td>'+esc(x.descricao||'—')+'</td><td>'+esc(x.observacao||'—')+'</td><td class="num">'+money(-x.valor)+'</td></tr>').join(''));
+    // "Origem / Destino" mostra o outro lado da movimentação, com OI e nome.
+    // Em documentos SAP com múltiplas origens, não inventamos uma OI individual.
+    const otherSide=x=>{
+      const direction=x.sentido==='Saída'?'Destino':'Origem';
+      const oi=String(x.outra||'').trim();
+      const title=oi||((x.outraNome&&/múltiplas|ois de origem/i.test(x.outraNome))?'Múltiplas OIs':'OI não informada');
+      const description=x.outraNome||'Nome da obra não disponível no cadastro';
+      return '<td class="v40153-other"><strong>'+esc(direction)+' · '+esc(title)+'</strong><small>'+esc(description)+'</small></td>';
+    };
+    const transfers=table(['Data','Documento','OI da obra','Origem / Destino (OI e obra)','Movimento','Valor'],w.transferLines.map(x=>'<tr><td>'+esc(formatDetailDate(x.data||'—'))+'</td><td>'+esc(x.documento||'—')+'</td><td>'+esc(x.oi)+'</td>'+otherSide(x)+'<td>'+esc(x.sentido)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const current=table(['OI','Nome','CAPEX atual'],w.currentLines.map(x=>'<tr><td>'+esc(x.oi)+'</td><td>'+esc(x.nome)+'</td><td class="num">'+money(x.valor)+'</td></tr>').join(''));
     const el=document.createElement('div');el.className='v40146-modal';
     el.innerHTML='<div class="v40146-dialog"><button type="button" class="v40146-close">Fechar</button><h2>'+esc(w.nome)+'</h2><p>OI(s): '+esc(w.ois.join(', ')||'Sem OI')+'</p><div class="v40146-totals"><span>Inicial: <b>'+money(w.initial)+'</b></span><span>Contingenciamentos: <b>'+money(-w.conting)+'</b></span><span>Aportes: <b>'+money(w.aporte)+'</b></span><span>Doações: <b>'+money(-w.donations)+'</b></span><span>Transferências: <b>'+money(w.transfers)+'</b></span><span>Atual: <b>'+money(w.current)+'</b></span></div><h3>CAPEX inicial</h3>'+initial+'<h3>Aportes e contingenciamentos</h3>'+adj+'<h3>Doações</h3>'+donations+'<h3>Transferências</h3>'+transfers+'<h3>CAPEX atual por OI</h3>'+current+'</div>';
@@ -547,7 +596,8 @@
       ...w.baseline.map(v=>({Obra:w.nome,OI:v.oi,Data:'Inicial',Tipo:'CAPEX inicial',Valor:v.valor,Referencia:v.nome,Documento:''})),
       ...w.movements.map(m=>({Obra:w.nome,OI:m.oi,Data:m.mes||m.data,Tipo:m.tipo,Valor:(m.tipo==='aporte'?1:-1)*m.valor,Referencia:m.nome_lancamento||'',Documento:''})),
       ...w.donationLines.map(d=>({Obra:w.nome,OI:d.oi,Data:d.data||(d.historica?'Histórica':''),Tipo:'Doação',Valor:-d.valor,Referencia:[d.destino,d.descricao,d.observacao].filter(Boolean).join(' · '),Documento:''})),
-      ...w.transferLines.map(t=>({Obra:w.nome,OI:t.oi,Data:t.data,Tipo:'Transferência '+t.sentido,Valor:t.valor,Referencia:t.outra,Documento:t.documento})),
+      ...w.transferLines.map(t=>({Obra:w.nome,OI:t.oi,Data:t.data,Tipo:'Transferência '+t.sentido,Valor:t.valor,
+        Referencia:[t.sentido==='Saída'?'Destino':'Origem',t.outra||'Múltiplas OIs',t.outraNome].filter(Boolean).join(' · '),Documento:t.documento})),
       ...w.currentLines.map(v=>({Obra:w.nome,OI:v.oi,Data:'Atual',Tipo:'CAPEX atual',Valor:v.valor,Referencia:v.nome,Documento:''}))
     ]);
     addSheet(book,'Movimentacoes Obras',details,[55,14,15,24,20,48,22]);
