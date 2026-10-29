@@ -129,7 +129,7 @@
   start();
 })();
 
-/* HAPCAPEX V40.0.154 — Histórico Gerencial: datas legíveis no painel Detalhar.
+/* HAPCAPEX V40.0.155 — Filtros exclusivos e estáveis do Histórico de CAPEX por Obra.
  * Substitui a seção existente de aportes/contingenciamentos pelo histórico da obra.
  * Mantém verificações de divergência FORA da interface, exclusivamente na auditoria.
  */
@@ -160,9 +160,12 @@
   };
   let cached=null, loading=null, key='', activeRows=[], shownRows=[], busy=false, queued=false;
   const HISTORY_XF_ID='mgr-historico-capex-obra';
+  const HISTORY_COLUMNS_VERSION='40.0.155';
   let xfStore=null, renderedYear=null;
   const style=document.createElement('style');style.id='hap-v40146-gerencial-historico';
   style.textContent=`#v4078-table-top,#v4071-top-n{display:none!important}
+    /* Enquanto a Gerencial recria o HTML, não mostrar a tabela legada de ajustes. */
+    #v4078-table-adjustments:not([data-v40146='yes']){visibility:hidden}
     #v4078-table-adjustments .v40146-work{min-width:265px}
     #v4078-table-adjustments td{font-variant-numeric:tabular-nums}
     #v4078-table-adjustments td.num,#v4078-table-adjustments th.num{text-align:right;white-space:nowrap}
@@ -362,6 +365,15 @@
   function bindHistoryExcel(table){
     const XF=window.HAP_XF;
     if(!XF || typeof XF.bind!=='function')return;
+    // Check every header before binding. Never associate one financial field
+    // to another column after partial DOM changes or deferred renders.
+    const expected=[...cols.map(c=>c[1]),'Movimentações'];
+    const actual=[...(table?.querySelectorAll('thead tr:first-child th')||[])].map(el=>
+      String(el.childNodes[0]?.textContent||el.textContent||'').trim());
+    if(actual.length!==expected.length||expected.some((x,i)=>x!==actual[i])){
+      console.error('[HAPCAPEX v155] Cabeçalhos inesperados; filtro não associado',actual);
+      return;
+    }
     xfStore=XF.register({
       id:HISTORY_XF_ID,rows:activeRows,columns:historyColumns,
       onChange:display,valuesProvider:filterOptionsFor
@@ -443,6 +455,25 @@
     if(typeof xf.register!=='function'||typeof xf.apply!=='function')return false;
     nativeXF=xf;
     bridgeProxy=Object.assign({},xf);
+    // V40.0.155: a Gerencial original agenda um HAP_XF.bind em setTimeout(0)
+    // para a tabela ANTIGA de ajustes. O histórico pode ter substituído o DOM
+    // antes desse timer: se o bind prosseguir, 'conting' será ligado ao TH
+    // 'CAPEX inicial' (índice 1), exibindo valores negativos e restaurando
+    // a tabela legada no onChange. Nunca permitir que as colunas antigas sejam
+    // registradas sobre o DOM novo. Capturar somente a callback do gestor
+    // para preservar a interação com os demais gráficos e tabelas.
+    bridgeProxy.bind=(options)=>{
+      const table=typeof options?.table==='string'
+        ?document.querySelector(options.table):options?.table;
+      const section=table?.closest?.('#v4078-table-adjustments');
+      if(options?.id==='mgr-adjustments' && section?.dataset.v40146==='yes'){
+        if(typeof options.onChange==='function'){
+          xf.register({id:'mgr-adjustments',onChange:options.onChange});
+        }
+        return; // não insere botões nem contamina o registro do Histórico
+      }
+      return xf.bind(options);
+    };
     bridgeProxy.apply=(id,rows)=>{
         if(id==='mgr-adjustments'&&bridgePending){
           bridgePending=false;
@@ -501,6 +532,7 @@
     section.innerHTML='<div class="v4071-section-head"><div><strong>Histórico de CAPEX por Obra</strong><small>CAPEX inicial, contingenciamentos, aportes, doações, transferências e CAPEX atual registrado. Histórico integral do exercício (o filtro de meses não altera os valores acumulados). Consulte o detalhe da obra.</small></div>'+controls+'</div>'+
       '<div class="v4071-table-wrap"><table class="v4071-table"><thead><tr>'+head+'</tr></thead><tbody>'+(rows||'<tr><td colspan="8" class="empty-state">Nenhuma obra encontrada.</td></tr>')+'</tbody><tfoot><tr class="v40146-footer">'+totals+'</tr></tfoot></table></div>';
     section.dataset.v40146='yes';
+    section.dataset.historyFiltersVersion=HISTORY_COLUMNS_VERSION;
     bindHistoryExcel(section.querySelector('table'));
     section.querySelector('[data-v40149-clear]')?.addEventListener('click',()=>window.HAP_XF?.clear(HISTORY_XF_ID));
     if(installHistoryBridge())publishCrossfilter();
